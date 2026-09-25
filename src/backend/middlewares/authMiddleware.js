@@ -70,7 +70,8 @@ async function verifyStaffLoginCode(req, res, next) {
     }
 
     if (account.accountType === 'EVENT_ADMIN') return res.status(403).json({ message: 'Quản lý sự kiện phải đăng nhập bằng tài khoản cá nhân.' });
-    if (account.userId && !await User.exists({ _id: account.userId, status: 'ACTIVE' })) return res.status(401).json({ message: 'Tài khoản nhân sự không còn hoạt động.' });
+    if (account.userId && !await User.exists({ _id: account.userId, status: 'ACTIVE', systemRole: { $ne: 'SUPER_ADMIN' } })) return res.status(401).json({ message: 'Tài khoản không được phép vận hành giải.' });
+    if (!await Event.exists({ _id: eventId, ...require('../services/eventPolicy').availableEvent })) return res.status(409).json({ message: 'Sự kiện đã bị ẩn hoặc tạm ngừng.' });
 
     req.staffAccount = account;
     req.accountType = account.accountType;
@@ -116,7 +117,7 @@ async function requireSuperAdmin(req, res, next) {
   }
 }
 
-// Allows a SUPER_ADMIN globally or the creator with an active EVENT_ADMIN assignment.
+// Event operations belong exclusively to the creator, never to platform moderators.
 async function requireEventAdmin(req, res, next) {
   try {
     if (!req.userId) {
@@ -133,13 +134,11 @@ async function requireEventAdmin(req, res, next) {
       return res.status(401).json({ message: 'User account is inactive or unavailable.' });
     }
 
-    const event = await Event.findById(eventId).select('createdBy');
+    const event = await Event.findById(eventId).select('createdBy moderation');
     if (!event) return res.status(404).json({ message: 'Không tìm thấy sự kiện.' });
 
     if (user.systemRole === 'SUPER_ADMIN') {
-      req.currentUser = user;
-      req.eventId = eventId;
-      return next();
+      return res.status(403).json({ message: 'Super Admin chỉ kiểm duyệt, không vận hành sự kiện.' });
     }
 
     const eventAdminAccount = await EventAccount.findOne({
@@ -153,6 +152,7 @@ async function requireEventAdmin(req, res, next) {
     if (!eventAdminAccount || !ownsEvent) {
       return res.status(403).json({ message: 'Event administrator access is required for this event.' });
     }
+    if (req.method !== 'GET' && ['HIDDEN', 'SUSPENDED'].includes(event.moderation?.state) && !req.path.includes('/payments/')) return res.status(409).json({ message: 'Sự kiện đang bị kiểm duyệt. Không thể thay đổi hay mở lại giải.' });
 
     req.currentUser = user;
     req.eventId = eventAdminAccount.eventId;
@@ -175,7 +175,8 @@ module.exports = {
 function requireEventRoles(roles) {
   return async (req, res, next) => {
     const check = async () => {
-      if (req.currentUser?.systemRole === 'SUPER_ADMIN') return next();
+      if (req.currentUser?.systemRole === 'SUPER_ADMIN') return res.status(403).json({ message: 'Super Admin không có quyền nghiệp vụ trong giải.' });
+      if (!await Event.exists({ _id: getEventId(req), ...require('../services/eventPolicy').availableEvent })) return res.status(409).json({ message: 'Sự kiện đã bị ẩn hoặc tạm ngừng.' });
       const account = await EventAccount.findOne({ eventId: getEventId(req), userId: req.userId, status: 'ACTIVE', accountType: { $in: roles } });
       if (!account) return res.status(403).json({ message: 'Insufficient permissions for this event.' });
       if (account.accountType === 'EVENT_ADMIN' && !await Event.exists({ _id: getEventId(req), createdBy: req.userId })) return res.status(403).json({ message: 'Bạn không phải người tạo sự kiện này.' });

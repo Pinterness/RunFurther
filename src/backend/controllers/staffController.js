@@ -1,3 +1,4 @@
+const { availableEvent, lockOperationalEvent } = require('../services/eventPolicy');
 const crypto = require('crypto');
 const EventAccount = require('../models/EventAccount');
 const Event = require('../models/Event');
@@ -14,7 +15,8 @@ async function staffLogin(req, res, next) {
     const account = await EventAccount.findOne({ eventId: req.params.eventId, loginCode: loginCode.trim().toUpperCase(), status: 'ACTIVE' }).populate('eventId', 'name');
     assert(account?.eventId, 401, 'Invalid staff PIN.');
     assert(account.accountType !== 'EVENT_ADMIN', 403, 'Quản lý sự kiện phải đăng nhập bằng tài khoản cá nhân.');
-    if (account.userId) assert(await require('../models/User').exists({ _id: account.userId, status: 'ACTIVE' }), 401, 'Tài khoản nhân sự không còn hoạt động.');
+    if (account.userId) assert(await require('../models/User').exists({ _id: account.userId, status: 'ACTIVE', systemRole: { $ne: 'SUPER_ADMIN' } }), 401, 'Tài khoản nhân sự không còn hoạt động.');
+    assert(await Event.exists({ _id: req.params.eventId, ...availableEvent }), 409, 'Event is suspended or hidden.');
     res.json({ staff: { id: account._id, employeeName: account.employeeName, accountType: account.accountType, eventId: account.eventId._id, eventName: account.eventId.name, loginCode: account.loginCode } });
   } catch (error) { next(error); }
 }
@@ -39,6 +41,7 @@ function logisticsAction(kind) {
       else if (typeof bibNumber === 'string' && bibNumber.trim()) filter.bibNumber = bibNumber.trim().toUpperCase();
       else assert(false, 400, 'Registration, QR or BIB is required.');
       const result = await transaction(async session => {
+      await lockOperationalEvent(req.params.eventId, session);
         const registration = await Registration.findOne(filter).session(session);
         assert(registration, 404, 'No eligible registration found.');
         const field = kind === 'checkin' ? 'hasCheckedIn' : 'raceKitIssued';
@@ -61,7 +64,7 @@ async function applyVolunteer(req, res, next) {
     const { applicant, desiredRole = 'VOLUNTEER' } = req.body;
     assert(applicant && ['fullName', 'email', 'phone'].every(k => typeof applicant[k] === 'string' && applicant[k].trim()), 400, 'Name, email and phone are required.');
     assert(roles.includes(desiredRole), 400, 'Invalid volunteer role.');
-    const event = await Event.findOne({ _id: req.params.eventId, status: { $in: ['PUBLISHED', 'REGISTRATION_OPEN', 'REGISTRATION_CLOSED'] }, 'dateInfo.raceDate': { $gt: new Date() } });
+    const event = await Event.findOne({ _id: req.params.eventId, ...availableEvent, status: { $in: ['PUBLISHED', 'REGISTRATION_OPEN', 'REGISTRATION_CLOSED'] }, 'dateInfo.raceDate': { $gt: new Date() } });
     assert(event, 409, 'This event is not accepting volunteers.');
     const application = await VolunteerApplication.create({ eventId: event._id, userId: req.userId || null, applicant, desiredRole });
     res.status(201).json({ application, message: 'Đã gửi đơn tình nguyện viên.' });
@@ -79,6 +82,7 @@ async function reviewVolunteerApplication(req, res, next) {
     const { status, assignedRole, reviewNote = '' } = req.body;
     assert(['APPROVED', 'REJECTED'].includes(status), 400, 'Invalid review status.');
     const result = await transaction(async session => {
+      await lockOperationalEvent(req.params.eventId, session);
       const application = await VolunteerApplication.findOne({ _id: req.params.applicationId, eventId: req.params.eventId }).session(session);
       assert(application, 404, 'Application not found.');
       if (application.status !== 'PENDING') {

@@ -19,8 +19,7 @@ async function getPlatformOverview(_req, res, next) {
 async function listManagedEvents(req, res, next) {
   try {
     if (req.currentUser.systemRole === 'SUPER_ADMIN') {
-      const events = await Event.find().sort({ 'dateInfo.raceDate': -1 }).lean();
-      return res.status(200).json({ events });
+      return res.status(403).json({ message: 'Vui lòng sử dụng khu vực kiểm duyệt nền tảng.' });
     }
 
     const accounts = await EventAccount.find({

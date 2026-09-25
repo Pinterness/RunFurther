@@ -1,3 +1,4 @@
+const { lockOperationalEvent } = require('./eventPolicy');
 const crypto = require('crypto');
 const Booking = require('../models/Booking');
 const EventCategory = require('../models/EventCategory');
@@ -28,6 +29,7 @@ async function completeBooking(bookingId, userId, method, session, bankReference
   }
   assert(booking.status === 'HOLD' && booking.expiresAt > new Date(), 409, 'Booking is no longer available.');
   assert(method === 'WALLET' || (method === 'VIETQR' && bankReference), 400, 'Verified payment is required.');
+  await lockOperationalEvent(booking.eventId, session);
   let transactionId = bankReference || booking.orderCode;
   if (method === 'WALLET' && booking.finalAmount > 0) {
     const result = await processPayment(userId, booking.finalAmount, 'REGISTRATION', booking._id, 'BOOKING-' + booking._id, session);

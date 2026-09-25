@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
+import NotificationBell from './NotificationBell';
 import RunnerAvatar from './RunnerAvatar';
 
 const navigation = [
@@ -74,6 +75,7 @@ export default function SiteHeader() {
         <Link className="mobile-register" href="/register">Tạo tài khoản</Link>
       </nav>
       <div className="app-user">
+        {user && <NotificationBell userId={user.id || user._id} />}
         {user ? <div className="account-control" ref={accountRef}>
           <button ref={accountButtonRef} className="account-trigger" onClick={() => setAccountOpen(!accountOpen)} aria-expanded={accountOpen} aria-controls="account-dropdown">
             <RunnerAvatar name={user.fullName} theme={user.avatarTheme} />
@@ -83,7 +85,7 @@ export default function SiteHeader() {
             <p>TÀI KHOẢN CỦA BẠN</p>
             <Link href="/account" onClick={() => setAccountOpen(false)}>Hồ sơ & vé của tôi</Link>
             <Link href="/account/wallet" onClick={() => setAccountOpen(false)}>Ví & RunPoints</Link>
-            <Link href="/organizer" onClick={() => setAccountOpen(false)}>Khu vực ban tổ chức</Link>
+            <Link href={user.systemRole === 'SUPER_ADMIN' ? '/admin' : '/organizer'} onClick={() => setAccountOpen(false)}>{user.systemRole === 'SUPER_ADMIN' ? 'Kiểm duyệt nền tảng' : 'Khu vực ban tổ chức'}</Link>
             <button onClick={logout}>Đăng xuất</button>
           </div>}
         </div> : <>

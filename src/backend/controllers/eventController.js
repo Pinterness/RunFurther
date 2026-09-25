@@ -1,3 +1,4 @@
+const { availableEvent } = require('../services/eventPolicy');
 const Event = require("../models/Event");
 const EventCategory = require("../models/EventCategory");
 const Registration = require('./../models/Registration');
@@ -26,7 +27,7 @@ async function listEvents(req, res, next) {
       Number.MAX_SAFE_INTEGER,
     );
     const limit = parsePositiveInteger(req.query.limit, 20, 100);
-    const filter = { status: { $in: PUBLIC_EVENT_STATUSES } };
+    const filter = { ...availableEvent, status: { $in: PUBLIC_EVENT_STATUSES } };
     if (req.query.city) filter['location.city'] = { $regex: escapeRegex(String(req.query.city).slice(0, 100)), $options: 'i' };
     if (req.query.search) filter.name = { $regex: escapeRegex(String(req.query.search).slice(0, 120)), $options: 'i' };
     if (req.query.distance) {
@@ -72,7 +73,7 @@ async function getEventBySlug(req, res, next) {
     const slug = req.params.slug.trim().toLowerCase();
     const event = await Event.findOne({
       slug,
-      status: { $in: PUBLIC_EVENT_STATUSES },
+      ...availableEvent, status: { $in: PUBLIC_EVENT_STATUSES },
     }).lean();
 
     if (!event) {
@@ -91,7 +92,7 @@ async function listEventCategories(req, res, next) {
     const slug = req.params.slug.trim().toLowerCase();
     const event = await Event.findOne({
       slug,
-      status: { $in: PUBLIC_EVENT_STATUSES },
+      ...availableEvent, status: { $in: PUBLIC_EVENT_STATUSES },
     })
       .select("_id slug name status")
       .lean();
@@ -113,7 +114,7 @@ async function listEventCategories(req, res, next) {
 
 async function listResults(req, res, next) {
   try {
-    const event = await Event.findOne({ slug: req.params.slug, status: { $in: PUBLIC_EVENT_STATUSES } }).lean();
+    const event = await Event.findOne({ slug: req.params.slug, ...availableEvent, status: { $in: PUBLIC_EVENT_STATUSES } }).lean();
     assert(event, 404, 'Event not found.');
     const filter = { eventId: event._id, status: { $in: ['CONFIRMED', 'CHECKED_IN', 'KIT_COLLECTED'] }, 'finishResult.chipTime': { $regex: '^\\d{1,3}:[0-5]\\d:[0-5]\\d$' } };
     if (req.query.categoryId) filter.categoryId = req.query.categoryId;

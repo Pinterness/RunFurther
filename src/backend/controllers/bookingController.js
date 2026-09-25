@@ -1,3 +1,4 @@
+const { lockOperationalEvent } = require('../services/eventPolicy');
 const crypto = require('crypto');
 const Booking = require('../models/Booking');
 const Event = require('../models/Event');
@@ -18,8 +19,8 @@ async function createBookingHold(req, res, next) {
     await expireBookings();
     const result = await transaction(async session => {
       const now = new Date();
-      const event = await Event.findOne({ _id: eventId, status: 'REGISTRATION_OPEN', 'dateInfo.registrationStart': { $lte: now }, 'dateInfo.registrationEnd': { $gt: now } }).session(session);
-      assert(event, 409, 'Registration is not open for this event.');
+      const event = await lockOperationalEvent(eventId, session);
+      assert(event.status === 'REGISTRATION_OPEN' && event.dateInfo.registrationStart <= now && event.dateInfo.registrationEnd > now, 409, 'Registration is not open for this event.');
       const category = await EventCategory.findOneAndUpdate({
         _id: categoryId, eventId,
         $expr: { $lt: [{ $add: ['$quotaSold', '$quotaHold'] }, '$quotaTotal'] },
@@ -62,6 +63,7 @@ async function confirmBooking(req, res, next) {
         return completeBooking(booking._id, req.userId, 'WALLET', session);
       }
       assert(booking.status === 'HOLD' && booking.expiresAt > new Date(), 409, 'Booking has expired.');
+      await lockOperationalEvent(booking.eventId, session);
       const paymentRequest = await PaymentRequest.findOneAndUpdate({ requestKey: 'BOOKING-' + booking._id }, {
         $setOnInsert: { userId: req.userId, bookingId: booking._id, kind: 'BOOKING', amount: booking.finalAmount, status: 'PENDING' },
       }, { session, upsert: true, new: true });

@@ -1,0 +1,14 @@
+.landing-event-grid:has(.event-carousel) { display:block; }
+.event-carousel { min-width:0; }
+.event-carousel-stage { position:relative; height:460px; overflow:hidden; perspective:1200px; touch-action:pan-y; }
+.carousel-slide { position:absolute; left:50%; top:16px; width:44%; transform:translateX(calc(-50% + var(--slide-offset) * 91%)) scale(var(--slide-scale)) rotateY(calc(var(--slide-offset) * -9deg)); opacity:var(--slide-opacity); transition:transform .7s cubic-bezier(.22,1,.36,1),opacity .6s; transform-origin:center; }
+.carousel-slide .landing-event-card { display:block; border:1px solid #d7ddcd; background:#fffefa; border-radius:8px; overflow:hidden; box-shadow:0 16px 28px #2535200a; }
+.carousel-slide .landing-event-image { height:245px; border-radius:0; }
+.carousel-card-copy { padding:0 22px 18px; }.carousel-card-copy h3 { min-height:60px; }.carousel-card-copy .landing-event-bottom { margin-top:14px; }
+.carousel-controls { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:16px 0; }
+.carousel-arrows { display:flex; gap:10px; }.carousel-arrows button { width:40px; height:40px; border:1px solid #bac5ac; border-radius:50%; font-size:19px; background:transparent; }.carousel-arrows button:hover { background:#263426; color:#fff; transform:translateY(-2px); }
+.carousel-dots { display:flex; gap:5px; }.carousel-dots button { width:28px; height:32px; display:grid; place-items:center; background:none; }.carousel-dots span { width:6px; height:6px; background:#b6bea9; border-radius:10px; transition:width .3s,background .3s; }.carousel-dots button[aria-pressed=true] span { width:23px; background:#d55a30; }
+.carousel-pause { font-size:11px; background:none; border-bottom:1px solid #abb69c; padding:8px 0; color:#506044; }
+@media(max-width:1000px) { .carousel-slide { width:56%; }.carousel-slide .landing-event-image { height:215px; }.event-carousel-stage { height:450px; } }
+@media(max-width:600px) { .carousel-slide { width:85%; top:8px; }.event-carousel-stage { height:430px; margin:0 -12px; }.carousel-slide .landing-event-image { height:205px; }.carousel-card-copy { padding:0 16px 18px; }.carousel-card-copy h3 { font-size:20px; }.carousel-controls { gap:8px; flex-wrap:wrap; }.carousel-pause { font-size:10px; }.carousel-arrows button { width:34px; height:34px; }.carousel-dots { gap:0; } }
+@media(prefers-reduced-motion:reduce) { .carousel-slide,.carousel-dots span { transition:none; } }

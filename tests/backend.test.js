@@ -19,6 +19,7 @@ const Volunteer = require('../src/backend/models/VolunteerApplication');
 const Listing = require('../src/backend/models/MarketplaceListing');
 const RunnerProfile = require('../src/backend/models/RunnerProfile');
 const Organization = require('../src/backend/models/Organization');
+const Application = require('../src/backend/models/OrganizerApplication');
 const { expireBookings } = require('../src/backend/services/bookingService');
 let repl, server, base, seq = 0;
 before(async () => {
@@ -41,12 +42,15 @@ async function user(role = 'RUNNER', balance = 2000000) {
   return { ...u.toObject(), token: jwt.sign({ sub: String(u._id) }, process.env.JWT_SECRET) };
 }
 async function fixture(quota = 10) {
-  const u = await user();
-  const event = await Event.create({ slug: 'test-' + (++seq), name: 'Test race', status: 'REGISTRATION_OPEN',
+  const u = await user(), owner = await user();
+  const org = await Organization.create({ name: 'Fixture org', slug: 'fixture-org-' + (++seq), ownerId: owner._id });
+  await Application.create({ userId: owner._id, organizationName: 'Fixture org', phone: '0900000000', description: 'Test', status: 'APPROVED' });
+  const event = await Event.create({ slug: 'test-' + (++seq), name: 'Test race', createdBy: owner._id, organizerId: org._id, status: 'REGISTRATION_OPEN',
     dateInfo: { registrationStart: new Date(Date.now() - 86400000), registrationEnd: new Date(Date.now() + 86400000), raceDate: new Date(Date.now() + 2 * 86400000) },
     location: { city: 'Hue', venue: 'Park' } });
   const category = await Category.create({ eventId: event._id, code: '21K', name: 'Half', distance: 21, price: 100000, quotaTotal: quota });
-  return { u, event, category };
+  await EventAccount.create({ eventId: event._id, userId: owner._id, employeeName: 'Owner', accountType: 'EVENT_ADMIN', loginCode: 'OWNER' + (++seq), createdBy: owner._id });
+  return { u, owner, org, event, category };
 }
 async function api(path, method = 'GET', body, u, extra = {}) {
   const response = await fetch(base + path, { method, headers: { 'Content-Type': 'application/json', ...(u ? { Authorization: 'Bearer ' + u.token } : {}), ...extra }, ...(body ? { body: JSON.stringify(body) } : {}) });
@@ -177,10 +181,10 @@ test('VietQR requires admin reconciliation; one bank reference cannot approve tw
   const pending = await api('/bookings/' + b._id + '/confirm', 'POST', { paymentMethod: 'VIETQR' }, f.u);
   assert.equal(pending.status, 202);
   assert.equal(await Registration.countDocuments({ 'payment.bookingId': b._id }), 0);
-  const path = '/admin/payments/' + pending.paymentRequest._id + '/review';
+  const path = '/admin/events/' + f.event._id + '/payments/' + pending.paymentRequest._id + '/review';
   assert.equal((await api(path, 'POST', { status: 'APPROVED', bankReference: 'BANK-1' }, f.u)).status, 403);
-  assert.equal((await api(path, 'POST', { status: 'APPROVED', bankReference: 'BANK-1' }, admin)).status, 200);
-  assert.equal((await api(path, 'POST', { status: 'APPROVED', bankReference: 'BANK-1' }, admin)).status, 200);
+  assert.equal((await api(path, 'POST', { status: 'APPROVED', bankReference: 'BANK-1' }, f.owner)).status, 200);
+  assert.equal((await api(path, 'POST', { status: 'APPROVED', bankReference: 'BANK-1' }, f.owner)).status, 200);
   const top = await api('/wallet/topup', 'POST', { amount: 10000 }, f.u, { 'Idempotency-Key': 'test-topup-1' });
   assert.equal(top.status, 202);
   assert.equal((await api('/admin/payments/' + top.paymentRequest._id + '/review', 'POST', { status: 'APPROVED', bankReference: 'BANK-1' }, admin)).status, 409);
@@ -219,7 +223,7 @@ test('Unfunded marketplace purchase leaves ownership, QR and listing unchanged',
   assert.equal((await Listing.findById(l.listing._id)).status, 'ACTIVE');
 });
 test('Volunteer review prevents role escalation and duplicate staff accounts', async () => {
-  const f = await fixture(), admin = await user('SUPER_ADMIN');
+  const f = await fixture(), admin = f.owner;
   const a = await api('/staff/events/' + f.event._id + '/volunteers/apply', 'POST', { applicant: { fullName: 'Volunteer', email: 'v@test.local', phone: '0900000000' } }, f.u);
   assert.equal(a.status, 201);
   const path = '/staff/events/' + f.event._id + '/volunteers/' + a.application._id + '/review';
@@ -236,7 +240,7 @@ test('Banned users cannot reuse tokens, malformed IDs return 400', async () => {
   assert.equal((await api('/wallet', 'GET', null, u)).status, 401);
 });
 test('Check-in and kit issuance preserve each other; cancelled tickets are rejected', async () => {
-  const f = await fixture(), p = await paid(f), admin = await user('SUPER_ADMIN');
+  const f = await fixture(), p = await paid(f), admin = f.owner;
   const path = '/staff/events/' + f.event._id;
   const results = await Promise.all([
     api(path + '/checkin', 'POST', { registrationId: p.registration._id }, admin),
@@ -252,7 +256,7 @@ test('Achievements count verified results, not purchased tickets', async () => {
   const f = await fixture(), p = await paid(f);
   let r = await api('/registrations/achievements/me', 'GET', null, f.u);
   assert.equal(r.achievements.completedRaces, 0);
-  const admin = await user('SUPER_ADMIN');
+  const admin = f.owner;
   assert.equal((await api('/admin/events/' + f.event._id + '/registrations/' + p.registration._id + '/result', 'PUT', { chipTime: '01:30:00' }, admin)).status, 200);
   r = await api('/registrations/achievements/me', 'GET', null, f.u);
   assert.equal(r.achievements.completedRaces, 1);
@@ -261,19 +265,19 @@ test('Achievements count verified results, not purchased tickets', async () => {
 
 
  test('Admin event/category APIs enforce scope and quota invariants', async () => {
-  const f = await fixture(), admin = await user('SUPER_ADMIN');
+  const f = await fixture(), admin = f.owner;
   assert.equal((await api('/admin/events/' + f.event._id, 'PATCH', { name: 'Unauthorized' }, f.u)).status, 403);
   assert.equal((await api('/admin/events/' + f.event._id, 'PATCH', { name: 'Updated race' }, admin)).status, 200);
   await hold(f);
   assert.equal((await api('/admin/events/' + f.event._id + '/categories/' + f.category._id, 'PATCH', { quotaTotal: 0 }, admin)).status, 409);
   assert.equal((await Category.findById(f.category._id)).quotaTotal, 10);
-  const created = await api('/admin/events', 'POST', { slug: 'managed-' + (++seq), name: 'Managed race', dateInfo: f.event.dateInfo, location: f.event.location }, admin);
+  const created = await api('/admin/events', 'POST', { organizerId: f.org._id, slug: 'managed-' + (++seq), name: 'Managed race', dateInfo: f.event.dateInfo, location: f.event.location }, admin);
   assert.equal(created.status, 201, JSON.stringify(created));
   assert.equal(created.event.status, 'DRAFT');
   assert.equal((await api('/events/' + created.event.slug)).status, 404);
  });
  test('Public events expose real quotas and results without runner contacts', async () => {
-  const f = await fixture(), p = await paid(f), admin = await user('SUPER_ADMIN');
+  const f = await fixture(), p = await paid(f), admin = f.owner;
   const events = await api('/events?search=' + encodeURIComponent(f.event.name) + '&distance=21');
   assert.equal(events.status, 200);
   const event = events.events.find(e => e._id === String(f.event._id));
@@ -288,7 +292,7 @@ test('Achievements count verified results, not purchased tickets', async () => {
   const f = await fixture(), b = await hold(f), admin = await user('SUPER_ADMIN');
   const pending = await api('/bookings/' + b._id + '/confirm', 'POST', {}, f.u);
   await Booking.updateOne({ _id: b._id }, { expiresAt: new Date(Date.now() - 1000) });
-  const review = await api('/admin/payments/' + pending.paymentRequest._id + '/review', 'POST', { status: 'APPROVED', bankReference: 'LATE-BANK' }, admin);
+  const review = await api('/admin/events/' + f.event._id + '/payments/' + pending.paymentRequest._id + '/review', 'POST', { status: 'APPROVED', bankReference: 'LATE-BANK' }, f.owner);
   assert.equal(review.status, 409);
   assert.equal((await Payment.findById(pending.paymentRequest._id)).status, 'PENDING');
   assert.equal(await Registration.countDocuments({ 'payment.bookingId': b._id }), 0);
@@ -329,12 +333,95 @@ test('BIB index upgrades coexist with legacy non-unique and earlier unique index
 
 async function ownedEvent() {
   const owner = await user();
+  await Application.create({ userId: owner._id, organizationName: 'Org', phone: '0900000000', description: 'Test', status: 'APPROVED' });
   const org = await Organization.create({ name: 'Test organizer', slug: 'org-' + (++seq), ownerId: owner._id });
   const dateInfo = { registrationStart: new Date(Date.now() - 86400000), registrationEnd: new Date(Date.now() + 86400000), raceDate: new Date(Date.now() + 2 * 86400000) };
   const result = await api('/admin/events', 'POST', { organizerId: org._id, slug: 'owned-' + (++seq), name: 'Owned event', dateInfo, location: { city: 'Hue', venue: 'Park' }, createdBy: new mongoose.Types.ObjectId() }, owner);
   assert.equal(result.status, 201, JSON.stringify(result));
   return { owner, event: result.event, org };
 }
+
+test('Organizer approval is required before creation and only Super Admin can review', async () => {
+  const applicant = await user(), moderator = await user('SUPER_ADMIN');
+  const orgBody = { name: 'Approval test', slug: 'approval-' + (++seq) };
+  assert.equal((await api('/organizations', 'POST', orgBody, applicant)).status, 403);
+  assert.equal((await api('/admin/events', 'POST', {}, applicant)).status, 403);
+  const application = await api('/admin/organizer-access', 'POST', { organizationName: 'Approval test', phone: '0900000000', description: 'Running events', status: 'APPROVED' }, applicant);
+  assert.equal(application.status, 201);
+  assert.equal(application.application.status, 'PENDING');
+  const path = '/admin/platform/applications/' + application.application._id + '/review';
+  assert.equal((await api(path, 'POST', { status: 'APPROVED', reason: 'Self approval' }, applicant)).status, 403);
+  assert.equal((await api(path, 'POST', { status: 'APPROVED', reason: ' ' }, moderator)).status, 400);
+  assert.equal((await api('/organizations', 'POST', orgBody, applicant)).status, 403);
+  const results = await Promise.all(['APPROVED', 'APPROVED'].map(status => api(path, 'POST', { status, reason: 'Verified organizer' }, moderator)));
+  assert.deepEqual(results.map(r => r.status).sort(), [200, 409]);
+  assert.equal((await api('/organizations', 'POST', orgBody, applicant)).status, 201);
+  assert.equal((await Application.findById(application.application._id)).reviews.length, 1);
+  assert.equal((await api('/organizations', 'POST', { ...orgBody, slug: orgBody.slug + '-super' }, moderator)).status, 403);
+  assert.equal((await api('/admin/events', 'POST', {}, moderator)).status, 403);
+});
+
+test('Moderation preserves records, blocks commerce and operations, and records every reason', async () => {
+  const f = await fixture(), ticket = await paid(f), held = await hold(f), moderator = await user('SUPER_ADMIN');
+  const listing = await api('/marketplace', 'POST', { listingType: 'BIB_TRANSFER', registrationId: ticket.registration._id, title: 'Moderated transfer', price: 100000 }, f.u);
+  const path = '/admin/platform/events/' + f.event._id;
+  assert.equal((await api(path + '/moderation', 'POST', { action: 'SUSPENDED', reason: 'Test rule violation' }, f.owner)).status, 403);
+  assert.equal((await api(path + '/moderation', 'POST', { action: 'SUSPENDED' }, moderator)).status, 400);
+  for (const action of ['HIDDEN', 'SUSPENDED']) {
+    assert.equal((await api(path + '/moderation', 'POST', { action, reason: 'Test rule violation' }, moderator)).status, 200);
+    for (const suffix of ['', '/categories', '/results']) assert.equal((await api('/events/' + f.event.slug + suffix)).status, 404);
+    assert.equal((await api('/events?search=' + f.event.slug)).events.length, 0);
+    assert.equal((await api('/organizations/' + f.org.slug)).events.length, 0);
+    assert.equal((await api('/marketplace?eventId=' + f.event._id)).listings.length, 0);
+    assert.equal((await api('/bookings/hold', 'POST', holdBody(f), f.u)).status, 409);
+    assert.equal((await api('/bookings/' + held._id + '/confirm', 'POST', { paymentMethod: 'WALLET' }, f.u)).status, 409);
+    assert.equal((await api('/bookings/' + held._id + '/confirm', 'POST', { paymentMethod: 'VIETQR' }, f.u)).status, 409);
+    assert.equal((await api('/admin/events/' + f.event._id, 'PATCH', { moderation: { state: 'ACTIVE' }, status: 'REGISTRATION_OPEN' }, f.owner)).status, 409);
+    assert.equal((await api('/staff/events/' + f.event._id + '/search?q=test', 'GET', null, f.owner)).status, 409);
+    const buyer = await user();
+    assert.equal((await api('/marketplace/' + listing.listing._id + '/buy', 'POST', { newRunnerProfile: { fullName: 'Buyer', email: buyer.email, phone: '0900000000' } }, buyer)).status, 409);
+  }
+  assert.equal((await api('/admin/events/' + f.event._id, 'GET', null, f.owner)).status, 200);
+  assert.equal((await api('/admin/events/' + f.event._id, 'DELETE', null, moderator)).status, 404);
+  assert.equal(await Registration.countDocuments({ _id: ticket.registration._id }), 1);
+  assert.equal((await Booking.findById(held._id)).status, 'HOLD');
+  assert.equal((await Wallet.findOne({ userId: f.u._id })).balance, 1900000);
+  for (const suffix of ['', '/staff', '/registrations', '/payments']) assert.equal((await api('/admin/events/' + f.event._id + suffix, 'GET', null, moderator)).status, 403);
+  assert.equal((await api('/staff/events/' + f.event._id + '/search?q=test', 'GET', null, moderator)).status, 403);
+  const overview = await api('/admin/platform/events', 'GET', null, moderator);
+  assert.equal(overview.events.find(e => e._id === String(f.event._id)).bankAccountInfo, undefined);
+  assert.equal((await api(path + '/moderation', 'POST', { action: 'ACTIVE', reason: 'Violation resolved' }, moderator)).status, 200);
+  assert.equal((await api(path + '/history', 'GET', null, moderator)).history.length, 3);
+  assert.equal((await api('/events/' + f.event.slug)).status, 200);
+  assert.equal((await api('/bookings/' + held._id + '/confirm', 'POST', { paymentMethod: 'WALLET' }, f.u)).status, 200);
+});
+
+test('Ticket payments belong to the event owner; Super Admin only reviews wallet top-ups', async () => {
+  const f = await fixture(), other = await fixture(), b = await hold(f), moderator = await user('SUPER_ADMIN');
+  const pending = await api('/bookings/' + b._id + '/confirm', 'POST', { paymentMethod: 'VIETQR' }, f.u);
+  const id = pending.paymentRequest._id, body = { status: 'APPROVED', bankReference: 'SCOPE-BANK' };
+  assert.equal((await api('/admin/payments/' + id + '/review', 'POST', body, moderator)).status, 403);
+  assert.equal((await api('/admin/events/' + other.event._id + '/payments/' + id + '/review', 'POST', body, other.owner)).status, 403);
+  assert.equal((await api('/admin/events/' + f.event._id + '/payments/' + id + '/review', 'POST', body, moderator)).status, 403);
+  const top = await api('/wallet/topup', 'POST', { amount: 10000 }, f.u, { 'Idempotency-Key': 'scope-topup' });
+  assert.equal((await api('/admin/events/' + f.event._id + '/payments/' + top.paymentRequest._id + '/review', 'POST', body, f.owner)).status, 403);
+  assert.ok((await api('/admin/payments', 'GET', null, moderator)).payments.every(p => p.kind === 'TOPUP'));
+  assert.deepEqual((await api('/admin/events/' + f.event._id + '/payments', 'GET', null, f.owner)).payments.map(p => p._id), [id]);
+  assert.equal((await api('/admin/events/' + f.event._id + '/payments/' + id + '/review', 'POST', body, f.owner)).status, 200);
+});
+
+test('Notifications use actual user records and read state cannot cross accounts', async () => {
+  const f = await fixture(), other = await user(); await paid(f);
+  const notifications = (await api('/notifications', 'GET', null, f.u)).notifications;
+  assert.ok(notifications.some(n => n.key.startsWith('ticket:') && !n.read));
+  assert.deepEqual((await api('/notifications', 'GET', null, other)).notifications, []);
+  const keys = notifications.map(n => n.key);
+  await api('/notifications/read', 'POST', { keys, userId: f.u._id }, other);
+  assert.ok((await api('/notifications', 'GET', null, f.u)).notifications.every(n => !n.read));
+  await api('/notifications/read', 'POST', { keys }, f.u);
+  assert.ok((await api('/notifications', 'GET', null, f.u)).notifications.every(n => n.read));
+  assert.equal((await api('/notifications')).status, 401);
+});
 test('Event creator is assigned server-side; organizer lists only owned events', async () => {
   const a = await ownedEvent(), b = await ownedEvent();
   assert.equal(a.event.createdBy, String(a.owner._id));
@@ -365,7 +452,7 @@ test('Forged EVENT_ADMIN assignment cannot grant ownership or cross-event access
   assert.equal((await api('/admin/events/' + a.event._id, 'GET', null, a.owner)).status, 403);
   assert.equal((await api('/admin/events', 'GET', null, a.owner)).events.length, 0);
   const global = await user('SUPER_ADMIN');
-  assert.equal((await api('/admin/events/' + a.event._id, 'GET', null, global)).status, 200);
+  assert.equal((await api('/admin/events/' + a.event._id, 'GET', null, global)).status, 403);
 });
 test('Staff creation, revocation and code rotation remain scoped to one event', async () => {
   const a = await ownedEvent(), b = await ownedEvent(), worker = await user();
@@ -408,6 +495,8 @@ test('Legacy events without recorded creator deny organizer management; opening 
 
 test('Legacy ownership recovery is dry-run by default and never overwrites an established creator', async () => {
   const f = await fixture();
+  await Event.collection.updateOne({ _id: f.event._id }, { $set: { createdBy: null } });
+  await EventAccount.deleteMany({ eventId: f.event._id });
   const execFile = require('node:util').promisify(require('node:child_process').execFile);
   const script = require('node:path').resolve(__dirname, '../scripts/setLegacyEventCreator.js');
   const args = [script, '--event-id', String(f.event._id), '--creator-email', f.u.email];

@@ -1,0 +1,60 @@
+/* Articulated SVG runners: each figure responds independently to pointer / keyboard. */
+.hero-stage { display:grid; grid-template-columns:1.16fr 1fr; align-items:center; gap:20px; }
+.hero-stage .hero-copy { position:relative; z-index:2; min-width:0; }
+.hero-stage h1 { font-size:clamp(48px,5.2vw,88px); }
+.hero-runners { position:relative; align-self:center; min-width:0; padding:20px 0 10px; isolation:isolate; }
+.hero-runners-halo { position:absolute; z-index:-1; width:115%; aspect-ratio:1; top:0; left:-8%; border-radius:50%; background:radial-gradient(ellipse,#e5d6a535 0%,#d9dd9f14 43%,transparent 70%); pointer-events:none; }
+.hero-runners-halo:after { content:''; position:absolute; inset:12%; border:1px solid #e5edc429; border-radius:50%; }
+.hero-trail-lines { position:absolute; width:120%; height:100%; left:-10%; bottom:8%; z-index:-1; stroke:#e6e7b6; stroke-width:1; opacity:.27; pointer-events:none; }
+.hero-runners-topnote { display:flex; align-items:center; justify-content:space-between; color:#e8edcbb3; font-size:8px; letter-spacing:2px; padding:0 20px; }
+.hero-athletes { display:grid; grid-template-columns:1fr 1fr; align-items:center; gap:0; position:relative; }
+.hero-athlete { --skin:#d6a17c; --skin-shadow:#ae745a; --skin-light:#eec29c; --shirt:#ed7346; --shirt-light:#ffc898; --shirt-shadow:#b4442b; --shorts:#2b3932; --shorts-back:#1f2d29; --shoe:#e87a41; --shoe-back:#b2532d; --stride:.72s; position:relative; border:1px solid transparent; background:transparent; padding:0 0 12px; margin:0; min-width:0; width:100%; border-radius:80px 80px 8px 8px; color:#f1f0db; cursor:pointer; text-align:left; transition:background .3s,border-color .3s; -webkit-tap-highlight-color:transparent; touch-action:manipulation; }
+.hero-athlete.athlete-sage { --skin:#b77e5f; --skin-shadow:#8b5948; --skin-light:#dfaa81; --shirt:#cbdba4; --shirt-light:#eff5cd; --shirt-shadow:#899f6a; --shorts:#657459; --shorts-back:#435442; --shoe:#d4ddae; --shoe-back:#94a277; --stride:.8s; margin-top:38px; }
+.hero-athlete:active:not(:disabled) { transform:none; }
+.hero-athlete:focus-visible { outline:2px solid #faaf82; outline-offset:3px; background:#e3edc509; }
+.hero-runner-art { width:100%; height:auto; overflow:visible; display:block; filter:drop-shadow(0 10px 9px #07130d38); transition:filter .3s; }
+.hero-athlete.is-running .hero-runner-art { filter:drop-shadow(0 10px 12px #07130d60); }
+.athlete-skin,.athlete-skin-back { fill:none; stroke:var(--skin); stroke-linecap:round; stroke-linejoin:round; }.athlete-skin-back { stroke:var(--skin-shadow); }
+.runner-ground-shadow { fill:#091d15; opacity:.3; transform-origin:131px 363px; animation:athlete-shadow calc(var(--stride) / 2) ease-in-out infinite paused; }
+.runner-body { animation:athlete-bounce calc(var(--stride) / 2) ease-in-out infinite paused; }
+.athlete-leg,.athlete-arm,.athlete-shin,.athlete-forearm,.athlete-ponytail { transform-box:view-box; }
+.athlete-pelvis { transform-box:view-box; transform-origin:120px 205px; animation:athlete-pelvis-rock var(--stride) ease-in-out infinite paused; }
+.athlete-leg { transform-origin:0 0; animation:athlete-stride var(--stride) cubic-bezier(.45,0,.55,1) infinite paused; }
+.athlete-leg-back { animation-delay:calc(var(--stride) / -2); }
+.athlete-shin { transform-origin:0 0; animation:athlete-knee var(--stride) ease-in-out infinite paused; }
+.athlete-leg-back .athlete-shin { animation-delay:calc(var(--stride) / -2); }
+.athlete-arm { transform-origin:137px 128px; animation:athlete-arm-swing var(--stride) ease-in-out infinite paused; }
+.athlete-arm-back { animation-delay:calc(var(--stride) / -2); }
+.athlete-forearm { transform-origin:131px 174px; animation:athlete-elbow var(--stride) ease-in-out infinite paused; }
+.athlete-arm-back .athlete-forearm { animation-delay:calc(var(--stride) / -2); }
+.athlete-ponytail { transform-origin:135px 62px; animation:athlete-hair calc(var(--stride) / 2) ease-in-out infinite paused; }
+.runner-speed-lines { opacity:0; animation:athlete-speed calc(var(--stride) / 2) linear infinite paused; }
+.hero-athlete.is-running :is(.runner-body,.athlete-pelvis,.athlete-leg,.athlete-shin,.athlete-arm,.athlete-forearm,.athlete-ponytail,.runner-ground-shadow,.runner-speed-lines) { animation-play-state:running; }
+.hero-athlete-label { display:flex; align-items:center; gap:7px; margin:0 12px; padding:12px 0; border-top:1px solid #f2f0d33b; font-size:8px; font-weight:550; letter-spacing:.8px; white-space:nowrap; color:#e8ebd5bd; transition:color .25s,border-color .25s; }
+.hero-athlete-label>span:last-child { margin-left:auto; font-size:14px; }
+.athlete-status-dot { width:5px; height:5px; border-radius:50%; background:#eef0d566; flex-shrink:0; transition:background .25s,box-shadow .25s; }
+.is-running .athlete-status-dot { background:var(--shirt-light); box-shadow:0 0 0 4px #f0eed01a; }
+.is-running .hero-athlete-label { color:#fffbe8; border-color:var(--shirt-light); }
+.hero-runners-help { text-align:center; font-size:10px; letter-spacing:.3px; line-height:1.6; color:#f0f2d5a6; margin-top:12px; }
+.runner-help-touch,.runner-help-reduced { display:none; }
+@keyframes athlete-stride { 0%,100% { transform:rotate(-46deg); } 50% { transform:rotate(42deg); } }
+@keyframes athlete-knee { 0%,100% { transform:rotate(18deg); } 25% { transform:rotate(8deg); } 50% { transform:rotate(78deg); } 75% { transform:rotate(105deg); } }
+@keyframes athlete-pelvis-rock { 0%,100% { transform:rotate(-2deg); } 50% { transform:rotate(2deg); } }
+@keyframes athlete-arm-swing { 0%,100% { transform:rotate(32deg); } 50% { transform:rotate(-40deg); } }
+@keyframes athlete-elbow { 0%,100% { transform:rotate(-18deg); } 50% { transform:rotate(8deg); } }
+@keyframes athlete-bounce { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-7px); } }
+@keyframes athlete-shadow { 0%,100% { transform:scaleX(1); opacity:.3; } 50% { transform:scaleX(.82); opacity:.2; } }
+@keyframes athlete-hair { 0%,100% { transform:rotate(-5deg); } 50% { transform:rotate(12deg); } }
+@keyframes athlete-speed { from { opacity:0; transform:translateX(10px); } 35% { opacity:.5; } to { opacity:0; transform:translateX(-12px); } }
+@media(min-width:1600px) { .hero-stage { gap:32px; }.hero-runners { max-width:570px; } }
+@media(max-width:1100px) and (min-width:701px) { .hero-stage { gap:0; grid-template-columns:1.15fr 1fr; }.hero-stage h1 { font-size:clamp(42px,5.2vw,58px); }.hero-stage .hero-description { font-size:13px; }.hero-stage .hero-actions { gap:20px; flex-wrap:wrap; }.hero-athlete-label { font-size:6px; letter-spacing:.3px; margin:0 6px; gap:5px; }.hero-runners-topnote { font-size:6px; letter-spacing:1px; padding:0 12px; }.hero-runners-help { font-size:9px; } }
+@media(max-width:700px) { .hero-stage { grid-template-columns:1fr; gap:0; }.hero-stage .hero-copy { padding:42px 0 12px; }.hero-stage h1 { font-size:clamp(42px,9.6vw,65px); }.hero-runners { width:100%; max-width:440px; margin:0 auto 24px; padding-top:14px; }.hero-runners-topnote { display:none; }.hero-athletes { max-width:350px; margin:auto; }.hero-athlete.athlete-sage { margin-top:24px; }.hero-athlete-label { margin:0 6px; font-size:6px; letter-spacing:.3px; gap:5px; padding:9px 0; }.hero-runners-help { margin-top:0; font-size:9px; }.hero-runners-halo { top:-8%; width:100%; left:0; }.hero-trail-lines { width:110%; left:-5%; } }
+@media(hover:none) { .runner-help-pointer { display:none; }.runner-help-touch { display:inline; } }
+@media(prefers-reduced-motion:reduce) {
+  .hero-athlete :is(.runner-body,.athlete-pelvis,.athlete-leg,.athlete-shin,.athlete-arm,.athlete-forearm,.athlete-ponytail,.runner-ground-shadow,.runner-speed-lines) { animation:none!important; }
+  .athlete-leg-front { transform:rotate(-46deg); }.athlete-leg-back { transform:rotate(42deg); }
+  .athlete-leg-front .athlete-shin { transform:rotate(18deg); }.athlete-leg-back .athlete-shin { transform:rotate(78deg); }
+  .athlete-arm-front { transform:rotate(32deg); }.athlete-arm-back { transform:rotate(-40deg); }
+  .runner-help-pointer,.runner-help-touch { display:none; }.runner-help-reduced { display:inline; }
+  .hero-runner-art,.hero-athlete-label,.athlete-status-dot { transition:none; }
+}

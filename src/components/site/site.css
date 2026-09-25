@@ -44,7 +44,7 @@ a:active .link-arrow, button:active .link-arrow { transform: translate(1px, 0); 
 :where(input, select, textarea):focus { border-color: #9eab8c; box-shadow: 0 0 0 3px #9eab8c20; }
 button:disabled { transform: none; box-shadow: none; opacity: .5; }
 .account-control { position: relative; }
-.account-trigger { display: flex; align-items: center; gap: 9px; min-height: 43px; padding: 5px 10px 5px 5px; background: #eeefe7; border: 1px solid #dfe2d5; border-radius: 5px; }
+.account-trigger { display: flex; align-items: center; gap: 7px; min-height: 38px; padding: 4px 8px 4px 4px; background: transparent; border: 1px solid transparent; border-radius: 24px; }
 .account-trigger:hover { background: #e5e8da; border-color: #aeb79f; }
 .account-initial { display: grid; place-items: center; width: 31px; height: 31px; background: #293b2a; color: white; font-size: 13px; font-weight: 600; border-radius: 3px; }
 .account-name { max-width: 115px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
@@ -121,3 +121,22 @@ button:disabled { transform: none; box-shadow: none; opacity: .5; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
   :where(a, button):hover, :where(a, button):active { transform: none !important; }
 }
+
+/* Compact identity and notifications. */
+.account-trigger .runner-avatar { width:28px; height:28px; }
+.account-trigger .avatar-monogram { font-size:10px; }
+.notification-control { position:relative; }
+.notification-trigger { width:38px; height:38px; display:grid; place-items:center; border-radius:50%; position:relative; color:#46513b; transition:background .2s,transform .2s; }
+.notification-trigger:hover { background:#e9ecdf; }
+.notification-trigger:hover svg { animation:bell-ring .5s ease; transform-origin:50% 10%; }
+.notification-dot { position:absolute; width:5px; height:5px; border-radius:50%; background:#ed5829; top:7px; right:8px; }
+.notification-panel { position:absolute; top:calc(100% + 16px); right:0; width:min(360px,calc(100vw - 32px)); background:#fffefa; border:1px solid #dfe2d5; border-radius:12px; box-shadow:0 16px 48px #25302020; padding:18px; z-index:100; max-height:65vh; overflow:auto; }
+.notification-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
+.notification-heading h2 { font-size:16px; font-weight:600; }.notification-heading button { font-size:10px; text-decoration:underline; }
+.notification-panel>p { font-size:12px; padding:12px 0; }
+.notification-panel ul { list-style:none; padding:0; margin:0; }
+.notification-panel li { border-top:1px solid #e6e8df; }.notification-panel li.is-unread { background:#f2f4e9; }
+.notification-panel a { padding:14px 10px; display:flex; flex-direction:column; gap:6px; font-size:12px; overflow-wrap:anywhere; }.notification-panel a:hover { background:#e9eddf; }.notification-panel small { font-size:10px; color:#747e69; }
+@keyframes bell-ring { 25% { transform:rotate(15deg); } 75% { transform:rotate(-12deg); } }
+@media(max-width:600px) { .notification-panel { position:fixed; right:16px; top:70px; }.app-user { gap:8px; } }
+@media(prefers-reduced-motion:reduce) { .notification-trigger:hover svg { animation:none; } }

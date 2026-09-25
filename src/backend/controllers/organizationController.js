@@ -1,3 +1,4 @@
+const { availableEvent } = require('../services/eventPolicy');
 const Organization = require("../models/Organization");
 const Event = require("../models/Event");
 
@@ -29,7 +30,7 @@ async function getOrganizationBySlug(req, res, next) {
         .json({ message: "Không tìm thấy đơn vị tổ chức." });
     }
 
-    const events = await Event.find({ organizerId: organization._id, status: { $in: ['PUBLISHED', 'REGISTRATION_OPEN', 'REGISTRATION_CLOSED', 'COMPLETED'] } })
+    const events = await Event.find({ organizerId: organization._id, ...availableEvent, status: { $in: ['PUBLISHED', 'REGISTRATION_OPEN', 'REGISTRATION_CLOSED', 'COMPLETED'] } })
       .select("slug name dateInfo location status bannerUrl logoUrl")
       .sort({ "dateInfo.raceDate": -1 })
       .lean();

@@ -32,6 +32,12 @@ const eventSchema = new mongoose.Schema(
     },
     name: { type: String, required: true, trim: true, maxlength: 200 },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, immutable: true, index: true },
+    activityRevision: { type: Number, default: 0, select: false },
+    moderation: {
+      state: { type: String, enum: ['ACTIVE', 'HIDDEN', 'SUSPENDED'], default: 'ACTIVE' },
+      reason: { type: String, default: '', maxlength: 1000 },
+      reviewedAt: Date,
+    },
     status: {
       type: String,
       enum: [

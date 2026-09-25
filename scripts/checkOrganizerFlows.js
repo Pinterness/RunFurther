@@ -13,6 +13,7 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await page.route('**/api/**', async route => {
       const path = new URL(route.request().url()).pathname.replace(/^\/api/, ''), method = route.request().method(), body = method === 'POST' || method === 'PATCH' ? route.request().postDataJSON() : null;
       const reply = (data, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) });
+      if (path === '/admin/organizer-access') return reply({ application: { status: 'APPROVED' } });
       if (path === '/auth/me') return reply({ user });
       if (path === '/organizations/mine') return reply({ organizations });
       if (path === '/organizations') { const organization = { ...body, _id: 'org-1' }; organizations.push(organization); return reply({ organization }, 201); }

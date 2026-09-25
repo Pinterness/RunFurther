@@ -1,3 +1,4 @@
+const { availableEvent, lockOperationalEvent } = require('../services/eventPolicy');
 const crypto = require('crypto');
 const MarketplaceListing = require('../models/MarketplaceListing');
 const Registration = require('../models/Registration');
@@ -11,7 +12,7 @@ async function listListings(req, res, next) {
   try {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
-    const filter = { status: 'ACTIVE' };
+    const filter = { status: 'ACTIVE', $or: [{ listingType: 'GEAR' }, { eventId: { $in: await Event.distinct('_id', availableEvent) } }] };
     if (req.query.listingType) filter.listingType = req.query.listingType;
     if (req.query.eventId) filter.eventId = req.query.eventId;
     if (req.query.search) filter.title = { $regex: escapeRegex(String(req.query.search).slice(0, 120)), $options: 'i' };
@@ -23,6 +24,7 @@ async function listListings(req, res, next) {
   } catch (error) { next(error); }
 }
 async function transferableEvent(eventId, session) {
+  await lockOperationalEvent(eventId, session);
   const event = await Event.findOne({ _id: eventId, status: { $in: ['PUBLISHED', 'REGISTRATION_OPEN', 'REGISTRATION_CLOSED'] }, 'dateInfo.raceDate': { $gt: new Date() } }).session(session);
   assert(event, 409, 'Transfers are closed for this event.');
 }

@@ -41,6 +41,7 @@ app.use("/api/staff", staffRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/marketplace", marketplaceRoutes);
 app.use("/api/organizations", organizationRoutes);
+app.use("/api/notifications", require("./routes/notificationRoutes"));
 
 app.get("/health", (_req, res) => {
   res.status(200).json({ status: "ok" });

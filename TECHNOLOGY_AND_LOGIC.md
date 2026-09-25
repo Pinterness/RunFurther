@@ -35,23 +35,19 @@ Tách **danh tính** (User) khỏi **phân công** (EventAccount). EVENT_ADMIN k
 ```
 User đang hoạt động
 AND JWT hợp lệ
-AND (
-  User.systemRole == SUPER_ADMIN
-  OR (
-    Event.createdBy == User.id
-    AND EventAccount.eventId == Event.id
-    AND EventAccount.userId == User.id
-    AND EventAccount.accountType == EVENT_ADMIN
-    AND EventAccount.status == ACTIVE
-  )
-)
+AND User.systemRole != SUPER_ADMIN
+AND Event.createdBy == User.id
+AND EventAccount.eventId == Event.id
+AND EventAccount.userId == User.id
+AND EventAccount.accountType == EVENT_ADMIN
+AND EventAccount.status == ACTIVE
 ```
 
 - Đây là RBAC theo sự kiện kết hợp kiểm tra quyền sở hữu tài nguyên.
 - createdBy lấy từ người dùng đã xác thực; bỏ qua createdBy do client gửi. Trường được đánh dấu immutable và không nằm trong danh sách trường cập nhật.
 - Tạo giải DRAFT và cấp EVENT_ADMIN cho người tạo trong cùng transaction.
-- Trước khi tạo, người dùng thường phải sở hữu tổ chức đang hoạt động, chưa hết hạn. SUPER_ADMIN có ngoại lệ quản trị.
-- GET danh sách quản lý chỉ trả các giải vừa do mình tạo vừa còn phân công quản lý. Tài khoản mới nhận danh sách rỗng, vẫn có thể tạo đơn vị và giải.
+- Trước khi tạo đơn vị/giải, người dùng phải được SUPER_ADMIN duyệt OrganizerApplication. Tạo giải còn đòi hỏi sở hữu tổ chức đang hoạt động, chưa hết hạn. SUPER_ADMIN không được tạo hay vận hành giải.
+- GET danh sách quản lý chỉ trả các giải vừa do mình tạo vừa còn phân công quản lý. Tài khoản mới nhận danh sách rỗng và phải gửi đơn xin quyền tổ chức trước.
 - CHECKIN, RACE_KIT, STAFF_MANAGER... được kiểm tra theo cặp người dùng/mã nhân sự và eventId, rồi kiểm tra loại thao tác.
 - Mã nhân sự EVENT_ADMIN không được đăng nhập hay gọi API nhân sự: quản lý dùng tài khoản cá nhân bên ngoài.
 - Mã nhân sự mới dùng 8 byte ngẫu nhiên, hiển thị dạng 16 ký tự hex; không dùng PIN ngắn dễ đoán.
@@ -59,7 +55,7 @@ AND (
 - Tạo/sửa phân công nhân sự không cho tự cấp EVENT_ADMIN. Khi sửa nhân sự/cự ly/VĐV luôn truy vấn cả ID tài nguyên lẫn eventId từ URL.
 - Không dựa vào ẩn nút UI để bảo mật: API kiểm tra quyền độc lập.
 
-**Dữ liệu cũ:** giải không có createdBy không tự được gán chủ từ một vai trò hoặc từ tổ chức. Chỉ SUPER_ADMIN quản lý được cho đến khi xác minh người tạo. Script setLegacyEventCreator.js mặc định dry-run; --apply chỉ dùng sau khi đối chiếu lịch sử. Script chỉ bổ sung cho giải chưa có chủ, không chuyển quyền sở hữu đã xác lập. Chưa chạy script này trên DB thật.
+**Dữ liệu cũ:** giải không có createdBy không tự được gán chủ từ một vai trò hoặc từ tổ chức. Không ai được vận hành giải cho đến khi xác minh người tạo; SUPER_ADMIN chỉ có quyền kiểm duyệt. Script setLegacyEventCreator.js mặc định dry-run; --apply chỉ dùng sau khi đối chiếu lịch sử. Script chỉ bổ sung cho giải chưa có chủ, không chuyển quyền sở hữu đã xác lập. Chưa chạy script này trên DB thật.
 
 ## 3. Giữ chỗ và chống bán vượt số suất
 
@@ -136,3 +132,43 @@ AND (
 - Rate limit hiện dùng bộ nhớ một tiến trình; khi triển khai nhiều instance cần kho dùng chung.
 - JWT trình duyệt hiện lưu localStorage; cơ chế cookie HttpOnly/CSRF và xoay refresh token chưa triển khai.
 - Thư viện không đồng nghĩa đã được kiểm toán bảo mật toàn diện. Danh sách này ghi lại giải pháp đã làm và các giới hạn thực tế.
+
+## 10. Hai người chạy tương tác ở phần mở đầu
+- Minh họa SVG dựng trực tiếp trong mã nguồn, không thêm thư viện animation hoặc video.
+- Tách các nhóm thân, đùi, cẳng chân, cánh tay, cẳng tay và tóc. CSS transform-origin đặt tại các khớp để xoay theo chu kỳ.
+- Keyframes của hai chân/tay lệch nửa chu kỳ; thân nhún và bóng đổ thay đổi theo nhịp. Hai nhân vật có chu kỳ riêng 0,72 và 0,8 giây.
+- React quản lý trạng thái hover và giữ chuyển động riêng cho từng người; CSS animation-play-state chạy/dừng mà không cần setInterval hay render lại từng frame.
+- Pointer events phân biệt chuột/bút với cảm ứng để tránh hover bị giữ trên điện thoại.
+- prefers-reduced-motion giữ minh họa tĩnh; Enter/Space/Escape hỗ trợ bàn phím.
+- Playwright kiểm tra ma trận transform thật sự thay đổi khi chạy, người còn lại không bị kích hoạt, chạm lần hai dừng được và phần minh họa không chồng lên nội dung hero.
+
+- Sửa khớp háng: khung chậu riêng có hai điểm gắn đùi. Đùi và cẳng chân dùng tọa độ cục bộ, xoay tại gốc của khớp; chuyển động hông truyền xuống cả chuỗi chân. Đổi chiều gập gối để tránh gập ngược. Kiểm thử lấy 21 mẫu trong chu kỳ, đối chiếu vị trí khớp bằng ma trận SVG và kiểm tra góc gập gối.
+
+## 11. Hiệu ứng cuộn và sương
+- useLandingMotion dùng IntersectionObserver để kích hoạt reveal một lần, ngừng theo dõi node đã hiện. MutationObserver đăng ký thêm thẻ sự kiện sau khi API trả dữ liệu.
+- CSS custom properties chọn hướng trượt, độ blur và độ trễ theo thứ tự; opacity/transform/filter tạo hiệu ứng mờ thành rõ.
+- Scroll listener thụ động và requestAnimationFrame gộp cập nhật tiến độ sương tối đa một lần mỗi frame, không setState khi cuộn. Tiến độ được giới hạn trong [0,1].
+- matchMedia theo dõi reduced motion trực tiếp; cleanup observer/listener/frame khi unmount. Focus bàn phím bỏ hiệu ứng che nội dung để tránh điều khiển vô hình.
+- Kiểm thử bao gồm tải API muộn, reveal khối carousel, tan sương theo scroll, focus, đổi reduced motion và hiển thị khi tắt JavaScript.
+
+
+## 12. Quyền tổ chức, kiểm duyệt và đối soát (quy tắc đã chốt)
+
+- SUPER_ADMIN dùng /admin: duyệt/từ chối quyền tổ chức, ẩn/ngừng/khôi phục giải và duyệt nạp ví. Không tạo/sửa giải, cự ly, nhân sự, kết quả; không xem danh sách vận động viên hoặc duyệt tiền vé.
+- Người dùng đăng nhập cá nhân → gửi OrganizerApplication → PENDING → Super Admin APPROVED/REJECTED, bắt buộc lý do. Đơn bị từ chối có thể bổ sung gửi lại. Không suy ra quyền tổ chức từ systemRole cũ hoặc trường client gửi.
+- Đơn được duyệt cho phép tạo đơn vị và giải; mỗi giải tự cấp EVENT_ADMIN cho người tạo, không cấp quyền trên giải người khác.
+- Event.moderation tách khỏi status nghiệp vụ: ACTIVE/HIDDEN/SUSPENDED. Cả HIDDEN và SUSPENDED đều ẩn khỏi danh sách công khai và chặn giao dịch/vận hành mới. Không có API xóa giải.
+- Mỗi quyết định ghi EventModeration (người duyệt, lý do, thời điểm) trong cùng transaction với cập nhật trạng thái. Vé, booking, ledger và phân công được giữ nguyên.
+- Chủ giải vẫn đọc dữ liệu của mình để đối soát; không tự khôi phục giải. Có thể từ chối yêu cầu thanh toán đang chờ, nhưng không duyệt cấp vé mới khi giải bị kiểm duyệt. Hoàn tiền vẫn là quy trình thủ công.
+- lockOperationalEvent tăng activityRevision trong transaction của đặt vé, xác nhận tiền, chuyển BIB, cập nhật cự ly/giải/nhân sự/kết quả và check-in/kit. Cùng ghi vào Event với kiểm duyệt để MongoDB phát hiện xung đột và retry, tránh thanh toán dựa trên trạng thái cũ.
+- GET/POST /api/admin/events/:eventId/payments[/paymentId/review] chỉ dành chủ giải, truy vấn PaymentRequest thông qua Booking.eventId. /api/admin/payments chỉ dành TOPUP của Super Admin. Kiểm tra phạm vi trước xử lý idempotency.
+- Dữ liệu cũ không tự được duyệt quyền tổ chức. Chủ giải đã có quyền vẫn quản lý giải cũ; muốn tạo thêm đơn vị/giải phải gửi đơn và được duyệt. Seed mới có đơn được duyệt mẫu, không chạy seed trên DB hiện có.
+
+## 13. Vòng xoay và thông báo
+
+- EventCarousel: chỉ số tuần hoàn modulo, CSS perspective/translate/scale/rotateY để tạo vòng xoay; React quản lý slide hiện tại. Timer 5 giây dừng khi hover, focus, tab ẩn, người dùng dừng hoặc prefers-reduced-motion.
+- Điều khiển bằng nút, phím trái/phải, chấm chọn và vuốt cảm ứng; ngưỡng vuốt 45px, ngăn kích hoạt link sau thao tác vuốt. Dữ liệu lấy từ API giải hiện có, không thêm số liệu/giải giả.
+- Chuông dùng Lucide Bell. API /notifications tổng hợp vé, yêu cầu thanh toán, đơn tổ chức và quyết định kiểm duyệt thực tế. Super Admin thấy thêm đơn tổ chức/nạp ví chờ duyệt.
+- NotificationReceipt có unique index (userId, key), lưu đã đọc tại server. API đánh dấu chỉ nhận key thuộc feed người dùng. Poll 60 giây khi tab hiển thị, tải lại khi mở panel; chưa có WebSocket hay push notification.
+- Avatar là monogram của người dùng: header 28px, hồ sơ 88px hình tròn. Giữ bảng màu và animation quỹ đạo nhẹ.
+- Kiểm thử mới: npm run test:platform-ui (API fixtures, không sửa DB thật); npm test dùng MongoMemoryReplSet để xác nhận phân quyền, giữ dữ liệu khi ngừng giải, đối soát đúng phạm vi và thông báo riêng tư.

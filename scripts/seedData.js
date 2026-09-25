@@ -47,6 +47,8 @@ async function seed() {
   });
   console.log("Created Organizer: organizer@runfurther.vn / organizer123456");
 
+  await require('../src/backend/models/OrganizerApplication').create({ userId: organizer._id, organizationName: 'VNG Marathon Series', phone: '0901234567', description: 'Development fixture only', status: 'APPROVED', reviewNote: 'Development seed', reviews: [{ actorId: admin._id, status: 'APPROVED', reason: 'Development seed', at: new Date() }] });
+
   // 3. Create Organizations
   const enterpriseOrg = await Organization.create({
     name: "VNG Marathon Series",

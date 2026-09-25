@@ -16,6 +16,6 @@ router.get('/mine', verifyUserToken, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 router.get("/:slug", getOrganizationBySlug);
-router.post("/", verifyUserToken, createOrganization);
+router.post("/", verifyUserToken, require('../controllers/platformController').requireOrganizerApproval, createOrganization);
 
 module.exports = router;

@@ -1,3 +1,4 @@
+const { lockOperationalEvent } = require('../services/eventPolicy');
 const Event = require('../models/Event');
 const EventCategory = require('../models/EventCategory');
 const Organization = require('../models/Organization');
@@ -16,7 +17,7 @@ async function createEvent(req, res, next) {
     assert(data.dateInfo, 400, 'Event dates are required.');
     validateDates(data.dateInfo);
     const event = await transaction(async session => {
-      if (req.currentUser.systemRole !== 'SUPER_ADMIN') {
+      {
         const org = await Organization.findOne({ _id: data.organizerId, ownerId: req.userId, status: 'ACTIVE', $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }] }).session(session);
         assert(org, 403, 'An active organization owned by you is required.');
       }
@@ -30,21 +31,24 @@ async function createEvent(req, res, next) {
 }
 async function updateEvent(req, res, next) {
   try {
-    const event = await Event.findById(req.params.eventId);
+    const event = await transaction(async session => {
+    const event = await lockOperationalEvent(req.params.eventId, session);
     assert(event, 404, 'Event not found.');
     if (req.body.status === 'REGISTRATION_OPEN' && event.status !== 'REGISTRATION_OPEN') {
       assert(await require('../models/EventCategory').exists({ eventId: event._id, quotaTotal: { $gt: 0 } }), 409, 'Thêm ít nhất một cự ly có số suất trước khi mở đăng ký.');
     }
     Object.assign(event, pick(req.body, ['name', 'dateInfo', 'location', 'bankAccountInfo', 'bannerUrl', 'logoUrl', 'status']));
     validateDates(event.dateInfo);
-    await event.save();
+    await event.save({ session });
+    return event;
+    });
     res.json({ event });
   } catch (error) { next(error); }
 }
 async function saveCategory(req, res, next) {
   try {
     const category = await transaction(async session => {
-      const event = await Event.findById(req.params.eventId).session(session);
+      const event = await lockOperationalEvent(req.params.eventId, session);
       assert(event, 404, 'Event not found.');
       const data = pick(req.body, ['code', 'name', 'distance', 'price', 'quotaTotal', 'rules']);
       let category;
@@ -74,8 +78,12 @@ async function saveResult(req, res, next) {
     const data = pick(req.body, ['chipTime', 'gunTime']);
     assert(typeof data.chipTime === 'string' && /^\d{1,3}:[0-5]\d:[0-5]\d$/.test(data.chipTime), 400, 'chipTime must be HHH:MM:SS.');
     if (data.gunTime) assert(/^\d{1,3}:[0-5]\d:[0-5]\d$/.test(data.gunTime), 400, 'Invalid gunTime.');
-    const registration = await Registration.findOneAndUpdate({ _id: req.params.registrationId, eventId: req.params.eventId, status: { $in: ['CONFIRMED', 'CHECKED_IN', 'KIT_COLLECTED'] } }, { $set: { finishResult: data } }, { new: true, runValidators: true });
+    const registration = await transaction(async session => {
+    await lockOperationalEvent(req.params.eventId, session);
+    const registration = await Registration.findOneAndUpdate({ _id: req.params.registrationId, eventId: req.params.eventId, status: { $in: ['CONFIRMED', 'CHECKED_IN', 'KIT_COLLECTED'] } }, { $set: { finishResult: data } }, { session, new: true, runValidators: true });
     assert(registration, 404, 'Eligible registration not found.');
+    return registration;
+    });
     res.json({ registration });
   } catch (error) { next(error); }
 }

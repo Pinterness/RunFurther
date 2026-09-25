@@ -6,6 +6,8 @@
   "scripts": {
     "test": "node --test tests/backend.test.js",
     "test:layout": "node scripts/checkLayout.js",
+    "test:hero": "node scripts/checkHeroRunners.js",
+    "test:scroll": "node scripts/checkScrollMotion.js",
     "test:runner-ui": "node scripts/checkRunnerFlows.js",
     "test:organizer-ui": "node scripts/checkOrganizerFlows.js",
     "db:check": "node scripts/checkData.js",
@@ -16,7 +18,8 @@
     "promote:super-admin": "node scripts/promoteSuperAdmin.js",
     "dev:web": "next dev",
     "build:web": "next build",
-    "start:web": "next start"
+    "start:web": "next start",
+    "test:platform-ui": "node scripts/checkPlatformUI.js"
   },
   "dependencies": {
     "autoprefixer": "^10.6.1",

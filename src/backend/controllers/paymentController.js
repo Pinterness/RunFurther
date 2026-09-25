@@ -7,7 +7,7 @@ const { assert } = require('../lib/errors');
 
 async function listPayments(req, res, next) {
   try {
-    const filter = req.baseUrl === '/api/admin' && req.currentUser?.systemRole === 'SUPER_ADMIN' ? {} : { userId: req.userId };
+    const filter = req.params.eventId ? { kind: 'BOOKING', bookingId: { $in: await Booking.distinct('_id', { eventId: req.params.eventId }) } } : req.baseUrl === '/api/admin' && req.currentUser?.systemRole === 'SUPER_ADMIN' ? { kind: 'TOPUP' } : { userId: req.userId };
     if (req.query.status) filter.status = req.query.status;
     res.json({ payments: await PaymentRequest.find(filter).sort({ createdAt: -1 }).limit(100).lean() });
   } catch (error) { next(error); }
@@ -21,6 +21,9 @@ async function reviewPayment(req, res, next) {
     const result = await transaction(async session => {
       const payment = await PaymentRequest.findById(req.params.paymentId).session(session);
       assert(payment, 404, 'Payment request not found.');
+      if (req.params.eventId) {
+        assert(payment.kind === 'BOOKING' && await Booking.exists({ _id: payment.bookingId, eventId: req.params.eventId }).session(session), 403, 'Yêu cầu không thuộc giải bạn quản lý.');
+      } else assert(payment.kind === 'TOPUP' && req.currentUser?.systemRole === 'SUPER_ADMIN', 403, 'Super Admin chỉ được duyệt nạp ví, không duyệt tiền vé.');
       if (payment.status !== 'PENDING') {
         assert(payment.status === status, 409, 'Payment was already reviewed.');
         return { payment };

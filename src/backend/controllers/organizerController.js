@@ -1,3 +1,5 @@
+const { lockOperationalEvent } = require('../services/eventPolicy');
+const transaction = require('../services/transaction');
 const crypto = require('crypto');
 const Event = require('../models/Event');
 const Category = require('../models/EventCategory');
@@ -29,23 +31,30 @@ async function createStaff(req, res, next) {
     let userId = null;
     if (email) {
       assert(typeof email === 'string', 400, 'Email không hợp lệ.');
-      const user = await User.findOne({ email: email.trim().toLowerCase(), status: 'ACTIVE' });
+      const user = await User.findOne({ email: email.trim().toLowerCase(), status: 'ACTIVE', systemRole: { $ne: 'SUPER_ADMIN' } });
       assert(user, 400, 'Email chưa có tài khoản đang hoạt động. Bỏ trống để nhân sự dùng mã đăng nhập.');
       userId = user._id;
     }
-    const account = await EventAccount.create({ eventId: req.params.eventId, employeeName, accountType, userId, assignment: { locationName }, loginCode: crypto.randomBytes(8).toString('hex').toUpperCase(), createdBy: req.userId });
+    const account = await transaction(async session => {
+      await lockOperationalEvent(req.params.eventId, session);
+      return (await EventAccount.create([{ eventId: req.params.eventId, employeeName, accountType, userId, assignment: { locationName }, loginCode: crypto.randomBytes(8).toString('hex').toUpperCase(), createdBy: req.userId }], { session }))[0];
+    });
     res.status(201).json({ account });
   } catch (error) { next(error); }
 }
 async function updateStaff(req, res, next) {
   try {
-    const account = await EventAccount.findOne({ _id: req.params.accountId, eventId: req.params.eventId });
+    const account = await transaction(async session => {
+    await lockOperationalEvent(req.params.eventId, session);
+    const account = await EventAccount.findOne({ _id: req.params.accountId, eventId: req.params.eventId }).session(session);
     assert(account, 404, 'Không tìm thấy nhân sự trong sự kiện này.');
     assert(account.accountType !== 'EVENT_ADMIN', 403, 'Không thay đổi chủ sự kiện qua phân công nhân sự.');
     if (req.body.accountType !== undefined) { assert(roles.includes(req.body.accountType), 400, 'Vai trò không hợp lệ.'); account.accountType = req.body.accountType; }
     if (req.body.status !== undefined) { assert(['ACTIVE', 'INACTIVE'].includes(req.body.status), 400, 'Trạng thái không hợp lệ.'); account.status = req.body.status; }
     if (req.body.rotateCode === true) account.loginCode = crypto.randomBytes(8).toString('hex').toUpperCase();
-    await account.save();
+    await account.save({ session });
+    return account;
+    });
     res.json({ account });
   } catch (error) { next(error); }
 }

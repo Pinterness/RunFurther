@@ -38,14 +38,14 @@ Seed chỉ chạy với `SEED_MONGODB_URI`, tên database kết thúc bằng `_d
 
 ## Thanh toán và đối soát
 
-Chưa tích hợp SePay/Casso hoặc webhook ngân hàng. Hiện dùng đối soát thủ công bởi SUPER_ADMIN.
+Chưa tích hợp SePay/Casso hoặc webhook ngân hàng. Hiện đối soát thủ công: EVENT_ADMIN chủ giải duyệt tiền vé của giải; SUPER_ADMIN chỉ duyệt nạp ví.
 
 - `POST /api/bookings/hold`: giữ chỗ 10 phút. Kiểm tra giải đang mở, cự ly thuộc giải, thời gian, tuổi tối thiểu nếu có và quota.
 - `POST /api/bookings/:id/confirm` với `paymentMethod: WALLET`: backend lấy ví của người đăng nhập, trừ tiền/điểm và cấp vé trong một transaction.
 - Cùng endpoint với `paymentMethod: VIETQR`: trả HTTP 202 và yêu cầu PENDING, chưa cấp vé. Frontend thăm dò trạng thái đơn mỗi 5 giây.
 - `POST /api/wallet/topup` với số tiền nguyên dương và header `Idempotency-Key`: tạo yêu cầu PENDING, chưa cộng tiền.
 - `GET /api/wallet/payments`: người dùng xem yêu cầu của mình.
-- `GET /api/admin/payments?status=PENDING`: Super Admin xem yêu cầu cần đối soát.
+- `GET /api/admin/payments?status=PENDING`: Super Admin chỉ xem yêu cầu nạp ví cần đối soát.
 - `POST /api/admin/payments/:id/review`: body `{ "status": "APPROVED", "bankReference": "ma-giao-dich-ngan-hang", "reviewNote": "..." }`, hoặc `status: REJECTED`.
 - Quản trị viên phải kiểm tra đúng số tiền, tài khoản nhận và nội dung chuyển khoản trước khi duyệt. Mã giao dịch ngân hàng không được sử dụng cho hai yêu cầu.
 - Nếu giữ chỗ hết hạn hoặc đơn đã thanh toán theo cách khác, API từ chối phê duyệt chuyển khoản và giữ yêu cầu để đối soát/hoàn tiền thủ công; không tự mở lại chỗ.
@@ -61,11 +61,11 @@ Mua BIB hoặc đồ dùng hiện thanh toán bằng ví: trừ người mua, c�
 
 ## Quản trị và kết quả
 
-Các endpoint đều yêu cầu Bearer token. Sửa giải/cự ly, xem VĐV và ghi kết quả yêu cầu EVENT_ADMIN của đúng giải hoặc SUPER_ADMIN.
+Các endpoint đều yêu cầu Bearer token. Sửa giải/cự ly, xem VĐV và ghi kết quả yêu cầu chủ giải với phân công EVENT_ADMIN còn ACTIVE; SUPER_ADMIN không được can thiệp nghiệp vụ.
 
 | Endpoint | Chức năng |
 | --- | --- |
-| POST /api/admin/events | Tạo giải DRAFT; người tạo phải sở hữu tổ chức đang hoạt động hoặc là Super Admin |
+| POST /api/admin/events | Tạo giải DRAFT; người tạo phải được duyệt quyền tổ chức và sở hữu tổ chức đang hoạt động |
 | PATCH /api/admin/events/:eventId | Cập nhật thông tin/trạng thái giải |
 | POST /api/admin/events/:eventId/categories | Thêm cự ly |
 | PATCH /api/admin/events/:eventId/categories/:categoryId | Cập nhật cự ly; không giảm quota dưới số chỗ đã bán/giữ |
@@ -80,7 +80,7 @@ Nhân sự gửi `x-login-code` của đúng giải hoặc Bearer token có phâ
 
 ## Phần tiếp theo
 
-- Hoàn thiện màn quản trị hệ thống/đối soát, duyệt tình nguyện viên và các màn nghiệp vụ nhân sự ngoài check-in/phát kit (ban tổ chức đã có tạo giải, cự ly và phân công).
+- Hoàn thiện màn duyệt tình nguyện viên và các màn nghiệp vụ nhân sự ngoài check-in/phát kit (ban tổ chức đã có tạo giải, cự ly và phân công).
 - Chọn nhà cung cấp ngân hàng để tự động đối soát, hoàn tiền và xử lý khoản chuyển muộn.
 - Hồ sơ cộng đồng hiện vẫn là giao diện mẫu; chưa có API hồ sơ công khai, theo dõi hoặc bài viết.
 - Xác minh email/quên mật khẩu, gửi email vé và tải ảnh avatar cá nhân (hiện có avatar theo tên và màu).
@@ -108,7 +108,7 @@ Sau khi đăng nhập tài khoản cá nhân, chọn **Khu vực ban tổ chức
 4. Chuyển trạng thái công bố/mở đăng ký khi sẵn sàng. Mở đăng ký yêu cầu ít nhất một cự ly có số suất.
 5. Mã nhân sự chỉ dùng trong đúng giải; có thể khóa/mở quyền và đổi mã. EVENT_ADMIN dùng tài khoản cá nhân, không đăng nhập bằng mã nhân sự.
 
-Quyền EVENT_ADMIN đòi hỏi cả `Event.createdBy == userId` và phân công còn ACTIVE. SUPER_ADMIN là ngoại lệ toàn hệ thống. Gán thêm một EventAccount EVENT_ADMIN cho người khác không làm người đó thành chủ sự kiện.
+Quyền EVENT_ADMIN đòi hỏi cả `Event.createdBy == userId` và phân công còn ACTIVE. SUPER_ADMIN chỉ kiểm duyệt qua /admin/platform, không có ngoại lệ truy cập nghiệp vụ. Gán thêm một EventAccount EVENT_ADMIN cho người khác không làm người đó thành chủ sự kiện.
 
 API bổ sung:
 - GET /api/organizations/mine: đơn vị đang hoạt động do mình sở hữu.
@@ -123,3 +123,16 @@ node scripts/setLegacyEventCreator.js --event-id <ID> --creator-email <EMAIL>
 Thêm `--apply` mới ghi vào DB. Script chỉ bổ sung chủ cho giải chưa có chủ và khôi phục phân công EVENT_ADMIN; không chuyển chủ giải đã có createdBy. Chưa chạy cập nhật này trên DB thật.
 
 `npm run test:organizer-ui` kiểm tra giao diện ban tổ chức bằng Chrome và API fixtures, cần web đang chạy. Ghi chú đầy đủ công nghệ, thuật toán và giới hạn: [TECHNOLOGY_AND_LOGIC.md](TECHNOLOGY_AND_LOGIC.md).
+
+
+## Quy trình xét duyệt tổ chức và kiểm duyệt
+
+1. Người tổ chức đăng nhập tại /organizer, gửi tên đơn vị, số điện thoại và kế hoạch tổ chức.
+2. Super Admin mở /admin → Quyền tổ chức, duyệt hoặc từ chối kèm lý do.
+3. Sau khi duyệt, người tổ chức tạo đơn vị/giải và trở thành chủ riêng của giải vừa tạo.
+4. /admin → Kiểm duyệt giải chỉ cho phép ẩn, tạm ngừng hoặc khôi phục, luôn lưu lý do và lịch sử; không xóa hẳn bất kỳ giải nào.
+5. Chủ giải đối soát tiền vé ở tab Tiền vé. Super Admin đối soát nạp ví ở /admin → Nạp ví.
+
+API tiền vé: GET /api/admin/events/:eventId/payments và POST /api/admin/events/:eventId/payments/:paymentId/review, cùng body status/bankReference/reviewNote như nạp ví. Giải bị ẩn/ngừng chặn giao dịch mới; giữ nguyên vé/giao dịch để đối soát và hoàn tiền thủ công. Quyền tổ chức của dữ liệu cũ không tự động được duyệt.
+
+Kiểm tra giao diện mới: npm run test:platform-ui. Chuông thông báo lấy dữ liệu thật, lưu đã đọc trên server và thăm dò mỗi 60 giây khi tab hiển thị.
