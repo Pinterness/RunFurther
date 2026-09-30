@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { getEvent } from '../../../../lib/events';
 import VolunteerModal from '../../../../components/events/VolunteerModal';
+import EventPhoto from '../../../../components/site/EventPhoto';
 
 export default async function EventPage({ params }) {
   const { eventSlug } = await params;
@@ -9,8 +10,9 @@ export default async function EventPage({ params }) {
   return (
     <>
       <section className="event-cover">
-        <img src="/assets/figma/event-trail.png" alt="" />
+        <EventPhoto src={event.bannerUrl} />
         <div className="event-cover-content">
+          {event.logoUrl && <EventPhoto className="event-brand-logo" src={event.logoUrl} alt={'Logo ' + event.name} />}
           <span className="tag">ROAD & TRAIL RUN</span>
           <h1>{event.name}</h1>
           <p>⌖ {event.location?.city}　　▣ {new Date(event.dateInfo.raceDate).toLocaleDateString('vi-VN')}</p>
@@ -26,8 +28,8 @@ export default async function EventPage({ params }) {
             <Link href="#route">Sơ đồ đường chạy</Link>
             <Link href="#schedule">Lịch trình</Link>
             <Link href={`/events/${event.slug}/results`}>Kết quả</Link>
-            <Link href={`/events/${event.slug}/staff-login`} style={{ color: '#059669', fontWeight: 600 }}>
-              🔑 Cổng Nhân Sự
+            <Link href={`/events/${event.slug}/staff-login`} className="staff-entry-link">
+              Cổng nhân sự ↗
             </Link>
           </nav>
 

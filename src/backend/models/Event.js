@@ -58,6 +58,7 @@ const eventSchema = new mongoose.Schema(
       default: null,
     },
     bankAccountInfo: {
+      bankBin: { type: String, default: '', trim: true },
       bankName: { type: String, default: "", trim: true },
       accountNo: { type: String, default: "", trim: true },
       accountName: { type: String, default: "", trim: true },

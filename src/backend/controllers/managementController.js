@@ -6,6 +6,8 @@ const Registration = require('../models/Registration');
 const EventAccount = require('../models/EventAccount');
 const transaction = require('../services/transaction');
 const { assert } = require('../lib/errors');
+const { normalizeBank, listBanks } = require('../services/bankService');
+const { validateImages } = require('./imageController');
 function pick(body, keys) { return Object.fromEntries(keys.filter(key => body[key] !== undefined).map(key => [key, body[key]])); }
 function validateDates(dates) {
   const { registrationStart, registrationEnd, raceDate } = dates;
@@ -16,6 +18,8 @@ async function createEvent(req, res, next) {
     const data = pick(req.body, ['slug', 'name', 'dateInfo', 'location', 'organizerId', 'bankAccountInfo', 'bannerUrl', 'logoUrl']);
     assert(data.dateInfo, 400, 'Event dates are required.');
     validateDates(data.dateInfo);
+    if (data.bankAccountInfo !== undefined) { await listBanks(); data.bankAccountInfo = normalizeBank(data.bankAccountInfo); }
+    await validateImages(data, req.userId);
     const event = await transaction(async session => {
       {
         const org = await Organization.findOne({ _id: data.organizerId, ownerId: req.userId, status: 'ACTIVE', $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }] }).session(session);
@@ -31,13 +35,16 @@ async function createEvent(req, res, next) {
 }
 async function updateEvent(req, res, next) {
   try {
+    const data = pick(req.body, ['name', 'dateInfo', 'location', 'bankAccountInfo', 'bannerUrl', 'logoUrl', 'status']);
+    if (data.bankAccountInfo !== undefined) { await listBanks(); data.bankAccountInfo = normalizeBank(data.bankAccountInfo); }
     const event = await transaction(async session => {
     const event = await lockOperationalEvent(req.params.eventId, session);
     assert(event, 404, 'Event not found.');
     if (req.body.status === 'REGISTRATION_OPEN' && event.status !== 'REGISTRATION_OPEN') {
       assert(await require('../models/EventCategory').exists({ eventId: event._id, quotaTotal: { $gt: 0 } }), 409, 'Thêm ít nhất một cự ly có số suất trước khi mở đăng ký.');
     }
-    Object.assign(event, pick(req.body, ['name', 'dateInfo', 'location', 'bankAccountInfo', 'bannerUrl', 'logoUrl', 'status']));
+    await validateImages(data, req.userId, event);
+    Object.assign(event, data);
     validateDates(event.dateInfo);
     await event.save({ session });
     return event;

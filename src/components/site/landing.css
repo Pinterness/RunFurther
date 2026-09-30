@@ -13,8 +13,8 @@
 .hero-description { font-size: 15px; line-height: 1.85; max-width: 470px; margin-top: 28px; color: #f5f7eece; }
 .hero-actions { display: flex; align-items: center; gap: 32px; margin-top: 32px; }
 .action-primary, .action-dark, .action-light { display: inline-flex; justify-content: space-between; align-items: center; gap: 34px; min-height: 54px; padding: 15px 24px; border-radius: 4px; font-size: 13px; font-weight: 650; line-height: 1.5; transition: transform var(--duration-normal) var(--ease-out), background var(--duration-fast), box-shadow var(--duration-normal); }
-.action-primary { background: var(--landing-orange); color: white; }
-.action-primary:hover { background: #d94b20; box-shadow: 0 8px 28px #0f171c28; transform: translateY(-3px); }
+.action-primary { background: var(--action-bg); color: white; }
+.action-primary:hover { background: var(--accent-strong); box-shadow: 0 8px 28px #0f171c28; transform: translateY(-3px); }
 .action-dark { background: var(--landing-ink); color: white; }
 .action-dark:hover { background: #343c2b; transform: translateY(-3px); box-shadow: 0 8px 28px #38231525; }
 .action-light { background: #faf9f3; color: var(--landing-ink); }

@@ -120,13 +120,13 @@ export default function StaffRaceKitPage({ params }) {
   return (
     <div style={{ maxWidth: 850, margin: '0 auto', padding: '30px 20px' }}>
       <header style={{ marginBottom: 28 }}>
-        <span style={{ fontSize: 13, color: '#059669', fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase' }}>
+        <span style={{ fontSize: 13, color: 'var(--accent-strong)', fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase' }}>
           TRẠM PHÁT RACE-KIT (RACE-KIT COUNTER)
         </span>
         <h1 style={{ fontSize: 26, fontWeight: 800, margin: '6px 0' }}>
           Tra Cứu & Phát Túi Race-Kit
         </h1>
-        <p style={{ color: '#6b7280', fontSize: 14 }}>
+        <p style={{ color: 'var(--muted)', fontSize: 14 }}>
           {event?.name || 'Sự kiện chạy bộ'} • Giảm tải nhân sự: Quét mã hoặc tra nhanh theo SĐT / BIB
         </p>
       </header>
@@ -142,21 +142,19 @@ export default function StaffRaceKitPage({ params }) {
             flex: 1,
             padding: '14px 18px',
             fontSize: 16,
-            borderRadius: 10,
-            border: '2px solid #059669',
-            outline: 'none',
+            borderRadius: 'var(--radius-control)',
+            border: '2px solid var(--forest)',
           }}
         />
-        <button
+        <button className="button-dark"
           type="submit"
           disabled={searching}
           style={{
             padding: '0 28px',
-            background: '#059669',
             color: '#fff',
             fontWeight: 700,
             fontSize: 16,
-            borderRadius: 10,
+            borderRadius: 'var(--radius-control)',
             border: 'none',
             cursor: 'pointer',
           }}
@@ -168,7 +166,7 @@ export default function StaffRaceKitPage({ params }) {
       {message && (
         <div style={{
           padding: '12px 16px',
-          borderRadius: 8,
+          borderRadius: 'var(--radius-panel)',
           marginBottom: 20,
           background: isSuccess ? '#ecfdf5' : '#fee2e2',
           color: isSuccess ? '#065f46' : '#b91c1c',
@@ -181,17 +179,17 @@ export default function StaffRaceKitPage({ params }) {
       {/* Runner Found Card */}
       {runner && (
         <div style={{
-          background: '#fff',
-          border: '1px solid #e5e7eb',
-          borderRadius: 16,
+          background: 'var(--surface)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-panel)',
           padding: 24,
           boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
           marginBottom: 28,
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <div>
-              <div style={{ fontSize: 13, color: '#6b7280' }}>SỐ BIB VẬN ĐỘNG VIÊN:</div>
-              <div style={{ fontSize: 36, fontWeight: 900, color: '#1e3a8a' }}>{runner.bibNumber}</div>
+              <div style={{ fontSize: 13, color: 'var(--muted)' }}>SỐ BIB VẬN ĐỘNG VIÊN:</div>
+              <div style={{ fontSize: 36, fontWeight: 900, color: 'var(--forest-deep)' }}>{runner.bibNumber}</div>
             </div>
             <div style={{ textAlign: 'right' }}>
               <span style={{
@@ -208,22 +206,22 @@ export default function StaffRaceKitPage({ params }) {
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16, background: '#f9fafb', padding: 16, borderRadius: 10, marginBottom: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16, background: 'var(--surface-muted)', padding: 16, borderRadius: 'var(--radius-panel)', marginBottom: 20 }}>
             <div>
-              <small style={{ color: '#6b7280' }}>Họ và tên</small>
+              <small style={{ color: 'var(--muted)' }}>Họ và tên</small>
               <div style={{ fontWeight: 600 }}>{runner.runnerProfile?.fullName}</div>
             </div>
             <div>
-              <small style={{ color: '#6b7280' }}>Số điện thoại</small>
+              <small style={{ color: 'var(--muted)' }}>Số điện thoại</small>
               <div style={{ fontWeight: 600 }}>{runner.runnerProfile?.phone}</div>
             </div>
             <div>
-              <small style={{ color: '#6b7280' }}>Cự ly</small>
+              <small style={{ color: 'var(--muted)' }}>Cự ly</small>
               <div style={{ fontWeight: 600 }}>{runner.categoryId?.name || 'N/A'}</div>
             </div>
             <div>
-              <small style={{ color: '#6b7280' }}>Size áo đăng ký</small>
-              <div style={{ fontWeight: 700, color: '#0070f3' }}>{runner.logistics?.shirtSize || 'M'}</div>
+              <small style={{ color: 'var(--muted)' }}>Size áo đăng ký</small>
+              <div style={{ fontWeight: 700, color: 'var(--accent-strong)' }}>{runner.logistics?.shirtSize || 'M'}</div>
             </div>
           </div>
 
@@ -234,7 +232,7 @@ export default function StaffRaceKitPage({ params }) {
               <select
                 value={issuedShirt}
                 onChange={(e) => setIssuedShirt(e.target.value)}
-                style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid #d1d5db', fontWeight: 600 }}
+                style={{ padding: '8px 14px', borderRadius: 'var(--radius-control)', border: '1px solid var(--border)', fontWeight: 600 }}
               >
                 {['XS', 'S', 'M', 'L', 'XL', 'XXL'].map((sz) => (
                   <option key={sz} value={sz}>{sz}</option>
@@ -242,7 +240,7 @@ export default function StaffRaceKitPage({ params }) {
               </select>
             </div>
 
-            <button
+            <button className="button-dark"
               type="button"
               disabled={actionLoading || runner.logistics?.raceKitIssued}
               onClick={handleIssueKit}
@@ -250,11 +248,10 @@ export default function StaffRaceKitPage({ params }) {
                 flex: 1,
                 minWidth: 240,
                 padding: '14px 20px',
-                background: runner.logistics?.raceKitIssued ? '#9ca3af' : '#059669',
                 color: '#fff',
                 fontWeight: 700,
                 fontSize: 16,
-                borderRadius: 8,
+                borderRadius: 'var(--radius-control)',
                 border: 'none',
                 cursor: runner.logistics?.raceKitIssued ? 'not-allowed' : 'pointer',
               }}
@@ -267,15 +264,15 @@ export default function StaffRaceKitPage({ params }) {
 
       {/* Shift history */}
       {recentIssued.length > 0 && (
-        <section style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 18 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 700, color: '#4b5563', marginBottom: 12 }}>
+        <section style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-panel)', padding: 18 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--muted)', marginBottom: 12 }}>
             LỊCH SỬ PHÁT GẦN ĐÂY TRONG CA:
           </h3>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: 13 }}>
             {recentIssued.map((item, idx) => (
-              <li key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #f3f4f6' }}>
+              <li key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
                 <span><b>{item.bibNumber}</b> - {item.name}</span>
-                <span style={{ color: '#6b7280' }}>Size: {item.size} • {item.time}</span>
+                <span style={{ color: 'var(--muted)' }}>Size: {item.size} • {item.time}</span>
               </li>
             ))}
           </ul>

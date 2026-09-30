@@ -1,0 +1,13 @@
+'use client';
+import { useState } from 'react';
+export default function TransferDetails({ bankInfo, amount, orderCode, qrUrl, expired = false, preview = false }) {
+  const [failure, setFailure] = useState(null), [attempt, setAttempt] = useState(0), [message, setMessage] = useState('');
+  async function copy(text, label) {
+    try { await navigator.clipboard.writeText(String(text)); setMessage('Đã sao chép ' + label.toLowerCase() + '.'); }
+    catch { setMessage('Không thể sao chép tự động. Bạn có thể chọn và sao chép thông tin bên dưới.'); }
+  }
+  if (expired) return <p role="status" className="notice notice-error">Đơn đã hết hạn giữ chỗ. Không chuyển khoản theo mã này. Nếu đã chuyển tiền, hãy liên hệ chủ giải và cung cấp mã đơn {orderCode} để đối soát.</p>;
+  if (!bankInfo || !qrUrl) return <p className="notice">{amount === 0 ? 'Đơn miễn phí, không cần chuyển khoản.' : 'Chuyển khoản chưa khả dụng cho đơn này. Bạn có thể thanh toán bằng ví hoặc liên hệ chủ giải.'}</p>;
+  const rows = [['Ngân hàng', bankInfo.bankName],['Số tài khoản', bankInfo.accountNo],['Chủ tài khoản', bankInfo.accountName],['Số tiền', Number(amount).toLocaleString('vi-VN') + 'đ'],['Nội dung chuyển khoản', orderCode]];
+  return <div className="transfer-details"><div className="transfer-qr">{failure === qrUrl ? <div className="qr-unavailable"><p>Chưa tải được ảnh QR. Bạn vẫn có thể chuyển khoản bằng thông tin bên cạnh.</p><button type="button" className="quiet-button" onClick={() => { setFailure(null); setAttempt(n => n + 1); }}>Tải lại QR</button></div> : <img key={qrUrl + attempt} src={qrUrl} width="270" height="320" alt={preview ? 'QR xem trước tài khoản nhận tiền' : 'QR chuyển khoản tiền vé'} onError={() => setFailure(qrUrl)} referrerPolicy="no-referrer" />}<small>{preview ? 'QR xem trước · Không dùng để mua vé' : 'Quét mã bằng ứng dụng ngân hàng'}</small></div><div className="transfer-copy"><h3>{preview ? 'Kiểm tra tài khoản nhận tiền' : 'Chuyển khoản cho chủ giải'}</h3><dl>{rows.map(([label,text]) => <div key={label}><dt>{label}</dt><dd><span>{text}</span>{['Số tài khoản','Số tiền','Nội dung chuyển khoản'].includes(label) && <button type="button" className="text-action" aria-label={'Sao chép ' + label.toLowerCase()} onClick={() => copy(label === 'Số tiền' ? amount : text, label)}>Sao chép</button>}</dd></div>)}</dl><p className="transfer-note">Kiểm tra tên người nhận trong ứng dụng ngân hàng trước khi chuyển. Tên hiển thị ở đây do chủ giải cung cấp.</p>{!preview && <p className="transfer-note">Chuyển đúng số tiền và nội dung. Vé chỉ được cấp sau khi chủ giải xác nhận đã nhận tiền.</p>}<p role="status" className="copy-status">{message}</p></div></div>;
+}

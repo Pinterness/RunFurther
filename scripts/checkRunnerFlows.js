@@ -148,6 +148,8 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await page.waitForURL('**/account');
     assert.equal(signupBody.profile.shirtSize, 'L'); assert.equal(signupBody.profile.birthday, '1998-06-12');
     await page.goto(base, { waitUntil: 'networkidle' });
+    await expect(page.locator('.immersive-journey')).toHaveAttribute('data-enhanced', 'true', { timeout: 20000 });
+    await page.locator('.immersive-panel-trigger[data-panel="distance"]').click();
     await page.locator('.distance-workspace').hover();
     assert.equal(await page.locator('.track-runner').evaluate(node => getComputedStyle(node).animationPlayState), 'running');
     await page.locator('.distance-workspace').screenshot({ path: 'artifacts/challenge-interaction.png' });

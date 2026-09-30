@@ -9,7 +9,7 @@ async function listPayments(req, res, next) {
   try {
     const filter = req.params.eventId ? { kind: 'BOOKING', bookingId: { $in: await Booking.distinct('_id', { eventId: req.params.eventId }) } } : req.baseUrl === '/api/admin' && req.currentUser?.systemRole === 'SUPER_ADMIN' ? { kind: 'TOPUP' } : { userId: req.userId };
     if (req.query.status) filter.status = req.query.status;
-    res.json({ payments: await PaymentRequest.find(filter).sort({ createdAt: -1 }).limit(100).lean() });
+    res.json({ payments: await PaymentRequest.find(filter).populate('bookingId', 'orderCode bankSnapshot status expiresAt').sort({ createdAt: -1 }).limit(100).lean() });
   } catch (error) { next(error); }
 }
 async function reviewPayment(req, res, next) {

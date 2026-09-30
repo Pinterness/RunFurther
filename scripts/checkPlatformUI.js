@@ -74,6 +74,8 @@ const fs = require('node:fs');
     await expect(page.locator('.organizer-panel')).toContainText('TOPUP-TEST');
     await page.goto('http://localhost:3000');
     await page.setViewportSize({ width: 1440, height: 950 });
+    await expect(page.locator('.immersive-journey')).toHaveAttribute('data-enhanced', 'true');
+    await page.locator('.immersive-panel-trigger[data-panel="events"]').click();
     const carousel = page.locator('.event-carousel');
     await carousel.scrollIntoViewIfNeeded();
     await page.mouse.move(0,0);

@@ -9,6 +9,7 @@ const PaymentRequest = require('../models/PaymentRequest');
 const transaction = require('../services/transaction');
 const { expireBookings, completeBooking } = require('../services/bookingService');
 const { assert } = require('../lib/errors');
+const { paymentInstructions } = require('../services/bankService');
 
 async function createBookingHold(req, res, next) {
   try {
@@ -42,9 +43,9 @@ async function createBookingHold(req, res, next) {
         addons: { photoPackage: addons.photoPackage === true, pastaParty: addons.pastaParty === true },
         price: category.price, totalAmount, pointsDiscount, finalAmount: totalAmount - pointsDiscount,
         paymentMethod, status: 'HOLD', expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        bankSnapshot: paymentInstructions(event.bankAccountInfo, totalAmount - pointsDiscount, '').bankInfo,
       }], { session });
-      const bankInfo = event.bankAccountInfo;
-      const vietQrUrl = bankInfo?.accountNo ? 'https://img.vietqr.io/image/' + encodeURIComponent(bankInfo.bankName) + '-' + encodeURIComponent(bankInfo.accountNo) + '-compact2.png?amount=' + booking.finalAmount + '&addInfo=' + booking.orderCode + '&accountName=' + encodeURIComponent(bankInfo.accountName) : null;
+      const { bankInfo, vietQrUrl } = paymentInstructions(booking.bankSnapshot, booking.finalAmount, booking.orderCode);
       return { booking, bankInfo, vietQrUrl, holdSecondsRemaining: 600 };
     });
     res.status(201).json(result);
@@ -64,6 +65,7 @@ async function confirmBooking(req, res, next) {
       }
       assert(booking.status === 'HOLD' && booking.expiresAt > new Date(), 409, 'Booking has expired.');
       await lockOperationalEvent(booking.eventId, session);
+      assert(paymentInstructions(booking.bankSnapshot, booking.finalAmount, booking.orderCode).vietQrUrl, 409, 'Đơn chưa có thông tin chuyển khoản hợp lệ. Thanh toán bằng ví hoặc tạo đơn mới sau khi chủ giải cấu hình ngân hàng.');
       const paymentRequest = await PaymentRequest.findOneAndUpdate({ requestKey: 'BOOKING-' + booking._id }, {
         $setOnInsert: { userId: req.userId, bookingId: booking._id, kind: 'BOOKING', amount: booking.finalAmount, status: 'PENDING' },
       }, { session, upsert: true, new: true });
@@ -83,10 +85,13 @@ async function listMyBookings(req, res, next) {
 async function getBookingById(req, res, next) {
   try {
     await expireBookings();
-    const booking = await Booking.findOne({ _id: req.params.bookingId, userId: req.userId }).populate('eventId', 'name slug dateInfo location bankAccountInfo').populate('categoryId', 'name code distance price').lean();
+    const booking = await Booking.findOne({ _id: req.params.bookingId, userId: req.userId }).populate('eventId', 'name slug dateInfo location moderation').populate('categoryId', 'name code distance price').lean();
     assert(booking, 404, 'Booking not found.');
     const registration = booking.status === 'PAID' ? await Registration.findOne({ 'payment.bookingId': booking._id, userId: req.userId }).lean() : null;
-    res.json({ booking, registration, holdSecondsRemaining: Math.max(0, Math.floor((new Date(booking.expiresAt) - Date.now()) / 1000)) });
+    const paymentBlocked = !booking.eventId || ['HIDDEN', 'SUSPENDED'].includes(booking.eventId.moderation?.state);
+    const instructions = paymentInstructions(booking.bankSnapshot, booking.finalAmount, booking.orderCode);
+    if (paymentBlocked || booking.status !== 'HOLD' || new Date(booking.expiresAt) <= new Date()) instructions.vietQrUrl = null;
+    res.json({ booking, registration, ...instructions, paymentBlocked, holdSecondsRemaining: Math.max(0, Math.floor((new Date(booking.expiresAt) - Date.now()) / 1000)) });
   } catch (error) { next(error); }
 }
 module.exports = { createBookingHold, confirmBooking, listMyBookings, getBookingById };

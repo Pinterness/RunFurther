@@ -94,7 +94,7 @@ async function listEventCategories(req, res, next) {
       slug,
       ...availableEvent, status: { $in: PUBLIC_EVENT_STATUSES },
     })
-      .select("_id slug name status")
+      .select("_id slug name status bannerUrl logoUrl")
       .lean();
 
     if (!event) {

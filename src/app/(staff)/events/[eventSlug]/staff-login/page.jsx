@@ -68,17 +68,17 @@ export default function StaffLoginPage({ params }) {
 
   return (
     <main className="staff-shell" style={{ minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
-      <section className="staff-task" style={{ maxWidth: 420, width: '100%', background: '#fff', padding: 32, borderRadius: 16, border: '1px solid #e5e7eb', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-        <span className="staff-kicker" style={{ fontSize: 12, color: '#059669', fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase' }}>
-          RUNFLOW · ĐĂNG NHẬP NHÂN SỰ
+      <section className="staff-task" style={{ maxWidth: 420, width: '100%', background: 'var(--surface)', padding: 32, borderRadius: 'var(--radius-panel)', border: '1px solid var(--border)', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+        <span className="staff-kicker" style={{ fontSize: 12, color: 'var(--accent-strong)', fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase' }}>
+          RUNFURTHER · ĐĂNG NHẬP NHÂN SỰ
         </span>
         <h1 style={{ fontSize: 24, fontWeight: 800, margin: '8px 0' }}>Sẵn sàng cho ngày thi đấu?</h1>
-        <p className="muted" style={{ fontSize: 14, color: '#6b7280', marginBottom: 20 }}>
+        <p className="muted" style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 20 }}>
           Nhập mã PIN 6 số (hoặc mã nội bộ) do Ban Nhân sự cấp cho sự kiện <b>{event?.name || 'giải chạy'}</b>.
         </p>
 
         {error && (
-          <div style={{ background: '#fee2e2', color: '#b91c1c', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 16 }}>
+          <div style={{ background: '#fee2e2', color: '#b91c1c', padding: '10px 14px', borderRadius: 'var(--radius-panel)', fontSize: 14, marginBottom: 16 }}>
             {error}
           </div>
         )}
@@ -100,8 +100,8 @@ export default function StaffLoginPage({ params }) {
               style={{
                 width: '100%',
                 padding: '12px 14px',
-                borderRadius: 8,
-                border: '2px solid #111827',
+                borderRadius: 'var(--radius-control)',
+                border: '2px solid var(--forest)',
                 fontSize: 18,
                 fontWeight: 700,
                 letterSpacing: 2,
@@ -117,9 +117,8 @@ export default function StaffLoginPage({ params }) {
             style={{
               width: '100%',
               padding: '14px',
-              background: '#111827',
               color: '#fff',
-              borderRadius: 8,
+              borderRadius: 'var(--radius-control)',
               fontWeight: 700,
               fontSize: 16,
               border: 'none',

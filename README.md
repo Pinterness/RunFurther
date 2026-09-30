@@ -136,3 +136,25 @@ Thêm `--apply` mới ghi vào DB. Script chỉ bổ sung chủ cho giải chưa
 API tiền vé: GET /api/admin/events/:eventId/payments và POST /api/admin/events/:eventId/payments/:paymentId/review, cùng body status/bankReference/reviewNote như nạp ví. Giải bị ẩn/ngừng chặn giao dịch mới; giữ nguyên vé/giao dịch để đối soát và hoàn tiền thủ công. Quyền tổ chức của dữ liệu cũ không tự động được duyệt.
 
 Kiểm tra giao diện mới: npm run test:platform-ui. Chuông thông báo lấy dữ liệu thật, lưu đã đọc trên server và thăm dò mỗi 60 giây khi tab hiển thị.
+
+
+## Ảnh giải và QR tiền vé
+
+Trong /organizer/events/:eventId → Thông tin giải, chủ giải có thể:
+- Tải ảnh bìa/logo JPG, PNG hoặc WebP tối đa 5 MB, xem trước rồi lưu. Ảnh được chuyển thành WebP và lưu MongoDB; cần đưa collection EventImage vào backup.
+- Chọn ngân hàng, nhập số tài khoản/tên người nhận và xem trước QR. Có thể tắt chuyển khoản bằng cách xóa cả cấu hình; người chạy vẫn dùng ví.
+- Duyệt tiền vé tại tab Tiền vé, đối chiếu mã đơn và tài khoản nhận của booking.
+
+QR thanh toán lấy số tiền/mã đơn từ backend. Thông tin ngân hàng được lưu bất biến khi giữ chỗ; sửa cấu hình giải chỉ áp dụng cho đơn mới. Đơn cũ không có snapshot không tự dùng tài khoản mới. Mã hết hạn hoặc giải bị ẩn/ngừng không tiếp tục hiển thị để chuyển tiền.
+
+Ảnh QR tải lỗi vẫn có thông tin chuyển khoản và nút sao chép/thử lại. Bấm “Tôi đã chuyển khoản” chỉ gửi yêu cầu chờ chủ giải đối soát. Chưa có tải biên lai, QR nạp ví hay xác nhận ngân hàng tự động.
+
+Danh sách ngân hàng dùng [API VietQR](https://www.vietqr.io/danh-sach-api/api-danh-sach-ma-ngan-hang/) với cache và snapshot dự phòng. Công thức ảnh dùng [Quick Link](https://www.vietqr.io/danh-sach-api/link-tao-ma-nhanh/). Tên chủ tài khoản vẫn cần được kiểm tra trong ứng dụng ngân hàng.
+
+Chạy npm run test:event-media-ui để kiểm tra giao diện (web đang chạy, Chrome; API giả lập). npm test kiểm tra backend bằng DB tạm, không dùng tài khoản hoặc giao dịch thật.
+
+## Landing 3D
+
+Three.js + GSAP ScrollTrigger điều khiển nhân vật qua 5 trạm (01–05): cuộn/vuốt một lần chạy một chặng, uống nước, nhận race kit và huy chương; camera đổi từ góc nhìn thứ nhất sang bám theo, nhìn bên và trên cao. Chọn cự ly, lịch giải, hướng dẫn và FAQ mở trong khung 3D. Chạy npm run dev:web để xem; có chế độ ít chuyển động và nội dung dự phòng khi thiếu WebGL. Mô hình/sa bàn là minh họa cách điệu.
+
+Kiểm tra bằng npm run test:trail-scene (alias test:hero), test:layout và test:scroll khi web đang chạy. Tài liệu chi tiết ở TECHNOLOGY_AND_LOGIC.md mục 15 và UI_DESIGN.md.

@@ -42,6 +42,11 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/marketplace", marketplaceRoutes);
 app.use("/api/organizations", organizationRoutes);
 app.use("/api/notifications", require("./routes/notificationRoutes"));
+app.use("/api/support", require("./routes/supportRoutes"));
+app.get('/api/media/images/:imageId', require('./controllers/imageController').read);
+app.get('/api/banks', async (_req, res, next) => {
+  try { res.json({ banks: await require('./services/bankService').listBanks() }); } catch (error) { next(error); }
+});
 
 app.get("/health", (_req, res) => {
   res.status(200).json({ status: "ok" });

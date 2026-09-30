@@ -22,7 +22,11 @@ const Organization = require('../src/backend/models/Organization');
 const Application = require('../src/backend/models/OrganizerApplication');
 const { expireBookings } = require('../src/backend/services/bookingService');
 let repl, server, base, seq = 0;
+const nativeFetch = global.fetch;
 before(async () => {
+  global.fetch = (input, options) => String(input) === 'https://api.vietqr.io/v2/banks'
+    ? Promise.resolve(Response.json({ code: '00', data: require('../src/backend/data/banks.json').banks.map(bank => ({ ...bank, transferSupported: 1 })) }))
+    : nativeFetch(input, options);
   repl = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   await mongoose.connect(repl.getUri('runfurther_test'));
   await Promise.all(Object.values(mongoose.models).map(m => m.init()));
@@ -31,6 +35,7 @@ before(async () => {
   base = 'http://127.0.0.1:' + server.address().port + '/api';
 });
 after(async () => {
+  global.fetch = nativeFetch;
   if (server) await new Promise(resolve => server.close(resolve));
   await mongoose.disconnect();
   if (repl) await repl.stop();
@@ -47,7 +52,7 @@ async function fixture(quota = 10) {
   await Application.create({ userId: owner._id, organizationName: 'Fixture org', phone: '0900000000', description: 'Test', status: 'APPROVED' });
   const event = await Event.create({ slug: 'test-' + (++seq), name: 'Test race', createdBy: owner._id, organizerId: org._id, status: 'REGISTRATION_OPEN',
     dateInfo: { registrationStart: new Date(Date.now() - 86400000), registrationEnd: new Date(Date.now() + 86400000), raceDate: new Date(Date.now() + 2 * 86400000) },
-    location: { city: 'Hue', venue: 'Park' } });
+    location: { city: 'Hue', venue: 'Park' }, bankAccountInfo: { bankBin: '970422', bankName: 'MBBank', accountNo: '123456789', accountName: 'TEST ORGANIZER' } });
   const category = await Category.create({ eventId: event._id, code: '21K', name: 'Half', distance: 21, price: 100000, quotaTotal: quota });
   await EventAccount.create({ eventId: event._id, userId: owner._id, employeeName: 'Owner', accountType: 'EVENT_ADMIN', loginCode: 'OWNER' + (++seq), createdBy: owner._id });
   return { u, owner, org, event, category };
@@ -376,6 +381,9 @@ test('Moderation preserves records, blocks commerce and operations, and records 
     assert.equal((await api('/bookings/hold', 'POST', holdBody(f), f.u)).status, 409);
     assert.equal((await api('/bookings/' + held._id + '/confirm', 'POST', { paymentMethod: 'WALLET' }, f.u)).status, 409);
     assert.equal((await api('/bookings/' + held._id + '/confirm', 'POST', { paymentMethod: 'VIETQR' }, f.u)).status, 409);
+    const blocked = await api('/bookings/' + held._id, 'GET', null, f.u);
+    assert.equal(blocked.paymentBlocked, true);
+    assert.equal(blocked.vietQrUrl, null);
     assert.equal((await api('/admin/events/' + f.event._id, 'PATCH', { moderation: { state: 'ACTIVE' }, status: 'REGISTRATION_OPEN' }, f.owner)).status, 409);
     assert.equal((await api('/staff/events/' + f.event._id + '/search?q=test', 'GET', null, f.owner)).status, 409);
     const buyer = await user();
@@ -421,6 +429,77 @@ test('Notifications use actual user records and read state cannot cross accounts
   await api('/notifications/read', 'POST', { keys }, f.u);
   assert.ok((await api('/notifications', 'GET', null, f.u)).notifications.every(n => n.read));
   assert.equal((await api('/notifications')).status, 401);
+});
+
+test('Event image upload decodes real images, enforces ownership and serves safe WebP', async () => {
+  const f = await fixture(), other = await fixture(), moderator = await user('SUPER_ADMIN');
+  const sharp = require('sharp');
+  const png = await sharp({ create: { width: 64, height: 32, channels: 4, background: '#447755' } }).png().toBuffer();
+  const upload = (who, bytes = png, contentType = 'image/png', endpoint = '/admin/events/' + f.event._id + '/images?kind=banner') => fetch(base + endpoint, { method: 'POST', headers: { ...(who ? { Authorization: 'Bearer ' + who.token } : {}), 'Content-Type': contentType }, body: bytes });
+  assert.equal((await upload(null)).status, 401);
+  assert.equal((await upload(other.owner)).status, 403);
+  assert.equal((await upload(moderator)).status, 403);
+  assert.equal((await upload(f.owner, Buffer.from('<svg/>'))).status, 400);
+  assert.equal((await upload(f.owner, Buffer.alloc(5 * 1024 * 1024 + 1))).status, 413);
+  const response = await upload(f.owner);
+  assert.equal(response.status, 201);
+  const image = await response.json();
+  assert.match(image.url, /^\/api\/media\/images\/[a-f0-9]{24}$/);
+  const result = await fetch(base.replace(/\/api$/, '') + image.url);
+  assert.equal(result.headers.get('content-type'), 'image/webp');
+  assert.equal(result.headers.get('cross-origin-resource-policy'), 'cross-origin');
+  assert.equal((await sharp(Buffer.from(await result.arrayBuffer())).metadata()).width, 64);
+  assert.equal((await api('/admin/events/' + other.event._id, 'PATCH', { bannerUrl: image.url }, other.owner)).status, 403);
+  assert.equal((await api('/admin/events/' + f.event._id, 'PATCH', { logoUrl: image.url }, f.owner)).status, 403);
+  assert.equal((await api('/admin/events/' + f.event._id, 'PATCH', { bannerUrl: image.url }, f.owner)).status, 200);
+  assert.equal((await api('/events/' + f.event.slug + '/categories')).event.bannerUrl, image.url);
+  assert.equal((await api('/events/' + f.event.slug)).event.bannerUrl, image.url);
+  assert.equal((await api('/admin/events/' + f.event._id, 'PATCH', { bannerUrl: 'javascript:alert(1)' }, f.owner)).status, 403);
+  assert.equal((await api('/admin/events/' + f.event._id, 'PATCH', { bannerUrl: '' }, f.owner)).status, 200);
+  assert.equal((await upload(f.owner, png, 'image/png', '/admin/images?kind=logo')).status, 201);
+  assert.equal((await upload(f.u, png, 'image/png', '/admin/images?kind=logo')).status, 403);
+});
+
+test('Bank settings validate against the directory; checkout freezes destination and amount', async () => {
+  const f = await fixture();
+  const banks = await api('/banks');
+  assert.ok(banks.banks.some(b => b.bin === '970422'));
+  const bank = { bankBin: '970422', bankName: 'forged name', accountNo: '00123456789', accountName: 'TEST ORGANIZER' };
+  for (const invalid of [{ ...bank, bankBin: '000000' }, { ...bank, accountNo: '../etc' }, { ...bank, accountName: '' }, { bankBin: '970422' }]) {
+    assert.equal((await api('/admin/events/' + f.event._id, 'PATCH', { bankAccountInfo: invalid }, f.owner)).status, 400);
+  }
+  const saved = await api('/admin/events/' + f.event._id, 'PATCH', { bankAccountInfo: bank }, f.owner);
+  assert.equal(saved.status, 200);
+  assert.equal(saved.event.bankAccountInfo.bankName, 'MBBank');
+  const holdResult = await api('/bookings/hold', 'POST', { ...holdBody(f), bankSnapshot: { ...bank, accountNo: 'EVIL' }, finalAmount: 1 }, f.u);
+  assert.equal(holdResult.status, 201);
+  const url = new URL(holdResult.vietQrUrl);
+  assert.equal(url.pathname, '/image/970422-00123456789-compact2.png');
+  assert.equal(url.searchParams.get('amount'), '100000');
+  assert.equal(url.searchParams.get('addInfo'), holdResult.booking.orderCode);
+  await api('/admin/events/' + f.event._id, 'PATCH', { bankAccountInfo: { ...bank, accountNo: '999999999' } }, f.owner);
+  const restored = await api('/bookings/' + holdResult.booking._id, 'GET', null, f.u);
+  assert.equal(restored.bankInfo.accountNo, '00123456789');
+  assert.equal(restored.vietQrUrl, holdResult.vietQrUrl);
+  const pending = await api('/bookings/' + holdResult.booking._id + '/confirm', 'POST', { paymentMethod: 'VIETQR' }, f.u);
+  assert.equal(pending.status, 202);
+  const reviewList = await api('/admin/events/' + f.event._id + '/payments', 'GET', null, f.owner);
+  assert.equal(reviewList.payments[0].bookingId.orderCode, holdResult.booking.orderCode);
+  assert.equal(reviewList.payments[0].bookingId.bankSnapshot.accountNo, '00123456789');
+  assert.equal(await Registration.countDocuments({ 'payment.bookingId': holdResult.booking._id }), 0);
+});
+
+test('Missing or legacy unsnapshotted bank info cannot submit transfers; wallet and free entry still work', async () => {
+  const f = await fixture();
+  await Event.updateOne({ _id: f.event._id }, { $unset: { bankAccountInfo: '' } });
+  const response = await api('/bookings/hold', 'POST', holdBody(f), f.u);
+  assert.equal(response.vietQrUrl, null);
+  assert.equal((await api('/bookings/' + response.booking._id + '/confirm', 'POST', { paymentMethod: 'VIETQR' }, f.u)).status, 409);
+  assert.equal(await Payment.countDocuments({ bookingId: response.booking._id }), 0);
+  assert.equal((await api('/bookings/' + response.booking._id + '/confirm', 'POST', { paymentMethod: 'WALLET' }, f.u)).status, 200);
+  await Category.updateOne({ _id: f.category._id }, { price: 0 });
+  const free = await hold(f);
+  assert.equal((await api('/bookings/' + free._id + '/confirm', 'POST', { paymentMethod: 'VIETQR' }, f.u)).status, 200);
 });
 test('Event creator is assigned server-side; organizer lists only owned events', async () => {
   const a = await ownedEvent(), b = await ownedEvent();

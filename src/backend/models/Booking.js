@@ -64,6 +64,12 @@ const bookingSchema = new mongoose.Schema(
     totalAmount: { type: Number, required: true, min: 0 },
     pointsDiscount: { type: Number, default: 0, min: 0 },
     finalAmount: { type: Number, required: true, min: 0 },
+    // Immutable checkout destination; organizer edits must not redirect an existing order.
+    bankSnapshot: {
+      type: new mongoose.Schema({ bankBin: String, bankName: String, accountNo: String, accountName: String }, { _id: false }),
+      default: null,
+      immutable: true,
+    },
     paymentMethod: {
       type: String,
       enum: ["WALLET", "VIETQR", "RUNPOINTS"],

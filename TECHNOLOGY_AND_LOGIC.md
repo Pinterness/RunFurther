@@ -128,12 +128,14 @@ AND EventAccount.status == ACTIVE
 - UI kiểm thử bằng API fixtures; đây không phải kiểm thử end-to-end với ngân hàng/DB sản xuất.
 - Màn ban tổ chức: tạo đơn vị, tạo/sửa giải, tạo/sửa cự ly, xem VĐV, phân công/khóa/đổi mã nhân sự.
 - Các màn nghiệp vụ nhân sự đang có: check-in và phát race-kit. Chưa có màn riêng cho mọi vai trò như y tế, trạm nước, checkpoint, timing.
-- Chưa có UI đầy đủ đối soát ngân hàng, email xác minh/quên mật khẩu, tự động gửi vé, timing thiết bị, chứng nhận PDF và mạng xã hội người chạy.
+- Đã có UI đối soát thủ công cho chủ giải và Super Admin. Chưa có đối soát ngân hàng tự động, email xác minh/quên mật khẩu, tự động gửi vé, timing thiết bị, chứng nhận PDF và mạng xã hội người chạy.
 - Rate limit hiện dùng bộ nhớ một tiến trình; khi triển khai nhiều instance cần kho dùng chung.
 - JWT trình duyệt hiện lưu localStorage; cơ chế cookie HttpOnly/CSRF và xoay refresh token chưa triển khai.
 - Thư viện không đồng nghĩa đã được kiểm toán bảo mật toàn diện. Danh sách này ghi lại giải pháp đã làm và các giới hạn thực tế.
 
-## 10. Hai người chạy tương tác ở phần mở đầu
+## 10. Hai người chạy tương tác (lịch sử phiên bản SVG)
+
+Mục này ghi lại bản cũ; HeroRunners hiện không được gắn vào landing. Trải nghiệm hiện tại ở mục 15.
 - Minh họa SVG dựng trực tiếp trong mã nguồn, không thêm thư viện animation hoặc video.
 - Tách các nhóm thân, đùi, cẳng chân, cánh tay, cẳng tay và tóc. CSS transform-origin đặt tại các khớp để xoay theo chu kỳ.
 - Keyframes của hai chân/tay lệch nửa chu kỳ; thân nhún và bóng đổ thay đổi theo nhịp. Hai nhân vật có chu kỳ riêng 0,72 và 0,8 giây.
@@ -166,9 +168,91 @@ AND EventAccount.status == ACTIVE
 
 ## 13. Vòng xoay và thông báo
 
-- EventCarousel: chỉ số tuần hoàn modulo, CSS perspective/translate/scale/rotateY để tạo vòng xoay; React quản lý slide hiện tại. Timer 5 giây dừng khi hover, focus, tab ẩn, người dùng dừng hoặc prefers-reduced-motion.
+- EventCarousel: chỉ số tuần hoàn modulo, CSS perspective/translate/scale/rotateY để tạo vòng xoay; React quản lý slide hiện tại. Timer 4,2 giây dừng khi hover, focus, tab ẩn, người dùng dừng hoặc prefers-reduced-motion.
 - Điều khiển bằng nút, phím trái/phải, chấm chọn và vuốt cảm ứng; ngưỡng vuốt 45px, ngăn kích hoạt link sau thao tác vuốt. Dữ liệu lấy từ API giải hiện có, không thêm số liệu/giải giả.
 - Chuông dùng Lucide Bell. API /notifications tổng hợp vé, yêu cầu thanh toán, đơn tổ chức và quyết định kiểm duyệt thực tế. Super Admin thấy thêm đơn tổ chức/nạp ví chờ duyệt.
 - NotificationReceipt có unique index (userId, key), lưu đã đọc tại server. API đánh dấu chỉ nhận key thuộc feed người dùng. Poll 60 giây khi tab hiển thị, tải lại khi mở panel; chưa có WebSocket hay push notification.
 - Avatar là monogram của người dùng: header 28px, hồ sơ 88px hình tròn. Giữ bảng màu và animation quỹ đạo nhẹ.
 - Kiểm thử mới: npm run test:platform-ui (API fixtures, không sửa DB thật); npm test dùng MongoMemoryReplSet để xác nhận phân quyền, giữ dữ liệu khi ngừng giải, đối soát đúng phạm vi và thông báo riêng tư.
+
+
+## 14. Ảnh giải và chuyển khoản tiền vé (28/09/2026)
+
+**Ảnh bìa/logo**
+- EventEditor dùng EventImageUpload: chọn tệp, tải lên, xem trước, đổi hoặc gỡ ảnh; khóa lưu form trong khi tải. URL mới chỉ được gắn vào giải khi chủ giải bấm lưu.
+- POST /api/admin/images?kind=banner|logo dành người đã được duyệt quyền tổ chức trước khi tạo giải. POST /api/admin/events/:eventId/images dành chủ của giải hiện có.
+- Express nhận raw body ảnh, giới hạn 5 MB và 20 lượt/phút/IP. sharp 0.35.4 giải mã nội dung thực, chỉ nhận ảnh tĩnh JPEG/PNG/WebP tối đa 24 megapixel; không nhận SVG/ảnh động hay tệp giả MIME.
+- Xoay theo orientation rồi resize giữ tỷ lệ (ảnh bìa trong 1920×1080, logo trong 512×512), mã hóa WebP quality 85 và bỏ metadata gốc. Không dùng ảnh AI cho luồng này.
+- EventImage lưu binary ảnh đã xử lý trong MongoDB cùng ownerId/kind/kích thước. Không cần dịch vụ lưu trữ ngoài để chạy hiện tại. GET /api/media/images/:imageId trả image/webp, nosniff, CORP cross-origin để dùng với web/API khác cổng, cache immutable vì ID ảnh không đổi nội dung.
+- validateImages kiểm tra ảnh thuộc người đăng nhập và đúng loại banner/logo. Người khác và SUPER_ADMIN không được tải ảnh vào giải hoặc thay ảnh giải.
+- EventPhoto chuẩn hóa URL API và dùng ảnh dự phòng nếu ảnh thiếu/lỗi. Ảnh riêng được dùng ở carousel, danh sách, chi tiết, kết quả và màn đăng ký; logo hiển thị ở chi tiết và đăng ký.
+- Ảnh hiện lưu trong MongoDB, cần tính vào dung lượng/backup. Chưa có tác vụ dọn ảnh tải lên nhưng không được lưu vào giải; khi quy mô tăng có thể chuyển binary sang object storage mà giữ lớp phân quyền.
+
+**Ngân hàng và QR**
+- GET /api/banks lấy danh sách hỗ trợ chuyển khoản từ VietQR, cache 24 giờ; khi lỗi giữ danh sách đã biết và thử lại sau 5 phút. Có snapshot công khai src/backend/data/banks.json để API vẫn hoạt động khi dịch vụ danh sách lỗi.
+- Chọn ngân hàng bằng BIN, server tra danh sách và chuẩn hóa bankName. Số tài khoản giữ dạng string để không mất số 0 đầu, chỉ chữ/số 1–19 ký tự; tên chủ tài khoản 2–100 ký tự. Có thể để trống toàn bộ để không bật chuyển khoản. Chưa tra cứu xác minh tên chủ tài khoản qua ngân hàng.
+- QR xem trước dùng số tiền mẫu 10.000đ, nội dung XEMTRUOC; chỉ để chủ giải kiểm tra cấu hình, không dùng mua vé.
+- Khi giữ chỗ, backend tự chụp bankSnapshot từ tài khoản nhận tiền của giải vào Booking trong cùng transaction. Client không được tự chọn tài khoản nhận, số tiền hoặc nội dung chuyển khoản.
+- bankSnapshot bất biến; đổi tài khoản nhận tiền trên giải không đổi QR của booking cũ. QR dùng bankBin/accountNo trong snapshot, finalAmount do server tính và orderCode của đơn.
+- GET booking trả lại cùng hướng dẫn chuyển khoản; không trả QR khi đơn hết hạn/đã trả tiền hoặc giải bị ẩn/ngừng. Màn thanh toán thăm dò 5 giây và khóa thao tác khi bị chặn.
+- Đơn cũ chưa có snapshot không tự lấy tài khoản mới để tạo QR. Muốn gửi yêu cầu chuyển khoản mới, người dùng cần tạo đơn mới sau khi cấu hình hợp lệ hoặc thanh toán ví. Yêu cầu đối soát cũ đã tồn tại vẫn giữ để chủ giải xử lý.
+- TransferDetails có nút sao chép số tài khoản/số tiền/nội dung bằng Clipboard API, trạng thái thành công hoặc hướng dẫn sao chép thủ công; lỗi tải ảnh QR vẫn hiển thị thông tin ngân hàng, có nút thử lại.
+- Đơn hết hạn ẩn QR và hướng dẫn liên hệ chủ giải nếu đã chuyển tiền. Bấm gửi đối soát chỉ tạo PENDING; UI khóa gửi lặp/thanh toán ví trong lúc chờ, không tự cấp vé. Chủ giải thấy mã đơn và tài khoản nhận đã chụp tại thời điểm đặt để đối chiếu.
+- QR tiền vé là ảnh từ dịch vụ VietQR, khác QR vé vào cổng do thư viện qrcode tạo cục bộ. Không gửi token vé vào cổng cho VietQR.
+- Chưa bổ sung ảnh biên lai, QR nạp ví, webhook xác nhận ngân hàng hoặc hoàn tiền tự động trong đợt này.
+
+Nguồn tham chiếu: [VietQR Bank API](https://www.vietqr.io/danh-sach-api/api-danh-sach-ma-ngan-hang/), [VietQR Quick Link](https://www.vietqr.io/danh-sach-api/link-tao-ma-nhanh/), [sharp constructor](https://sharp.pixelplumbing.com/api-constructor/).
+
+**Kiểm thử**
+- npm test: thêm kiểm tra ảnh giả/quá dung lượng, quyền upload/gắn ảnh, định dạng WebP, ngân hàng không hợp lệ, số 0 đầu tài khoản, snapshot không đổi theo cấu hình và chặn chuyển khoản thiếu cấu hình. Bank API được giả lập trong test; DB dùng MongoMemoryReplSet.
+- npm run test:event-media-ui: kiểm tra upload/xem trước/lưu, chọn ngân hàng, QR, sao chép, trạng thái chờ duyệt, lỗi QR/thử lại/hết hạn và 4 kích thước 1440/768/390/360px. API fixtures, không chuyển tiền thật.
+
+## 15. Hành trình nhân vật 3D và nội dung trong cảnh
+
+**Luồng hiện tại**
+- Landing dùng một khung 3D với 5 trạm đánh số 01–05: xuất phát, trạm nước, cung đường, race kit và về đích. Người xem đứng ở góc nhìn thứ nhất lúc đầu, sau đó camera chuyển sang bám theo nhân vật, nhìn bên, từ trên cao, vòng quanh trạm và nhìn chính diện khi nhận huy chương.
+- Một thao tác cuộn xuống chạy trọn một chặng (khoảng 3–4 giây); ở trạm nước nhân vật dừng uống trong 2 giây, ở race kit/đích có động tác nhận vật phẩm khoảng 1,7 giây. Chỉ sau khi xong mới nhận lệnh chuyển chặng mới. Cuộn lên trở lại trạm trước.
+- Bộ điều khiển gom một đợt wheel/trackpad thành một thao tác bằng khoảng nghỉ 240ms, bỏ các tín hiệu lặp trong lúc đang chạy/làm động tác. Vuốt dọc, PageUp/PageDown, phím lên/xuống, Space và nút trạm trước/tiếp theo cũng dùng cùng luồng.
+- Chỉ chặn thao tác cuộn trong cảnh khi cần chuyển chặng. Ở đầu/cuối vẫn cho rời cảnh theo hướng tương ứng; Ctrl+wheel, thao tác trong form và cuộn bảng nội dung không bị dùng để chuyển trạm. Có nút xem ít chuyển động.
+- GSAP tween vị trí cuộn đến mốc, ease: none; ScrollTrigger pin khung trong 6.000px, không dùng wrapper height thủ công. Không còn scrub liên tục 1 giây của phiên bản trước. Thanh cuộn/native scroll vẫn được đồng bộ với tiến độ thế giới.
+
+**Các mô-đun**
+- TrailScene.jsx: 5 chương HTML, thanh trạm, trạng thái hành động, các bảng nội dung và accessibility.
+- useJourneyController.js: vòng đời WebGL, ScrollTrigger, gesture gate, chạy/đến trạm/làm động tác/nghỉ, tạm dừng khi mở bảng hoặc tab ẩn.
+- createRaceWorld.js: cảnh, ánh sáng/bóng, phối hợp nhân vật và vật phẩm theo trạng thái.
+- raceCameraPath.mjs: đường nhân vật và góc camera bằng CatmullRomCurve3, ánh xạ độ dài cung theo thời điểm. Mốc tiến độ 0 / 0,25 / 0,47 / 0,71 / 1 trùng vị trí các trạm. Các điểm dẫn hướng tránh chạy xuyên bàn nước/hộp race kit.
+- createJourneyRunner.js: mô hình dựng bằng mã, các nhóm khớp háng/gối/vai/khuỷu tay nối liền. Gait chỉ tiến khi nhân vật đang chạy; IK hai khâu đưa cốc lên miệng; nhận túi rồi đeo sau lưng; huy chương đeo trước ngực ở đích, có tư thế ăn mừng.
+- LandingPage.jsx giữ API, state và nghiệp vụ cũ, truyền 4 panel distance/events/guide/faq vào TrailScene; FAQ chứa cả CTA đăng ký cuối trang. Không còn chuỗi section tách bên dưới cảnh.
+
+**Nội dung và khả dụng**
+- Chọn cự ly, lịch giải carousel, cách tham gia và FAQ mở thành bảng HTML cuộn bên trong khung 3D. Nội dung API vẫn có loading/empty/error/retry, tab bàn phím và các liên kết thật.
+- Mở bảng tạm dừng chuyến chạy/cảnh; đóng tiếp tục từ vị trí cũ. Wheel trong bảng chỉ cuộn nội dung, không đổi trạm hoặc cuộn trang nền.
+- Dialog có tên, quản lý focus, giới hạn Tab, Escape đóng và trả focus về nút mở. Chương không hoạt động dùng inert/aria-hidden. HTML không được raster hóa vào canvas nên vẫn đọc/chọn và dùng bàn phím được.
+- Reduced motion, viewport cao ≤650px, không WebGL/mất context hoặc không JavaScript đều có nội dung tĩnh đầy đủ; tất cả bảng trở thành nội dung thường và pin spacer được tháo.
+- Nhân vật/vật phẩm/sa bàn chỉ là minh họa, không cấp race kit, huy chương hoặc tạo booking thật. Quyền lợi và lộ trình thực tế vẫn xem tại trang từng giải.
+
+**Đồ họa và vòng đời**
+- Three.js 0.186.1 + GSAP 3.15.0, import động sau hydration. Không tải model/texture ngoài. Hình ảnh là mô hình 3D cách điệu.
+- Cây/đá dùng InstancedMesh, bụi dùng Points. FogExp2 màu 0x1a1a2e / 0.002; nền cùng màu. HemisphereLight và DirectionalLight với bóng PCFShadowMap radius 1.5 (r186 đã bỏ tên PCFSoftShadowMap).
+- Huy chương dùng MeshPhysicalMaterial metalness 0.8 / roughness 0.2 và reflection tạo cục bộ; áo có sheen. DPR giới hạn 1.5 desktop, 1.25 mobile; shadow map chỉ cập nhật khi pose/cảnh thay đổi.
+- IntersectionObserver/Page Visibility dừng render ngoài viewport/tab ẩn; GSAP chuyến chạy/hành động cũng tạm dừng khi tab ẩn hoặc dialog mở. ResizeObserver có chặn kích thước không đổi và gộp refresh.
+- Cleanup hủy tween, listener wheel/touch/keyboard/visibility, observer và animation frame, revert pin spacer trước khi đổi bố cục, dispose toàn bộ geometry/material/texture/shadow/reflection target/renderer. Generation guard tránh import cũ tạo canvas sau unmount.
+
+**Kiểm tra**
+- test:trail-scene (alias test:hero): một wheel đến trạm tiếp theo, tín hiệu dồn không bỏ trạm, uống nước/nhận kit/medal, đi ngược, bàn phím, pin và fallback trên nhiều kích thước.
+- test:scroll: nội dung trong dialog, tải API muộn, giữ lựa chọn, focus/Escape, cuộn panel độc lập, reduced motion và không JS.
+- test:layout: tab cự ly/hướng dẫn, FAQ, login/menu/account và trạng thái API trong bố cục mới.
+- test:camera: 4 bài kiểm tra, lấy 10.001 mẫu đường nhân vật/camera, checkpoint, tránh vật cản, góc nhìn thứ nhất/thứ ba, đảo chiều và clamp đầu/cuối.
+- test:platform-ui: carousel trong bảng lịch giải cùng các kiểm tra nền tảng cũ. build:web kiểm tra production.
+- Chưa đo FPS trên điện thoại thật. Ảnh núi và HeroRunners SVG cũ giữ trong nguồn để tái sử dụng, không phải cảnh hiện tại.
+
+Tham chiếu: [GSAP ScrollTrigger](https://gsap.com/docs/v3/Plugins/ScrollTrigger/), [Three.js](https://threejs.org/docs/).
+
+
+## 16. Đồng bộ giao diện theo landing
+
+- Checkout và màn đăng nhập/check-in/phát race kit của nhân sự dùng token và nút chung; giữ nguyên màu báo lỗi/thành công và toàn bộ logic nghiệp vụ.
+- Token màu và chuyển động tập trung tại globals.css; site.css dùng lại cho header, footer, nút, form, thẻ giải, bảng và ví. Header/footer xanh rừng tối nối với cảnh 3D; bề mặt nội dung màu giấy để đọc/nhập liệu. Không ảnh hưởng API hoặc phân quyền.
+- Trang đăng nhập bỏ màu xanh dương và inline style cũ, dùng bố cục onboarding với nền đường rừng, input có autocomplete và lỗi role=alert. Giữ nguyên đích chuyển tiếp sau đăng nhập.
+- EventCarousel giữ chỉ số modulo và CSS perspective; chuyển thẻ 440ms bằng translate3d/scale/rotateY cùng opacity, tự chuyển sau 4,2 giây. Điều khiển ở trên bộ thẻ, mobile bố trí hai hàng. Giữ dừng khi hover/focus, nút dừng, vuốt, bàn phím và reduced motion.
+- Kiểm tra: test:layout, test:runner-ui, test:platform-ui, test:event-media-ui, build:web; kiểm tra trực tiếp vị trí nút carousel và tràn ngang ở 1440/1024/768/390/360px.
