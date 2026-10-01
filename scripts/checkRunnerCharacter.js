@@ -1,6 +1,8 @@
 const { chromium } = require('@playwright/test');
 const fs = require('node:fs');
 const assert = require('node:assert/strict');
+const path = require('node:path');
+const cinematic = process.argv.includes('--cinematic');
 
 // Isolated asset review: no app data, API requests or production debug hooks.
 (async () => {
@@ -15,11 +17,21 @@ const assert = require('node:assert/strict');
         'three.module.js': 'node_modules/three/build/three.module.js',
         'three.core.js': 'node_modules/three/build/three.core.js',
         'runner.js': 'src/components/site/createJourneyRunner.js',
+        'cinematic.js': 'src/components/site/createCinematicRunner.js',
+        'createJourneyRunner': 'src/components/site/createJourneyRunner.js',
+        'createRunnerAccessories': 'src/components/site/createRunnerAccessories.js',
       };
       if (files[filename]) return route.fulfill({ contentType: 'application/javascript', body: fs.readFileSync(files[filename], 'utf8') });
-      return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><head><style>body{margin:0;background:#e8eae2}canvas{display:block}.labels{position:absolute;bottom:24px;inset-inline:0;display:flex;flex-direction:row-reverse;font:15px sans-serif;color:#304333}.labels span{flex:1;text-align:center}</style></head><body><div class="labels"><span>Stand</span><span>Run / contact</span><span>Run / recovery</span><span>Drink</span><span>Collect kit</span><span>Finish / backpack</span></div><script type="module">
+      if (filename === 'assets/models/runner-casual.glb') return route.fulfill({ contentType: 'model/gltf-binary', body: fs.readFileSync('public/assets/models/runner-casual.glb') });
+      if (filename.startsWith('addons/')) {
+        const root = path.resolve('node_modules/three/examples/jsm'), file = path.resolve(root, filename.slice(7));
+        if (!file.startsWith(root + path.sep) || !file.endsWith('.js')) return route.abort();
+        return route.fulfill({ contentType: 'application/javascript', body: fs.readFileSync(file, 'utf8') });
+      }
+      return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><head><style>body{margin:0;background:#e8eae2}canvas{display:block}.labels{position:absolute;bottom:24px;inset-inline:0;display:flex;flex-direction:row-reverse;font:15px sans-serif;color:#304333}.labels span{flex:1;text-align:center}</style></head><body><div class="labels"><span>Stand</span><span>Run / contact</span><span>Run / recovery</span><span>Drink</span><span>Collect kit</span><span>Finish / backpack</span></div><script type="importmap">{"imports":{"three":"/three.module.js","three/addons/":"/addons/"}}</script><script type="module">
         import * as THREE from './three.module.js';
         import { createJourneyRunner } from './runner.js';
+        ${cinematic ? "import { createRiggedAthlete } from './cinematic.js'; import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';" : ''}
         const resources = new Set(), keep = value => (resources.add(value), value);
         const renderer = new THREE.WebGLRenderer({ antialias:true, preserveDrawingBuffer:true });
         renderer.setSize(1500,600); renderer.setPixelRatio(1); renderer.shadowMap.enabled=true;
@@ -32,7 +44,7 @@ const assert = require('node:assert/strict');
         const floor=new THREE.Mesh(keep(new THREE.PlaneGeometry(80,80)),keep(new THREE.MeshStandardMaterial({color:'#dce0d3',roughness:1})));
         floor.rotation.x=-Math.PI/2; floor.receiveShadow=true; scene.add(floor);
         const poses=[{}, {run:1,gait:0}, {run:1,gait:1.8,receiveKit:1}, {drink:1}, {receiveKit:.55}, {receiveKit:1,medal:1,celebrate:1}];
-        const runners=poses.map((pose,index)=>{const actor=createJourneyRunner({THREE,keep});actor.group.position.x=(index-2.5)*1.2;actor.update(pose);scene.add(actor.group);return actor;});
+        const runners=await Promise.all(poses.map(async(pose,index)=>{const actor=${cinematic ? "createRiggedAthlete({THREE,gltf:await new GLTFLoader().loadAsync('/assets/models/runner-casual.glb')})" : 'createJourneyRunner({THREE,keep})'};actor.group.position.x=(index-2.5)*1.2;scene.add(actor.group);for(let frame=0;frame<30;frame++)actor.update({...pose,time:frame/60});return actor;}));
         const camera=new THREE.OrthographicCamera(-3.65,3.65,1.46,-1.46,.1,100);
         camera.position.set(0,2.7,-12);camera.lookAt(0,.9,0);
         window.renderView=angle=>{runners.forEach(actor=>actor.group.rotation.y=angle);renderer.render(scene,camera);};
@@ -44,9 +56,9 @@ const assert = require('node:assert/strict');
     fs.mkdirSync('artifacts', { recursive: true });
     for (const [name, angle] of [['front', 0], ['side', Math.PI / 2], ['back', Math.PI]]) {
       await page.evaluate(angle => window.renderView(angle), angle);
-      await page.screenshot({ path: 'artifacts/runner-review-' + name + '.png' });
+      await page.screenshot({ path: 'artifacts/' + (cinematic ? 'cinematic-runner-' : 'runner-review-') + name + '.png' });
     }
     assert.deepEqual(errors, []);
-    console.log('PASS: six character poses rendered from front, side and back. Review artifacts/runner-review-*.png.');
+    console.log('PASS: six character poses rendered from front, side and back. Review artifacts/' + (cinematic ? 'cinematic-runner-' : 'runner-review-') + '*.png.');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

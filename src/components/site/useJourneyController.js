@@ -33,6 +33,7 @@ export default function useJourneyController({ root, canvasHost, simple, failed,
         let alive = true, frame = 0, resizeFrame = 0, visible = true, lastTime = 0, lastSize = '';
         let trigger, observer, resize, travel, action, busy = false, current = 0, lastPhase = -1;
         let lastWheel = -Infinity, touchStart = null, lastProgress = 0, movingUntil = 0;
+        let refreshing = false, refreshProgress = null;
         let paused = Boolean(panelRef.current);
         const state = { progress: 0, running: 0, gait: 0, travelDirection: 1, actionProgress: 0, actionIndex: 0, kitCollected: false, medalAwarded: false };
         const world = createRaceWorld(canvasHost.current, () => { if (alive) setFailed(true); });
@@ -165,8 +166,26 @@ export default function useJourneyController({ root, canvasHost, simple, failed,
         trigger = ScrollTrigger.create({
           trigger: stage, pin: true, pinSpacing: true, start: () => 'top ' + (header?.getBoundingClientRect().height || 0),
           end: '+=6000', anticipatePin: 1, invalidateOnRefresh: true,
-          onUpdate: self => sync(self.progress),
-          onRefresh: self => { node.dataset.scrollStart = String(self.start); node.dataset.scrollEnd = String(self.end); world.resize(); sync(self.progress); },
+          onUpdate: self => { if (!refreshing && !ScrollTrigger.isRefreshing) sync(self.progress); },
+          onRefreshInit: self => {
+            refreshing = true;
+            // Pin measurements temporarily remove the scroll runway. Preserve the
+            // journey while inside it; transient zero progress must not lose kit.
+            refreshProgress = scrollY >= self.start - 3 && scrollY <= self.end + 3 ? state.progress : null;
+            // Responsive header height can shift scroll anchoring by a few pixels
+            // before refresh starts. An arrived runner stays on its exact stop.
+            if (refreshProgress !== null && !busy && Math.abs(refreshProgress - stops[current]) < .02) refreshProgress = stops[current];
+          },
+          onRefresh: self => {
+            node.dataset.scrollStart = String(self.start); node.dataset.scrollEnd = String(self.end);
+            if (refreshProgress !== null) {
+              self.scroll(self.start + (self.end - self.start) * refreshProgress);
+              self.update();
+            }
+            refreshing = false;
+            sync(refreshProgress ?? self.progress); refreshProgress = null;
+            world.resize();
+          },
         });
         controller.current = {
           go: move,

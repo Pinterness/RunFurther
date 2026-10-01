@@ -336,8 +336,49 @@ Tham chiếu adapter: [OpenAI Text generation](https://developers.openai.com/api
 - Đo bằng Chrome/API fixtures ở 1440/768/390/360px: form ngân hàng cách hàng nút 20px, nút quản lý giải cách nhau 12px và cùng trục giữa; nút Thử lại/Quay về cách 20px.
 - `npm run test:support-ui`, `npm run test:support-chat`, `npm run test:support` (17/17), `npm test` (34/34) và `npm run build:web` đều đạt. Không gửi yêu cầu hỗ trợ, gọi AI hay giao dịch thật trong các kiểm tra.
 
-**Hướng nâng cấp điện ảnh — đề xuất, chưa triển khai**
+**Hướng nâng cấp điện ảnh**
 
-“4D” không phải một chế độ sửa lỗi của Three.js. Với mục tiêu sống động hơn, hướng tiếp theo là model GLB có skeleton/skin chuẩn, các clip Idle/Run/Drink/ReceiveKit/Celebrate được dựng và kiểm tra trong công cụ 3D, sau đó chuyển động bằng `AnimationMixer` và hòa trộn giữa clip. Balo cần có dây được gắn/skin theo thân, vật cầm tay gắn đúng xương bàn tay. Giữ camera theo hành trình, tối ưu model/texture và fallback cho máy yếu. Nâng cấp này cần tài sản 3D phù hợp; chưa thêm model bên ngoài vào dự án.
+“4D” được hiểu ở đây là trải nghiệm 3D có chuyển động theo thời gian và tương tác. Bản thử dùng model GLB và môi trường điện ảnh đã được triển khai ở mục 19. Hướng nâng cấp tiếp theo là tài sản vận động viên chuyên dụng với các clip Drink/ReceiveKit/Celebrate được dựng riêng; bản thử hiện tại kết hợp clip chạy với IK cho động tác tại trạm.
 
 Tham chiếu: [Three.js SkinnedMesh](https://threejs.org/docs/pages/SkinnedMesh.html), [Animation System](https://threejs.org/manual/pages/animation-system.html), [GLTFLoader](https://threejs.org/docs/pages/GLTFLoader.html).
+
+## 19. Bản thử trải nghiệm điện ảnh (“4D”)
+
+**Phạm vi đã triển khai**
+
+- Trang chủ tự dùng phiên bản mới khi có WebGL và người dùng cho phép chuyển động. Giữ 5 trạm 01–05, camera từ góc thứ nhất sang bám theo/nhìn bên/trên cao, các bảng nội dung HTML và nút ít chuyển động.
+- `createCinematicRunner.js` tải model local bằng `GLTFLoader`, dùng `AnimationMixer` hòa trộn Idle_Neutral/Run. Nhân vật có da liền và bộ xương, áo cam, quần xanh rừng và giày theo bảng màu RunFurther. Model vẫn cách điệu, không phải người thật hay motion capture.
+- Nguồn: **Casual Character / Casual2 của Quaternius**, CC0, thuộc Ultimate Modular Men. Model chuẩn bị sẵn ở `public/assets/models/runner-casual.glb`; dung lượng 901.768 byte, không có texture/URL phụ thuộc bên ngoài. Giấy phép, nguồn và SHA-256 ở `runner-casual.LICENSE.md` trong cùng thư mục.
+- `scripts/prepareRunnerAsset.mjs` tái tạo file từ nguồn có kiểm tra hash: giữ Idle, Idle_Neutral, Interact, Run, Walk, Wave; loại dữ liệu animation không dùng. Không thay mesh, trọng số da, keyframe giữ lại hoặc bind matrices. Runtime hiện dùng Idle_Neutral và Run; không trình bày các clip còn lại như động tác đã tích hợp.
+
+**Rig, động tác và phụ kiện**
+
+- Model được giữ nguyên transform của armature gốc; một nhóm bọc chuẩn hóa chiều cao 1,8m, bàn chân ở y≈0 và hướng nhìn từ +Z sang -Z. Root ngoài vẫn do đường camera/hành trình sở hữu.
+- Clip chạy lấy pha từ `gait` hiện có; mixer có trọng số chuyển dần khi chạy/dừng. Đây là hành trình minh họa có khoảng cách/thời gian rút gọn, chưa phải mô phỏng tốc độ chạy hoặc chống trượt chân theo quãng đường vật lý.
+- Sau khi đánh giá clip, IK hai khâu điều chỉnh tay để uống nước, nhận kit và giơ tay về đích. Mỗi frame khôi phục pose nền trước khi áp dụng IK, tránh tích lũy sai góc. Tư thế nắm tay lấy từ clip Run cho cốc/túi.
+- `createRunnerAccessories.js` tạo bảng số 01, cốc, túi kit, balo và huy chương. Socket cốc/túi thuộc WristR/WristL; balo/bảng số/huy chương thuộc Chest. Ma trận socket đổi từ hệ mét của nhân vật về hệ xương có scale riêng. Quai balo liên tục qua vai và quay về túi; vị trí bảng số được căn lại để không xuyên áo.
+
+**Cảnh và camera**
+
+- `createCinematicAtmosphere.js`: shader bầu trời bình minh, mặt trời/ánh sáng chân trời, ba lớp núi liên tục, rừng thông instanced ở xa, sương thấp bên đường và bụi nhỏ. Fog/background cùng màu `#b8bda7`, density `.0065`.
+- Rừng gần dùng hình cành phân tầng; đường và mặt đất có texture nhiễu tạo tại chỗ với UV theo đường để tăng chi tiết. Không tải thêm HDR, ảnh nền hay mô hình cảnh từ bên ngoài.
+- Ánh sáng bán cầu và nắng ấm, phản xạ môi trường nhẹ, shadow bias nhỏ hơn. Camera chuyển êm về FOV 50 ở trạm cận cảnh rồi trở về 58 khi chạy; không thay đường spline hay vị trí trạm.
+- DPR giới hạn 1,25 trên mobile / 1,5 desktop. Số cây, sương và bụi xa giảm trên mobile; không thêm bloom/DOF toàn màn hình. Bóng của nhân vật đứng nghỉ cập nhật tối đa 8 lần/giây; khi chuyển động vẫn cập nhật theo pose.
+
+**Tải và vòng đời**
+
+- Nhân vật tạo bằng mã là dự phòng trong lúc tải hoặc khi model thiếu/lỗi. Lỗi model không làm mất canvas, nội dung, thao tác cuộn hay các trạm. Timeout tải 10 giây, giới hạn file 3 MiB; chỉ tải tài sản local.
+- Rời trang, mất WebGL hoặc bật ít chuyển động: abort fetch, dừng/uncache mixer, dispose tài nguyên độc nhất và đóng ImageBitmap nếu có. Nếu parse hoàn thành sau khi đã dọn cảnh, kết quả được dispose ngay và không gắn vào cảnh cũ.
+- Cập nhật shadow map ngay khi thay model. Loader không tự tạo vòng render riêng; dùng RAF của hành trình, cùng cơ chế dừng khi tab ẩn hoặc mở bảng nội dung.
+- Khi ScrollTrigger đo lại pin sau resize, giữ tiến trình trong hành trình và bỏ qua cập nhật tạm thời trong lúc đo. Nhờ đó không nhảy về trạm 01, mất vật phẩm hoặc lệch khỏi mốc nhận huy chương khi đổi kích thước màn hình.
+
+**Kiểm tra và cách xem**
+
+- Mở `/`, cuộn một lần hoặc chọn trạm để xem nhân vật mới. Nút **Xem ít chuyển động** dùng giao diện tĩnh như trước.
+- `npm run test:cinematic`: kiểm tra model, skin/clip, 180 mẫu chạy, phụ kiện theo xương, giữ root, fallback và dispose kết quả tải muộn.
+- `npm run test:cinematic-visual`: ảnh sáu tư thế từ trước/bên/sau tại `artifacts/cinematic-runner-*.png`.
+- `npm run test:cinematic-ui`: kiểm tra GLB thực, các trạm, mobile, reduced motion, lỗi model và rời trang khi đang tải; lưu ảnh `artifacts/cinematic-*.png`.
+- Kiểm tra hồi quy dùng `test:camera`, `test:character`, `test:trail-scene` và `build:web`. Test trình duyệt dùng API fixtures, không ghi dữ liệu người dùng hay thanh toán.
+- Kết quả 01/10/2026: 13/13 kiểm tra model/nhân vật/camera đạt; `test:cinematic-ui`, `test:trail-scene` và `build:web` đạt. Đã xem ảnh sáu tư thế từ ba phía và ảnh về đích 360px để xác nhận quai balo, bảng số và huy chương. Chưa đo FPS trên điện thoại vật lý.
+
+Nguồn model: [Quaternius](https://quaternius.com/packs/ultimatemodularcharacters.html), [model và giấy phép](https://poly.pizza/m/kZ3DmIoGip). Tham chiếu kỹ thuật: [GLTFLoader](https://threejs.org/docs/pages/GLTFLoader.html), [AnimationAction](https://threejs.org/docs/pages/AnimationAction.html), [ScrollTrigger refresh](https://gsap.com/docs/v3/Plugins/ScrollTrigger/refresh()/).

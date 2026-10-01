@@ -188,3 +188,11 @@ Kiểm tra:
 Chi tiết dữ liệu, API và giới hạn xem `TECHNOLOGY_AND_LOGIC.md` mục 17; quy tắc giao diện xem `UI_DESIGN.md`.
 
 Kiểm tra widget người dùng bằng `npm run test:support-chat`. Nhân vật 3D có kiểm tra chuyển động `npm run test:character` và bản dựng sáu tư thế/ba góc nhìn `npm run test:character-visual` (Chrome, không cần API). Ảnh kiểm tra ở `artifacts/runner-review-*.png`. Chi tiết sửa khớp, quai balo, khoảng cách nút và hướng nâng cấp model có bộ xương xem mục 18 của `TECHNOLOGY_AND_LOGIC.md`.
+
+## Bản thử điện ảnh trên trang chủ
+
+Chạy `npm run dev:web`, mở trang chủ và cuộn đến trạm đầu để xem nhân vật GLB có bộ xương, chạy/uống nước/nhận kit/huy chương trong cảnh bình minh có sương và núi xa. Giữ nút **Xem ít chuyển động** và nhân vật dự phòng khi tải model lỗi. Đây là bản 3D cách điệu, chưa phải nhân vật người thật.
+
+Model Quaternius CC0 được lưu local (khoảng 881 KiB), không cần tài khoản dịch vụ 3D. Nguồn và giấy phép tại `public/assets/models/runner-casual.LICENSE.md`; cách chuẩn bị tài sản tại `scripts/prepareRunnerAsset.mjs`.
+
+Kiểm tra bằng `npm run test:cinematic`, `npm run test:cinematic-visual` và `npm run test:cinematic-ui` (lệnh UI cần web đang chạy). Chi tiết kỹ thuật và giới hạn ở mục 19 của `TECHNOLOGY_AND_LOGIC.md`.

@@ -155,7 +155,16 @@ Kiểm tra 1440, 1024, 768, 390, 360px; không tràn ngang; đăng nhập/đăng
 
 - Kiểm tra nhân vật từ trước, sau và bên hông ở cả sáu trạng thái: đứng, hai pha chạy, uống nước, nhận kit và ăn mừng. Áo không nhìn xuyên; bề mặt gối/khuỷu liền khi gập; đế chân tiếp đất không xuyên đường.
 - Quai balo phải đi liên tục qua vai và có hai đầu gắn vào túi. Cốc đưa đến miệng, dây huy chương nối quanh cổ; không dùng hiệu ứng ánh sáng để che lỗi hình học.
-- Giữ phong cách cách điệu hiện tại. Hướng người thật/điện ảnh cần model có bộ xương và bộ động tác được thiết kế riêng; chưa đưa model này vào bản đang chạy.
+- Giữ phong cách cách điệu. Bản thử điện ảnh bên dưới dùng model có bộ xương; hướng người thật cần tài sản và bộ động tác chuyên dụng hơn.
 - Nhóm nút dùng khoảng cách tối thiểu 12px, căn giữa theo chiều cao và xuống dòng trên mobile; giữa vùng nhập/nội dung với hàng hành động là 20px. Nút “Lịch sử” cùng hàng với nút kiểm duyệt. Nút trong thông báo lỗi có khoảng thở riêng, không dính câu thông báo.
 - CSS hộp thư quản trị dùng tên riêng cho danh sách, tin nhắn và trạng thái, tránh ảnh hưởng widget hỗ trợ nổi.
 - Đã kiểm tra khoảng cách ở 1440/768/390/360px. Chat được kiểm tra nhập/gửi, thử lại, đổi tài khoản, yêu cầu nhân viên, cuộn riêng, Escape và màn hình nhỏ bằng `npm run test:support-chat`; hộp thư bằng `npm run test:support-ui`.
+
+## Bản thử điện ảnh
+
+- Dùng vận động viên có bộ xương, da liền và chuyển động chạy sẵn. Trang phục cam đất/xanh rừng thống nhất với giao diện. Dáng người cách điệu, không quảng bá như ảnh người thật.
+- Không khí bình minh: trời sáng dịu, núi xa theo lớp, rừng thông, sương thấp và bụi bắt sáng. Sương giữ nhẹ, chữ/nút và động tác của nhân vật vẫn phải đọc được.
+- Góc cận ở các trạm có chuyển tiêu cự nhẹ để thấy động tác. Không thêm rung camera, flash toàn màn hình hoặc âm thanh tự chạy.
+- Bảng số, dây balo và huy chương phải nằm trên trang phục; cốc theo bàn tay và tới miệng. Kiểm tra trực tiếp từ trước/bên/sau sau mỗi lần thay model hoặc socket.
+- Không chặn nội dung trong lúc tải model. Tải lỗi dùng nhân vật dự phòng; ít chuyển động/thiếu WebGL vẫn có ảnh và nội dung HTML đầy đủ.
+- Bản mới là một thử nghiệm 3D tương tác theo hướng điện ảnh. Chưa có nhân vật photoreal, quần áo mô phỏng vật lý, động tác mocap chuyên dụng hay hậu kỳ DOF/bloom nặng.
