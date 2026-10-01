@@ -136,3 +136,26 @@ Kiểm tra 1440, 1024, 768, 390, 360px; không tràn ngang; đăng nhập/đăng
 - Nền xanh đêm, đường đất cam, sương/bụi và bóng đổ mềm; giữ phong cách 3D cách điệu. Sa bàn, race kit và huy chương là minh họa, không phải quyền lợi được cam kết của một giải cụ thể.
 - Có nút Xem ít chuyển động; reduced motion, màn hình thấp, thiếu/mất WebGL hoặc tắt JS đều giữ nội dung đầy đủ trong bố cục tĩnh, không giữ khoảng cuộn trống.
 - Dùng test:trail-scene, test:camera, test:layout, test:scroll và test:platform-ui để kiểm tra.
+
+## Trợ lý và hỗ trợ khách hàng
+
+- Nút **Hỗ trợ** gọn ở góc dưới phải trên các trang site, dùng cùng xanh rừng, nền giấy và màu cam nhấn. Trên landing có vị trí riêng tránh thanh điều khiển hành trình. Mobile giới hạn bảng theo viewport/safe area, nội dung chat cuộn bên trong.
+- Bảng có hai lựa chọn: **Trợ lý nhanh** và **Nhân viên hỗ trợ**. Khách được hỏi hướng dẫn; gửi yêu cầu cho nhân viên cần đăng nhập và giữ đường dẫn quay lại. Không hiển thị nhân viên đang online hoặc thời gian phản hồi chưa được bảo đảm.
+- Gắn nhãn **Hướng dẫn tự động** cho câu trả lời từ dữ liệu nội bộ, chỉ dùng **Trợ lý AI** khi provider thật đã phản hồi. Nhãn nằm ở từng câu trả lời để không nhầm các phản hồi trước khi chuyển chế độ.
+- Gợi ý câu hỏi ngắn giúp bắt đầu; nguồn tham khảo là liên kết nội bộ đến đúng màn chức năng. Nội dung được render như văn bản, không chạy HTML/Markdown do người dùng hoặc AI cung cấp. Khi chưa có dữ kiện, nói rõ giới hạn và cho phép gửi yêu cầu hỗ trợ.
+- Có trạng thái đang tìm câu trả lời, lỗi và Thử lại; khóa gửi khi request đang chạy. Thử lại không nhân đôi câu hỏi trong lịch sử. Khi đổi tài khoản, xóa dữ liệu cuộc chat và hủy request đang chạy.
+- Bảng chat có tên qua `aria-labelledby`, lịch sử dùng `role=log`/`aria-live=polite`, focus rõ. Mở đưa focus vào tiêu đề; Escape đóng và trả focus về nút Hỗ trợ. Đây là bảng không modal, không khóa người dùng trong chat. Reduced motion bỏ hiệu ứng mở bảng.
+- Tab nhân viên giải thích rõ trao đổi qua yêu cầu, không phải chat trực tiếp. Người dùng nhập tiêu đề/nội dung, có thể dùng câu hỏi gần nhất làm bản nháp; chỉ nội dung họ xác nhận gửi được tạo thành yêu cầu, không tự đẩy toàn bộ lịch sử AI cho nhân viên.
+- Yêu cầu có trạng thái Chờ phản hồi / Đã phản hồi / Đã đóng. Người dùng xem lịch sử, bổ sung nội dung và Cập nhật; yêu cầu đã đóng không còn form bổ sung. Không hứa tự chuyển yêu cầu sang chủ giải hoặc tự xử lý hoàn tiền.
+- Super Admin dùng `/admin` → **Hỗ trợ khách**: danh sách và hội thoại cạnh nhau trên desktop, xếp dọc trên mobile; lọc trạng thái, phân trang, Làm mới, phản hồi, đóng/mở lại. Bản nháp giữ riêng theo yêu cầu; lỗi gửi giữ nội dung để thử lại. Khóa thao tác xung đột trong lúc đang lưu.
+- Hộp thư không chứa thao tác sửa giải, cấp vé, duyệt tiền vé hoặc thay đổi phân quyền. Tên/email người gửi chỉ phục vụ nhân viên hỗ trợ có quyền tại hộp thư.
+- Kiểm tra logic bằng `npm run test:support`; kịch bản giao diện `npm run test:support-ui` dùng Chrome và API fixtures, cần web đang chạy. Kiểm tra giao diện có kết quả riêng, không được coi là đã đạt chỉ vì backend đạt.
+
+## Nhân vật và khoảng cách thao tác sau rà soát
+
+- Kiểm tra nhân vật từ trước, sau và bên hông ở cả sáu trạng thái: đứng, hai pha chạy, uống nước, nhận kit và ăn mừng. Áo không nhìn xuyên; bề mặt gối/khuỷu liền khi gập; đế chân tiếp đất không xuyên đường.
+- Quai balo phải đi liên tục qua vai và có hai đầu gắn vào túi. Cốc đưa đến miệng, dây huy chương nối quanh cổ; không dùng hiệu ứng ánh sáng để che lỗi hình học.
+- Giữ phong cách cách điệu hiện tại. Hướng người thật/điện ảnh cần model có bộ xương và bộ động tác được thiết kế riêng; chưa đưa model này vào bản đang chạy.
+- Nhóm nút dùng khoảng cách tối thiểu 12px, căn giữa theo chiều cao và xuống dòng trên mobile; giữa vùng nhập/nội dung với hàng hành động là 20px. Nút “Lịch sử” cùng hàng với nút kiểm duyệt. Nút trong thông báo lỗi có khoảng thở riêng, không dính câu thông báo.
+- CSS hộp thư quản trị dùng tên riêng cho danh sách, tin nhắn và trạng thái, tránh ảnh hưởng widget hỗ trợ nổi.
+- Đã kiểm tra khoảng cách ở 1440/768/390/360px. Chat được kiểm tra nhập/gửi, thử lại, đổi tài khoản, yêu cầu nhân viên, cuộn riêng, Escape và màn hình nhỏ bằng `npm run test:support-chat`; hộp thư bằng `npm run test:support-ui`.

@@ -20,6 +20,17 @@ function dateLabel(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
+function boundedHistory(messages) {
+  const history = [];
+  let size = 0;
+  for (const item of messages.slice(-10).reverse()) {
+    const content = item.content.slice(0, 4000);
+    if (size + content.length > 16000) break;
+    history.unshift({ role: item.role, content });
+    size += content.length;
+  }
+  return history;
+}
 
 export default function SupportChat() {
   const pathname = usePathname();
@@ -29,12 +40,13 @@ export default function SupportChat() {
   const [mode, setMode] = useState('guide'), [suggestions, setSuggestions] = useState(initialPrompts);
   const [chatBusy, setChatBusy] = useState(false), [failedChat, setFailedChat] = useState(null);
   const [tickets, setTickets] = useState([]), [ticketView, setTicketView] = useState('list');
+  const [ticketPage, setTicketPage] = useState(1), [ticketPages, setTicketPages] = useState(1);
   const [selectedTicket, setSelectedTicket] = useState(null), [ticketLoading, setTicketLoading] = useState(false);
   const [ticketBusy, setTicketBusy] = useState(false), [ticketError, setTicketError] = useState('');
   const [subject, setSubject] = useState(''), [ticketDraft, setTicketDraft] = useState(''), [replyDraft, setReplyDraft] = useState('');
   const trigger = useRef(null), heading = useRef(null), transcript = useRef(null), ticketTranscript = useRef(null);
   const mounted = useRef(true), epoch = useRef(0), requests = useRef(new Set());
-  const chatRequest = useRef(null), ticketMutation = useRef(null), detailRequest = useRef(null);
+  const chatRequest = useRef(null), ticketMutation = useRef(null), detailRequest = useRef(null), listRequest = useRef(null);
   const selectedId = useRef(''), lastAuth = useRef(null), syncAuth = useRef(null), nextMessageId = useRef(0);
   selectedId.current = selectedTicket?._id || '';
 
@@ -47,7 +59,7 @@ export default function SupportChat() {
   const finish = useCallback(request => { clearTimeout(request.timer); requests.current.delete(request); }, []);
   const abortAll = useCallback(() => {
     requests.current.forEach(request => { clearTimeout(request.timer); request.controller.abort(); });
-    requests.current.clear(); chatRequest.current = null; ticketMutation.current = null; detailRequest.current = null;
+    requests.current.clear(); chatRequest.current = null; ticketMutation.current = null; detailRequest.current = null; listRequest.current = null;
   }, []);
   const close = useCallback(() => { setOpen(false); trigger.current?.focus(); }, []);
 
@@ -61,6 +73,7 @@ export default function SupportChat() {
         epoch.current += 1; abortAll(); lastAuth.current = token;
         setMessages([]); setDraft(''); setMode('guide'); setSuggestions(initialPrompts); setFailedChat(null); setChatBusy(false);
         setTickets([]); setSelectedTicket(null); setTicketView('list'); setTicketError(''); setTicketBusy(false); setTicketLoading(false);
+        setTicketPage(1); setTicketPages(1);
         setSubject(''); setTicketDraft(''); setReplyDraft(''); setAuthVersion(value => value + 1);
       }
       setAuthenticated(Boolean(token));
@@ -88,7 +101,7 @@ export default function SupportChat() {
   async function sendChat(message, retry = null) {
     const text = message.trim();
     if (!text || text.length > 2000 || chatRequest.current) return;
-    const history = retry?.history || messages.slice(-10).map(item => ({ role: item.role, content: item.content }));
+    const history = retry?.history || boundedHistory(messages);
     const request = begin(); chatRequest.current = request; setChatBusy(true); setFailedChat(null);
     if (!retry) { setMessages(items => [...items, { id: ++nextMessageId.current, role: 'user', content: text }]); setDraft(''); }
     try {
@@ -110,15 +123,20 @@ export default function SupportChat() {
   }
 
   const loadTickets = useCallback(async () => {
-    const request = begin(); setTicketLoading(true); setTicketError('');
+    if (listRequest.current) { listRequest.current.controller.abort(); finish(listRequest.current); }
+    const request = begin(); listRequest.current = request; setTicketLoading(true); setTicketError('');
     try {
-      const data = await api('/support/tickets', { signal: request.controller.signal });
-      if (current(request) && !request.controller.signal.aborted) setTickets(Array.isArray(data.tickets) ? data.tickets : []);
+      const data = await api('/support/tickets?page=' + ticketPage, { signal: request.controller.signal });
+      if (current(request) && !request.controller.signal.aborted && listRequest.current === request) {
+        const pages = Math.max(1, Number(data.totalPages) || 1);
+        setTickets(Array.isArray(data.tickets) ? data.tickets : []); setTicketPages(pages);
+        if (ticketPage > pages) setTicketPage(pages);
+      }
     } catch (error) {
       if (current(request) && (!request.controller.signal.aborted || request.timedOut)) setTicketError(request.timedOut ? 'Chưa tải được yêu cầu. Vui lòng thử lại.' : error.message);
-    } finally { finish(request); if (current(request)) setTicketLoading(false); }
+    } finally { finish(request); if (listRequest.current === request) { listRequest.current = null; if (current(request)) setTicketLoading(false); } }
     return request;
-  }, [begin, current, finish]);
+  }, [begin, current, finish, ticketPage]);
 
   const refreshTicket = useCallback(async id => {
     if (!id || detailRequest.current || ticketMutation.current) return;
@@ -134,7 +152,10 @@ export default function SupportChat() {
   useEffect(() => {
     if (!open || view !== 'tickets' || !authenticated || ticketView !== 'list') return;
     loadTickets();
-  }, [open, view, authenticated, authVersion, ticketView, loadTickets]);
+    return () => {
+      if (listRequest.current) { listRequest.current.controller.abort(); finish(listRequest.current); listRequest.current = null; }
+    };
+  }, [open, view, authenticated, authVersion, ticketView, loadTickets, finish]);
   useEffect(() => {
     if (!open || view !== 'tickets' || !authenticated || ticketView !== 'detail' || !selectedTicket?._id) return;
     const id = selectedTicket._id;
@@ -188,7 +209,7 @@ export default function SupportChat() {
       </> : !authenticated ? <div className="support-ticket-content support-ticket-guest"><span className="support-eyebrow">NHÂN VIÊN HỖ TRỢ</span><h3>Để chúng tôi tiếp tục<br />đồng hành cùng bạn.</h3><p>Đăng nhập để gửi yêu cầu và xem phản hồi từ nhân viên. Bạn vẫn có thể hỏi trợ lý mà không cần tài khoản.</p><Link className="button-dark" href={'/login?next=' + encodeURIComponent(pathname)} onClick={close}>Đăng nhập để gửi yêu cầu</Link><button className="support-text-button" type="button" onClick={() => setView('assistant')}>Tiếp tục với trợ lý</button></div> : <div className="support-ticket-content">
         <p className="support-ticket-note">Nhân viên phản hồi qua yêu cầu hỗ trợ; đây không phải cuộc trò chuyện trực tiếp.</p>
         {ticketError && <div className="support-error" role="alert"><p>{ticketError}</p></div>}
-        {ticketView === 'list' && <><div className="support-ticket-toolbar"><h3>Yêu cầu của bạn</h3><button className="support-text-button" type="button" disabled={ticketLoading} onClick={loadTickets}>Cập nhật</button></div><button type="button" className="support-new-ticket" onClick={startTicket}>Gửi yêu cầu mới <span aria-hidden="true">↗</span></button>{ticketLoading && <p className="support-status" role="status">Đang tải yêu cầu…</p>}{!ticketLoading && !tickets.length && <p className="support-empty">Bạn chưa có yêu cầu hỗ trợ nào.</p>}<ul className="support-ticket-list">{tickets.map(ticket => <li key={ticket._id}><button type="button" onClick={() => { setSelectedTicket(ticket); setReplyDraft(''); setTicketError(''); setTicketView('detail'); }}><strong>{ticket.subject}</strong><span><i data-status={ticket.status}>{statuses[ticket.status] || 'Đang xử lý'}</i><time>{dateLabel(ticket.updatedAt)}</time></span></button></li>)}</ul></>}
+        {ticketView === 'list' && <><div className="support-ticket-toolbar"><h3>Yêu cầu của bạn</h3><button className="support-text-button" type="button" disabled={ticketLoading} onClick={loadTickets}>Cập nhật</button></div><button type="button" className="support-new-ticket" onClick={startTicket}>Gửi yêu cầu mới <span aria-hidden="true">↗</span></button>{ticketLoading && <p className="support-status" role="status">Đang tải yêu cầu…</p>}{!ticketLoading && !tickets.length && <p className="support-empty">Bạn chưa có yêu cầu hỗ trợ nào.</p>}<ul className="support-ticket-list">{tickets.map(ticket => <li key={ticket._id}><button type="button" onClick={() => { setSelectedTicket(ticket); setReplyDraft(''); setTicketError(''); setTicketView('detail'); }}><strong>{ticket.subject}</strong><span><i data-status={ticket.status}>{statuses[ticket.status] || 'Đang xử lý'}</i><time>{dateLabel(ticket.updatedAt)}</time></span></button></li>)}</ul>{ticketPages > 1 && <nav className="support-ticket-pagination" aria-label="Trang yêu cầu của bạn"><button className="quiet-button" type="button" disabled={ticketLoading || ticketPage <= 1} onClick={() => setTicketPage(page => page - 1)}>← Trước</button><span>{ticketPage} / {ticketPages}</span><button className="quiet-button" type="button" disabled={ticketLoading || ticketPage >= ticketPages} onClick={() => setTicketPage(page => page + 1)}>Sau →</button></nav>}</>}
         {ticketView === 'new' && <><button type="button" className="support-text-button" onClick={() => { setTicketView('list'); setTicketError(''); }}>← Yêu cầu của bạn</button><h3 className="support-ticket-title">Gửi nhân viên hỗ trợ</h3><p className="support-small-copy">Chỉ nội dung bạn nhập dưới đây được gửi cho nhân viên.</p>{lastQuestion && <button type="button" className="support-use-question" onClick={() => { setSubject(lastQuestion.slice(0, 160)); setTicketDraft(lastQuestion); }}>Dùng câu hỏi gần nhất</button>}<form className="support-ticket-form" onSubmit={event => submitTicket(event)}><label htmlFor="support-subject">Tiêu đề</label><input id="support-subject" required maxLength={160} value={subject} onChange={event => setSubject(event.target.value)} placeholder="Ví dụ: Chưa thấy vé sau chuyển khoản" /><label htmlFor="support-ticket-message">Nội dung cần hỗ trợ</label><textarea id="support-ticket-message" required rows={6} maxLength={4000} value={ticketDraft} onChange={event => setTicketDraft(event.target.value)} placeholder="Mô tả sự việc và mã đơn nếu có…" /><button className="button-dark" type="submit" disabled={ticketBusy || !subject.trim() || !ticketDraft.trim()}>{ticketBusy ? 'Đang gửi…' : 'Gửi yêu cầu'}</button></form></>}
         {ticketView === 'detail' && selectedTicket && <><div className="support-ticket-toolbar"><button className="support-text-button" type="button" onClick={() => { setTicketView('list'); setTicketError(''); }}>← Yêu cầu của bạn</button><button className="support-text-button" type="button" disabled={ticketBusy} onClick={() => refreshTicket(selectedTicket._id)}>Cập nhật</button></div><h3 className="support-ticket-title">{selectedTicket.subject}</h3><p className="support-ticket-state">{statuses[selectedTicket.status] || 'Đang xử lý'}</p><div className="support-ticket-transcript" ref={ticketTranscript} role="log" aria-live="polite" aria-relevant="additions text" aria-label="Trao đổi với nhân viên" tabIndex={0}>{(selectedTicket.messages || []).map((message, index) => <article key={message._id || index} className={'support-message support-message-' + (message.role === 'customer' ? 'user' : 'assistant')}><small>{message.role === 'customer' ? 'Bạn' : 'Nhân viên RunFurther'}<time>{dateLabel(message.createdAt)}</time></small><p>{message.content}</p></article>)}</div>{selectedTicket.status === 'CLOSED' ? <div className="support-closed"><p>Yêu cầu đã đóng. Nếu cần thêm hỗ trợ, bạn có thể gửi yêu cầu mới.</p><button className="support-text-button" type="button" onClick={startTicket}>Gửi yêu cầu mới ↗</button></div> : <form className="support-ticket-form support-ticket-reply" onSubmit={event => submitTicket(event, true)}><label htmlFor="support-reply">Bổ sung thông tin</label><textarea id="support-reply" required rows={3} maxLength={4000} value={replyDraft} onChange={event => setReplyDraft(event.target.value)} placeholder="Nhập nội dung bạn muốn bổ sung…" /><button className="button-dark" type="submit" disabled={ticketBusy || !replyDraft.trim()}>{ticketBusy ? 'Đang gửi…' : 'Gửi bổ sung'}</button></form>}</>}
       </div>}

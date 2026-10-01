@@ -71,6 +71,9 @@ body:has(.immersive-journey[data-enhanced=true]) .support-widget:not([data-open=
 .support-ticket-list button>span { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:8px; font-size:9px; color:var(--muted); }
 .support-ticket-list i { font-style:normal; color:var(--accent-strong); }
 .support-ticket-list i[data-status=ANSWERED] { color:#47643c; }.support-ticket-list i[data-status=CLOSED] { color:var(--muted); }
+.support-ticket-pagination { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:20px; }
+.support-ticket-pagination>span { flex-shrink:0; white-space:nowrap; color:var(--muted); font-size:11px; }
+.support-ticket-pagination .quiet-button { padding:9px 12px; font-size:11px; }
 .support-ticket-title { font-size:19px; line-height:1.4; font-weight:600; letter-spacing:-.025em; overflow-wrap:anywhere; margin:12px 0; }
 .support-small-copy { font-size:11px; line-height:1.7; color:var(--muted); }
 .support-use-question { margin-top:12px; border:1px solid var(--border); border-radius:var(--radius-control); background:var(--surface-muted); color:var(--forest); padding:8px 10px; font-size:10px; }

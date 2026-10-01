@@ -8,10 +8,10 @@
 .support-inbox-filters button[aria-pressed="true"] { background:#2d4231; border-color:#2d4231; color:#fff9eb; }
 .support-inbox-filters button:hover:not(:disabled) { border-color:#80906f; }
 .support-inbox-grid { display:grid; grid-template-columns:minmax(250px,.75fr) minmax(0,1.4fr); border:1px solid #d8decd; border-radius:10px; overflow:hidden; background:#fffefa; }
-.support-ticket-list { min-width:0; background:#f1f3ea; border-right:1px solid #d8decd; }
+.support-inbox-ticket-list { min-width:0; background:#f1f3ea; border-right:1px solid #d8decd; }
 .support-list-heading { padding:22px; display:flex; align-items:center; justify-content:space-between; gap:12px; border-bottom:1px solid #e1e5d8; }
 .support-list-heading h3 { font-size:15px; }.support-list-heading>span { color:#6b765e; font-size:11px; }
-.support-ticket-list ul { list-style:none; margin:0; padding:0; max-height:620px; overflow-y:auto; }
+.support-inbox-ticket-list ul { list-style:none; margin:0; padding:0; max-height:620px; overflow-y:auto; }
 .support-ticket-row { display:block; width:100%; text-align:left; padding:20px 22px; background:transparent; border-left:3px solid transparent; border-bottom:1px solid #e1e5d8; color:inherit; }
 .support-ticket-row:hover:not(:disabled) { background:#e9eddf; }
 .support-ticket-row[aria-pressed="true"] { background:#fffefa; border-left-color:#cc6543; }
@@ -31,13 +31,13 @@
 .support-thread-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; padding:24px 28px; border-bottom:1px solid #e1e5d8; }
 .support-thread-heading>div { min-width:0; }.support-thread-heading h3 { margin:12px 0 8px; overflow-wrap:anywhere; scroll-margin-top:110px; }
 .support-thread-heading p { color:#6b785d; font-size:11px; line-height:1.8; overflow-wrap:anywhere; }.support-thread-heading p span { display:block; }
-.support-status { display:inline-flex; font-size:10px; padding:5px 8px; border-radius:4px; background:#e5ecdb; color:#4f663f; }
-.support-status-open { background:#f9e6d6; color:#9a5430; }.support-status-closed { background:#e9ece5; color:#69725f; }
-.support-message-log { list-style:none; margin:0; padding:28px; display:flex; flex-direction:column; gap:18px; max-height:520px; overflow-y:auto; overscroll-behavior:contain; }
-.support-message { width:92%; padding:16px 18px; background:#edf1e5; border-radius:2px 12px 12px; }
-.support-message-staff { align-self:flex-end; background:#2e4634; color:#fbf7e9; border-radius:12px 2px 12px 12px; }
-.support-message-author { display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px 12px; font-size:10px; line-height:1.6; }
-.support-message-author time { opacity:.65; }.support-message p { font-size:12px; line-height:1.9; white-space:pre-wrap; overflow-wrap:anywhere; margin-top:8px; }
+.support-inbox-status { display:inline-flex; font-size:10px; padding:5px 8px; border-radius:4px; background:#e5ecdb; color:#4f663f; }
+.support-inbox-status-open { background:#f9e6d6; color:#9a5430; }.support-inbox-status-closed { background:#e9ece5; color:#69725f; }
+.support-inbox-message-log { list-style:none; margin:0; padding:28px; display:flex; flex-direction:column; gap:18px; max-height:520px; overflow-y:auto; overscroll-behavior:contain; }
+.support-inbox-message { width:92%; padding:16px 18px; background:#edf1e5; border-radius:2px 12px 12px; }
+.support-inbox-message-staff { align-self:flex-end; background:#2e4634; color:#fbf7e9; border-radius:12px 2px 12px 12px; }
+.support-inbox-message-author { display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px 12px; font-size:10px; line-height:1.6; }
+.support-inbox-message-author time { opacity:.65; }.support-inbox-message p { font-size:12px; line-height:1.9; white-space:pre-wrap; overflow-wrap:anywhere; margin-top:8px; }
 .support-write-status { margin:0; padding:0 28px; min-height:22px; font-size:11px; color:#5a7347; line-height:1.8; }
 .support-reply { padding:20px 28px 28px; border-top:1px solid #e8ebdf; }
 .support-reply label { display:block; font-size:12px; font-weight:600; margin-bottom:10px; }
@@ -48,5 +48,5 @@
 .support-closed-note { font-size:12px; line-height:1.8; background:#f0f3e8; padding:20px 28px; margin-top:16px; color:#69765c; }
 .support-inbox :is(button,a):focus-visible { outline:2px solid #b86441; outline-offset:3px; }
 .support-inbox button:disabled { cursor:default; }
-@media(max-width:900px) { .support-inbox-grid { grid-template-columns:minmax(230px,.85fr) minmax(0,1.2fr); }.support-thread-heading { flex-wrap:wrap; padding:22px; }.support-message-log,.support-reply { padding:22px; }.support-message { width:98%; } }
-@media(max-width:650px) { .support-inbox-heading { flex-wrap:wrap; gap:16px; }.support-inbox-heading h2 { font-size:23px; }.support-inbox-grid { grid-template-columns:minmax(0,1fr); }.support-ticket-list { border-right:0; border-bottom:1px solid #d8decd; }.support-ticket-list ul { max-height:290px; }.support-ticket-detail,.support-detail-placeholder { min-height:300px; }.support-inbox-filters { gap:6px; }.support-inbox-filters button { padding:9px 13px; font-size:11px; }.support-message-log { max-height:450px; padding:20px 16px; }.support-reply { padding:20px 16px; }.support-thread-heading { padding:20px 16px; }.support-reply>div { gap:10px; }.support-reply .button-dark { padding:12px 15px; }.support-list-heading,.support-ticket-row { padding:18px; } }
+@media(max-width:900px) { .support-inbox-grid { grid-template-columns:minmax(230px,.85fr) minmax(0,1.2fr); }.support-thread-heading { flex-wrap:wrap; padding:22px; }.support-inbox-message-log,.support-reply { padding:22px; }.support-inbox-message { width:98%; } }
+@media(max-width:650px) { .support-inbox-heading { flex-wrap:wrap; gap:16px; }.support-inbox-heading h2 { font-size:23px; }.support-inbox-grid { grid-template-columns:minmax(0,1fr); }.support-inbox-ticket-list { border-right:0; border-bottom:1px solid #d8decd; }.support-inbox-ticket-list ul { max-height:290px; }.support-ticket-detail,.support-detail-placeholder { min-height:300px; }.support-inbox-filters { gap:6px; }.support-inbox-filters button { padding:9px 13px; font-size:11px; }.support-inbox-message-log { max-height:450px; padding:20px 16px; }.support-reply { padding:20px 16px; }.support-thread-heading { padding:20px 16px; }.support-reply>div { gap:10px; }.support-reply .button-dark { padding:12px 15px; }.support-list-heading,.support-ticket-row { padding:18px; } }

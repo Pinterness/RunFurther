@@ -256,3 +256,88 @@ Tham chiếu: [GSAP ScrollTrigger](https://gsap.com/docs/v3/Plugins/ScrollTrigge
 - Trang đăng nhập bỏ màu xanh dương và inline style cũ, dùng bố cục onboarding với nền đường rừng, input có autocomplete và lỗi role=alert. Giữ nguyên đích chuyển tiếp sau đăng nhập.
 - EventCarousel giữ chỉ số modulo và CSS perspective; chuyển thẻ 440ms bằng translate3d/scale/rotateY cùng opacity, tự chuyển sau 4,2 giây. Điều khiển ở trên bộ thẻ, mobile bố trí hai hàng. Giữ dừng khi hover/focus, nút dừng, vuốt, bàn phím và reduced motion.
 - Kiểm tra: test:layout, test:runner-ui, test:platform-ui, test:event-media-ui, build:web; kiểm tra trực tiếp vị trí nút carousel và tràn ngang ở 1440/1024/768/390/360px.
+
+## 17. Trợ lý hướng dẫn và yêu cầu hỗ trợ
+
+**Hai luồng riêng biệt**
+
+- `SupportChat.jsx` được gắn trong layout site: khách có thể hỏi **Trợ lý nhanh**; người đăng nhập có thêm **Nhân viên hỗ trợ** để tạo yêu cầu và đọc phản hồi. Chat tự động không tự tạo yêu cầu cho nhân viên. Người dùng xem, sửa và gửi nội dung bằng form riêng.
+- Yêu cầu được lưu trong `SupportTicket`, với trạng thái `OPEN` / `ANSWERED` / `CLOSED`. Khách chỉ đọc và bổ sung vào yêu cầu của mình. SUPER_ADMIN tiếp nhận tại `/admin` → **Hỗ trợ khách**, lọc/phân trang, trả lời, đóng hoặc mở lại.
+- Đây là trao đổi không đồng thời, chưa phải chat trực tiếp có nhân viên online. Phía khách cập nhật chi tiết mỗi 15 giây khi đang mở hội thoại và tab hiển thị; có nút Cập nhật. Hộp thư quản trị có nút Làm mới.
+- Quyền hỗ trợ nền tảng không thay đổi quyền nghiệp vụ giải: chủ giải vẫn duyệt tiền vé; Super Admin chỉ duyệt nạp ví. Yêu cầu hỗ trợ chưa tự phân công/chuyển đến EVENT_ADMIN, chưa có thông báo email, đính kèm hay cam kết thời gian phản hồi.
+
+**API và quyền**
+
+Tất cả endpoint dưới đây dùng tiền tố `/api/support`, trả `Cache-Control: no-store`.
+
+| Endpoint | Quyền và hành vi |
+| --- | --- |
+| `POST /chat` | Công khai; nếu có Bearer token thì xác thực token, không hạ token sai thành khách. Trả `{ reply, mode, sources, suggestions }`. |
+| `POST /tickets` | Người đăng nhập tạo yêu cầu; server tự gán chủ và vai trò tin nhắn `customer`. |
+| `GET /tickets`, `GET /tickets/:ticketId` | Người đăng nhập chỉ xem yêu cầu của mình; truy cập ID của người khác trả 404. |
+| `POST /tickets/:ticketId/messages` | Chủ yêu cầu bổ sung nội dung nếu chưa đóng/chưa đủ 100 tin nhắn. |
+| `GET /admin/tickets`, `GET /admin/tickets/:ticketId` | Chỉ SUPER_ADMIN xem hộp thư hỗ trợ. |
+| `POST /admin/tickets/:ticketId/messages` | SUPER_ADMIN phản hồi với vai trò `support`, chuyển trạng thái thành `ANSWERED`. |
+| `PATCH /admin/tickets/:ticketId` | SUPER_ADMIN đóng (`CLOSED`) hoặc mở lại (`OPEN`). Không sửa dữ liệu giải/vé/thanh toán. |
+
+- `userId`, vai trò và trạng thái do người gửi tự chèn trong body không được dùng để cấp quyền. Phân quyền đọc/ghi luôn dựa vào JWT và bộ lọc sở hữu của server.
+- Tiêu đề tối đa 160 ký tự, mỗi tin nhắn hỗ trợ tối đa 4.000 ký tự, một yêu cầu tối đa 100 tin nhắn. Điều kiện chưa đóng và chưa đạt giới hạn nằm ngay trong `findOneAndUpdate`, bảo vệ cả khi gửi đồng thời.
+- Danh sách mỗi trang tối đa 20 yêu cầu. Index theo chủ/thời gian và trạng thái/thời gian. Nội dung người dùng gửi cho nhân viên được lưu MongoDB; cần đưa collection này vào chính sách sao lưu và lưu giữ dữ liệu.
+
+**Hướng dẫn tự động và AI tùy chọn**
+
+- `supportKnowledge.js` chứa nội dung tiếng Việt đối chiếu với controller hiện có: tài khoản, mua vé, giữ chỗ 10 phút, đối soát tiền vé, ví, Marketplace, hồ sơ, vé/kit, quyền tổ chức, lịch giải và kết quả. Tìm kiếm chuẩn hóa chữ có/không dấu và chấm điểm cụm từ; khi bằng điểm, ưu tiên nghiệp vụ cụ thể hơn hướng dẫn mua vé chung.
+- Câu hỏi ngắn nối tiếp có thể dùng câu hỏi gần nhất của người dùng để chọn chủ đề. Nội dung `assistant` do client gửi không được coi là nguồn kiến thức. Không có kết quả phù hợp thì nói rõ chưa có thông tin xác thực và gợi ý gửi yêu cầu hỗ trợ.
+- `mode: guide` là câu trả lời từ hướng dẫn/truy vấn nội bộ. `mode: ai` chỉ xuất hiện khi nhận được câu trả lời hợp lệ từ provider. Không đặt nhãn AI cho câu trả lời dự phòng.
+- Chỉ bật adapter OpenAI khi server có đủ `SUPPORT_AI_PROVIDER=openai`, `OPENAI_API_KEY` và `OPENAI_MODEL`. Không có model mặc định tự suy đoán. Khi thiếu cấu hình, provider lỗi/quá thời gian/quá tải hoặc phản hồi không hợp lệ, tiếp tục trả hướng dẫn nội bộ.
+- Adapter dùng `fetch` đến endpoint cố định `https://api.openai.com/v1/responses`, `store: false`, giới hạn 700 output tokens, thời gian chờ tối đa 15 giây và tối đa 4 lời gọi đồng thời trong một tiến trình. Không có tools, hành động ghi DB, URL tùy ý hoặc conversation ID. Đọc các khối `output_text` trong toàn bộ `output`, không giả định phần tử đầu tiên là câu trả lời.
+- Khóa và model chỉ nằm phía server, tuyệt đối không dùng biến `NEXT_PUBLIC_*` cho khóa. `store: false` không phải cam kết xóa mọi loại log của nhà cung cấp. Chưa cấu hình khóa/model thật và chưa kiểm chứng lời gọi AI thật trong đợt triển khai này; kiểm thử provider sử dụng phản hồi giả lập.
+
+**Dữ liệu và giới hạn truy xuất**
+
+- Câu hỏi hiện tại tối đa 2.000 ký tự xuyên suốt controller/service/provider; không cắt mất phần sau 1.200 ký tự. Lịch sử đầu vào tối đa 10 tin, mỗi tin 4.000 ký tự, tổng 16.000 ký tự. Role ngoài `user` / `assistant` bị từ chối.
+- Truy vấn giải công khai dùng cùng `availableEvent` với API giải, loại `HIDDEN` / `SUSPENDED` và chỉ nhận trạng thái `PUBLISHED`, `REGISTRATION_OPEN`, `REGISTRATION_CLOSED`, `COMPLETED`. Tối đa 5 giải, 40 cự ly, mỗi truy vấn `maxTimeMS=1500`; chỉ chọn tên, slug, lịch, thành phố và giá/cự ly, không chọn ngân hàng/chủ giải.
+- Kiểm tra vé cá nhân đòi hỏi ID người dùng đã xác thực. Chỉ đọc tối đa 20 trạng thái vé và 20 trạng thái/hạn đơn gần nhất, lọc đúng `userId`; không lấy mã QR, BIB, mã đơn, hồ sơ cá nhân hay thông tin ngân hàng. Tóm tắt này luôn trả nội bộ trước khi gọi AI; không kết luận đã thanh toán nếu truy vấn lỗi.
+- Provider chỉ nhận câu hỏi hiện tại cùng hướng dẫn phù hợp và dữ liệu giải công khai đã chọn. Không gửi lịch sử chat, dữ liệu vé riêng tư hoặc nội dung hộp thư hỗ trợ. Câu hỏi nhận diện được email/số điện thoại/mã nhạy cảm được giữ ở chế độ hướng dẫn; đây là bộ lọc quy tắc, không phải nhận diện hoàn chỉnh mọi dữ liệu cá nhân trong văn bản tự do.
+- Nội dung chat nhanh chỉ ở state giao diện, không được lưu thành cuộc hội thoại trong MongoDB. Đổi phiên đăng nhập xóa state và hủy request cũ để tránh phản hồi tài khoản trước đi vào tài khoản mới. Câu hỏi gửi qua AI khi bật provider vẫn được xử lý theo chính sách của provider.
+- Rate limit theo IP trong bộ nhớ từng tiến trình: chat 12/phút, tạo yêu cầu 6/phút; bổ sung/phản hồi/đóng/mở lại dùng chung bộ giới hạn 30/phút. Nếu triển khai nhiều instance cần kho giới hạn và điều phối đồng thời dùng chung; giới hạn hiện tại chưa phải hạn mức chi phí toàn nền tảng.
+
+**Kiểm tra**
+
+- `npm run test:support`: đã đạt 17/17 tại lần cập nhật này. Bao gồm 13 kiểm tra service với DB/fetch giả lập và 4 kiểm tra API trên MongoMemoryReplSet riêng: sở hữu, vai trò, phản hồi, đóng/mở lại, giới hạn đồng thời 100 tin, phiên bị khóa và validation.
+- Provider được kiểm tra cấu hình bắt buộc, body Responses, đọc nhiều output, timeout/lỗi/phản hồi quá dài, tối đa 4 lời gọi đồng thời, câu hỏi đủ 2.000 ký tự và dữ liệu nhạy cảm ở cuối câu. Không gọi API AI hoặc giao dịch thật.
+- `npm run test:support-ui`: kịch bản Chrome/API fixtures cho hộp thư hỗ trợ; cần web đang chạy. Kết quả kiểm tra giao diện được xác nhận riêng khi chạy lệnh này, không suy ra từ kiểm tra backend.
+
+Tham chiếu adapter: [OpenAI Text generation](https://developers.openai.com/api/docs/guides/text), [Responses API migration](https://developers.openai.com/api/docs/guides/migrate-to-responses).
+
+## 18. Sửa nhân vật, khớp và khoảng cách thao tác
+
+**Nhân vật hiện tại** (`createJourneyRunner.js`)
+
+- Sửa chiều tam giác/normal của áo để bề mặt hướng ra ngoài; phần thân không còn nhìn xuyên ở góc sau. Vai có tiết diện riêng, quần và đai eo che gốc chân khi gập háng.
+- Tay/chân dùng `THREE.SkinnedMesh` với bề mặt liền, `Bone` và trọng số chuyển dần qua khớp. Mỗi chi có hai xương điều khiển; khuỷu/gối không còn là chỗ nối giữa hai khối rời. Skeleton được đưa vào danh sách tài nguyên cần `dispose`, cùng geometry/material.
+- Chân dùng inverse kinematics hai khâu: tính đích bàn chân theo pha tiếp đất/thu chân, giải vị trí gối bằng định luật cosin, rồi đặt quaternion hông/gối/cổ chân. Pha tiếp đất chiếm 42% chu kỳ; hai chân lệch nửa chu kỳ. Tính thêm độ cao đế giày và đổi đích về hệ tọa độ thân để tránh xuyên mặt đường khi người nghiêng.
+- Tay dùng IK hai khâu và nội suy quaternion (`slerp`) để đưa cốc gần miệng và giữ túi khi nhận kit. Hạ vị trí cốc từ vùng mắt xuống miệng.
+- Quai balo là dải hình học chạy theo `CatmullRomCurve3`: từ mép trên túi, qua vai, xuống ngực và về mép dưới túi. Quai, khóa ngực và balo cùng thuộc thân, không bị tay kéo lệch khi chạy. Dây huy chương cũng là một dải liên tục quanh cổ.
+- Giữ API `group/update`, hướng tiến `-Z`, quyền đặt vị trí/quay nhân vật ở `createRaceWorld`, camera/ScrollTrigger và chế độ ít chuyển động như trước. Đây vẫn là nhân vật cách điệu dựng bằng mã, chưa phải model người thật hay animation motion capture.
+
+**Khoảng cách giao diện**
+
+- Nhóm hành động quản lý giải căn giữa theo chiều cao, có `gap:12px` và cho phép xuống dòng. Cách lưới nhập ngân hàng hoặc nội dung thẻ giải 20px.
+- Khoảng cách trên của liên kết thẻ chỉ áp dụng cho con trực tiếp, tránh đẩy riêng nút “Lịch sử” xuống dưới. Trang lỗi có nhóm nút Thử lại/Quay về cách nhau 20px; nút thử lại trong thông báo có dòng riêng.
+- Nút trong dialog được xuống dòng khi thiếu chiều ngang. Tách tên CSS hội thoại/huy hiệu/danh sách của hộp thư quản trị khỏi widget để tránh làm tràn nút phân trang hoặc đổi kích thước tin nhắn.
+- Chat giới hạn lịch sử gửi lên đúng 10 tin/16.000 ký tự; danh sách yêu cầu của người dùng có phân trang và hủy request danh sách cũ khi đổi trang/đóng bảng.
+
+**Kiểm chứng lần sửa này**
+
+- `npm run test:character`: 3 kiểm tra đạt; chiều mặt áo, 361 mẫu bước chạy, đế giày sát mặt đường, chuyển động liên tục và giữ transform của cảnh.
+- `npm run test:character-visual`: dựng sáu tư thế từ trước/bên/sau, ảnh tại `artifacts/runner-review-*.png`; đã xem trực tiếp để kiểm tra khớp, áo/quần, cốc và quai.
+- `npm run test:camera`: 4/4; `npm run test:trail-scene`: đi đủ 5 trạm, hành động, quay lại, responsive, giảm chuyển động và dọn WebGL.
+- Đo bằng Chrome/API fixtures ở 1440/768/390/360px: form ngân hàng cách hàng nút 20px, nút quản lý giải cách nhau 12px và cùng trục giữa; nút Thử lại/Quay về cách 20px.
+- `npm run test:support-ui`, `npm run test:support-chat`, `npm run test:support` (17/17), `npm test` (34/34) và `npm run build:web` đều đạt. Không gửi yêu cầu hỗ trợ, gọi AI hay giao dịch thật trong các kiểm tra.
+
+**Hướng nâng cấp điện ảnh — đề xuất, chưa triển khai**
+
+“4D” không phải một chế độ sửa lỗi của Three.js. Với mục tiêu sống động hơn, hướng tiếp theo là model GLB có skeleton/skin chuẩn, các clip Idle/Run/Drink/ReceiveKit/Celebrate được dựng và kiểm tra trong công cụ 3D, sau đó chuyển động bằng `AnimationMixer` và hòa trộn giữa clip. Balo cần có dây được gắn/skin theo thân, vật cầm tay gắn đúng xương bàn tay. Giữ camera theo hành trình, tối ưu model/texture và fallback cho máy yếu. Nâng cấp này cần tài sản 3D phù hợp; chưa thêm model bên ngoài vào dự án.
+
+Tham chiếu: [Three.js SkinnedMesh](https://threejs.org/docs/pages/SkinnedMesh.html), [Animation System](https://threejs.org/manual/pages/animation-system.html), [GLTFLoader](https://threejs.org/docs/pages/GLTFLoader.html).

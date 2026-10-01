@@ -24,7 +24,10 @@
     "test:trail-scene": "node scripts/checkTrailScene.js",
     "test:camera": "node --test tests/race-camera.test.mjs",
     "test:support": "node --test tests/support.test.js tests/support-service.test.js",
-    "test:support-ui": "node scripts/checkSupportUI.js"
+    "test:support-ui": "node scripts/checkSupportUI.js",
+    "test:character": "node --test tests/runner-character.test.mjs",
+    "test:character-visual": "node scripts/checkRunnerCharacter.js",
+    "test:support-chat": "node scripts/checkSupportChat.js"
   },
   "dependencies": {
     "autoprefixer": "^10.6.1",

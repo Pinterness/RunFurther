@@ -1,5 +1,6 @@
 // Answers are curated against the local controllers, not generated policies.
 // Keep links within existing application routes; no claims of automatic refunds.
+const SUPPORT_MESSAGE_LIMIT = 2000;
 const SUPPORT_KNOWLEDGE = [
   {
     id: 'account', title: 'Đăng ký và đăng nhập',
@@ -18,14 +19,14 @@ const SUPPORT_KNOWLEDGE = [
   {
     id: 'hold', title: 'Giữ chỗ và đơn hết hạn',
     terms: ['giữ chỗ', 'hết hạn', '10 phút', 'hết giờ', 'đơn expired', 'hết thời gian'],
-    answer: 'Mỗi đơn giữ chỗ có thời hạn 10 phút. Khi hết hạn, chỗ được trả lại và đơn cũ không tự mở lại; bạn cần tạo đơn mới nếu cự ly còn chỗ. Nếu đã chuyển khoản nhưng đơn hết hạn, gửi yêu cầu đối soát cho chủ giải qua bộ phận hỗ trợ. Hệ thống chưa tự hoàn tiền và không tự cấp vé cho đơn hết hạn.',
+    answer: 'Mỗi đơn giữ chỗ có thời hạn 10 phút. Khi hết hạn, chỗ được trả lại và đơn cũ không tự mở lại; bạn cần tạo đơn mới nếu cự ly còn chỗ. Nếu đã chuyển khoản nhưng đơn hết hạn, hãy gửi yêu cầu hỗ trợ để được hướng dẫn liên hệ chủ giải đối soát. Hệ thống chưa tự hoàn tiền và không tự cấp vé cho đơn hết hạn.',
     sources: [{ title: 'Đơn và vé của tôi', url: '/account' }, { title: 'Chọn giải', url: '/events' }],
     suggestions: ['Chuyển khoản rồi sao chưa có vé?', 'Kiểm tra vé của tôi'],
   },
   {
     id: 'payment', title: 'Đối soát tiền vé',
     terms: ['chuyển khoản', 'thanh toán', 'chưa có vé', 'chưa nhận vé', 'vietqr', 'qr thanh toán', 'tiền vé', 'hoàn tiền', 'duyệt tiền'],
-    answer: 'Với chuyển khoản/VietQR, thao tác báo đã thanh toán chỉ tạo yêu cầu chờ đối soát; vé chưa được cấp ngay. EVENT_ADMIN là chủ giải kiểm tra và duyệt tiền vé của giải mình, còn SUPER_ADMIN không duyệt tiền vé. Hãy kiểm tra đơn tại Vé của tôi. Nếu đơn hết hạn hoặc bạn đã chuyển tiền nhưng chưa có vé, gửi yêu cầu hỗ trợ để đối soát; hiện chưa có hoàn tiền tự động. Số tiền, tài khoản nhận và nội dung chuyển khoản cần lấy trực tiếp từ đơn còn hiệu lực.',
+    answer: 'Với chuyển khoản/VietQR, thao tác báo đã thanh toán chỉ tạo yêu cầu chờ đối soát; vé chưa được cấp ngay. EVENT_ADMIN là chủ giải kiểm tra và duyệt tiền vé của giải mình, còn SUPER_ADMIN không duyệt tiền vé. Hãy kiểm tra đơn tại Vé của tôi. Nếu đơn hết hạn hoặc bạn đã chuyển tiền nhưng chưa có vé, gửi yêu cầu hỗ trợ để được hướng dẫn đối soát với chủ giải; hiện chưa có hoàn tiền tự động. Số tiền, tài khoản nhận và nội dung chuyển khoản cần lấy trực tiếp từ đơn còn hiệu lực.',
     sources: [{ title: 'Kiểm tra đơn và vé', url: '/account' }],
     suggestions: ['Giữ chỗ trong bao lâu?', 'Kiểm tra vé của tôi', 'Nạp ví do ai duyệt?'],
   },
@@ -46,7 +47,7 @@ const SUPPORT_KNOWLEDGE = [
   {
     id: 'profile', title: 'Hồ sơ người chạy và avatar',
     terms: ['hồ sơ', 'avatar', 'size áo', 'ngày sinh', 'liên hệ khẩn cấp', 'đổi tên', 'thông tin người chạy'],
-    answer: 'Mở Tài khoản, chọn Hồ sơ người chạy để lưu họ tên, điện thoại, ngày sinh, size áo, câu lạc bộ và liên hệ khẩn cấp; avatar hiện được tạo từ tên và màu bạn chọn. Hồ sơ được dùng để điền sẵn cho lần mua vé mới. Cập nhật hồ sơ không tự đổi thông tin trên vé đã cấp; nếu vé có sai sót, hãy gửi yêu cầu hỗ trợ để chủ giải kiểm tra.',
+    answer: 'Mở Tài khoản, chọn Hồ sơ người chạy để lưu họ tên, điện thoại, ngày sinh, size áo, câu lạc bộ và liên hệ khẩn cấp; avatar hiện được tạo từ tên và màu bạn chọn. Hồ sơ được dùng để điền sẵn cho lần mua vé mới. Cập nhật hồ sơ không tự đổi thông tin trên vé đã cấp; nếu vé có sai sót, hãy gửi yêu cầu hỗ trợ để được hướng dẫn liên hệ chủ giải kiểm tra.',
     sources: [{ title: 'Hồ sơ người chạy', url: '/account' }],
     suggestions: ['Làm sao mua vé giải chạy?', 'Kiểm tra vé của tôi'],
   },
@@ -81,17 +82,20 @@ const SUPPORT_KNOWLEDGE = [
 ];
 
 function normalizeSupportText(value) {
-  return (typeof value === 'string' ? value : '').slice(0, 1200).toLowerCase()
+  return (typeof value === 'string' ? value : '').slice(0, SUPPORT_MESSAGE_LIMIT).toLowerCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd')
     .replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function findSupportKnowledge(message, history = []) {
   const query = normalizeSupportText(message);
+  // Prefer a specific transaction stage over the generic purchasing guide
+  // when both score equally (for example: "chuyển khoản mua vé, ai duyệt?").
+  const stagePriority = { payment: 2, wallet: 2, marketplace: 2, hold: 2, tickets: 1 };
   const rank = text => SUPPORT_KNOWLEDGE.map(entry => ({ entry, score: entry.terms.reduce((total, term) => {
     const normalized = normalizeSupportText(term);
     return total + ((' ' + text + ' ').includes(' ' + normalized + ' ') ? Math.min(5, Math.max(2.8, normalized.split(' ').length * 1.4)) : 0);
-  }, 0) })).filter(item => item.score >= 2.5).sort((a, b) => b.score - a.score);
+  }, 0) })).filter(item => item.score >= 2.5).sort((a, b) => b.score - a.score || (stagePriority[b.entry.id] || 0) - (stagePriority[a.entry.id] || 0));
   let ranked = rank(query);
   // Only genuine short follow-ups borrow the last user question. Assistant
   // messages supplied by clients are never treated as trusted knowledge.
@@ -102,4 +106,4 @@ function findSupportKnowledge(message, history = []) {
   return ranked.slice(0, 2).map(item => item.entry);
 }
 
-module.exports = { SUPPORT_KNOWLEDGE, normalizeSupportText, findSupportKnowledge };
+module.exports = { SUPPORT_MESSAGE_LIMIT, SUPPORT_KNOWLEDGE, normalizeSupportText, findSupportKnowledge };

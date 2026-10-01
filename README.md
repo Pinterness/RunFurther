@@ -158,3 +158,33 @@ Chạy npm run test:event-media-ui để kiểm tra giao diện (web đang chạ
 Three.js + GSAP ScrollTrigger điều khiển nhân vật qua 5 trạm (01–05): cuộn/vuốt một lần chạy một chặng, uống nước, nhận race kit và huy chương; camera đổi từ góc nhìn thứ nhất sang bám theo, nhìn bên và trên cao. Chọn cự ly, lịch giải, hướng dẫn và FAQ mở trong khung 3D. Chạy npm run dev:web để xem; có chế độ ít chuyển động và nội dung dự phòng khi thiếu WebGL. Mô hình/sa bàn là minh họa cách điệu.
 
 Kiểm tra bằng npm run test:trail-scene (alias test:hero), test:layout và test:scroll khi web đang chạy. Tài liệu chi tiết ở TECHNOLOGY_AND_LOGIC.md mục 15 và UI_DESIGN.md.
+
+## Trợ lý và yêu cầu hỗ trợ
+
+Nút **Hỗ trợ** trên các trang site có hai phần:
+
+- **Trợ lý nhanh:** hỏi về đăng ký, vé, thanh toán, ví, Marketplace và quyền tổ chức. Mặc định trả hướng dẫn đã đối chiếu với nghiệp vụ dự án, kèm liên kết màn chức năng. Khách chưa đăng nhập cũng dùng được; kiểm tra trạng thái vé riêng tư cần đăng nhập.
+- **Nhân viên hỗ trợ:** người đăng nhập tạo yêu cầu, xem phản hồi và bổ sung nội dung. Super Admin tiếp nhận ở `/admin` → **Hỗ trợ khách**, trả lời và đóng/mở lại. Đây là hộp thư hỗ trợ không đồng thời, chưa phải live chat; chưa có chuyển tự động đến chủ giải hoặc thông báo email. Quyền duyệt tiền vé vẫn thuộc EVENT_ADMIN chủ giải.
+
+Chế độ hướng dẫn hoạt động mà không cần khóa AI. `.env.example` có cấu hình mặc định:
+
+```dotenv
+SUPPORT_AI_PROVIDER=guide
+OPENAI_API_KEY=
+OPENAI_MODEL=
+```
+
+Để bật AI, đặt `SUPPORT_AI_PROVIDER=openai`, cung cấp khóa OpenAI và tên model được tài khoản của bạn cho phép sử dụng ở môi trường **server**, rồi khởi động lại API. Không đặt khóa trong biến `NEXT_PUBLIC_*`, mã frontend hoặc commit lên Git. Không có model mặc định tự chọn; thiếu bất kỳ cấu hình nào hoặc provider lỗi thì hệ thống dùng hướng dẫn nội bộ và hiển thị đúng nhãn.
+
+Adapter Responses API có `store: false`, timeout 15 giây, giới hạn 700 output tokens và 4 yêu cầu đồng thời mỗi tiến trình. Chỉ câu hỏi hiện tại cùng hướng dẫn và thông tin giải công khai được đưa vào prompt; không gửi lịch sử chat, dữ liệu vé riêng tư hoặc hộp thư nhân viên. Tóm tắt vé cá nhân xử lý nội bộ từ dữ liệu đúng người đăng nhập. Chưa cấu hình khóa/model thật và chưa thử gọi AI thật trong lần triển khai này.
+
+Các endpoint đặt dưới `/api/support`: `POST /chat` công khai; `/tickets` và `/tickets/:id/messages` cho chủ yêu cầu; `/admin/tickets` dành riêng SUPER_ADMIN. Giới hạn tin chat 2.000 ký tự; yêu cầu hỗ trợ có tiêu đề 160 ký tự, mỗi tin 4.000 ký tự, tối đa 100 tin. Rate limit theo IP/bộ nhớ tiến trình: chat 12/phút, tạo yêu cầu 6/phút, các thao tác gửi bổ sung/phản hồi/đóng/mở lại dùng chung 30/phút. Triển khai nhiều instance cần giới hạn dùng chung.
+
+Kiểm tra:
+
+- `npm run test:support`: API/service; 17/17 kiểm tra đạt ở lần cập nhật này. DB thử nghiệm tách riêng, provider giả lập, không gọi AI hoặc giao dịch thật.
+- `npm run test:support-ui`: kịch bản hộp thư quản trị bằng Chrome/API fixtures, yêu cầu web đang chạy; chạy riêng để xác nhận phần giao diện.
+
+Chi tiết dữ liệu, API và giới hạn xem `TECHNOLOGY_AND_LOGIC.md` mục 17; quy tắc giao diện xem `UI_DESIGN.md`.
+
+Kiểm tra widget người dùng bằng `npm run test:support-chat`. Nhân vật 3D có kiểm tra chuyển động `npm run test:character` và bản dựng sáu tư thế/ba góc nhìn `npm run test:character-visual` (Chrome, không cần API). Ảnh kiểm tra ở `artifacts/runner-review-*.png`. Chi tiết sửa khớp, quai balo, khoảng cách nút và hướng nâng cấp model có bộ xương xem mục 18 của `TECHNOLOGY_AND_LOGIC.md`.

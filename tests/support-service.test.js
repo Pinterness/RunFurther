@@ -107,6 +107,49 @@ test('sensitive text stays local even when an AI adapter is configured', async (
   assert.equal(result.mode, 'guide'); assert.equal(calls, 0); assert.doesNotMatch(result.reply, /private@example/);
 });
 
+test('the complete 2000-character question is matched and delivered without silent truncation', async () => {
+  let received;
+  const adapter = createOpenAIAdapter({ env, fetchImpl: async (_url, options) => {
+    received = JSON.parse(JSON.parse(options.body).input).question;
+    return success('SUPER_ADMIN duyệt yêu cầu nạp ví.');
+  } });
+  const suffix = ' Nạp ví do ai duyệt?';
+  const message = 'x'.repeat(2000 - suffix.length) + suffix;
+  const answer = createSupportResponder({ generateReply: adapter });
+  const result = await answer({ message });
+  assert.equal(result.mode, 'ai'); assert.equal(received, message); assert.equal(received.length, 2000);
+  for (const invalid of [message + 'x', '', '   ', null, {}]) {
+    await assert.rejects(answer({ message: invalid }), error => error.statusCode === 400);
+  }
+});
+
+test('private requests and sensitive identifiers after character 1200 still stay local', async () => {
+  let providerCalls = 0, accountCalls = 0;
+  const answer = createSupportResponder({
+    generateReply: async () => { providerCalls++; return 'Must not be used'; },
+    findAccountStatus: async () => { accountCalls++; return { tickets: [], bookings: [] }; },
+  });
+  const own = await answer({ message: 'x'.repeat(1500) + ' Kiểm tra vé của tôi', userId: '507f1f77bcf86cd799439011' });
+  assert.equal(own.mode, 'guide'); assert.equal(accountCalls, 1); assert.equal(providerCalls, 0);
+  const sensitive = await answer({ message: 'Nạp ví ' + 'x'.repeat(1500) + ' private@example.test' });
+  assert.equal(sensitive.mode, 'guide'); assert.equal(providerCalls, 0);
+  assert.doesNotMatch(sensitive.reply, /private@example/);
+});
+
+test('failed account and event reads do not invent status or send stale data to AI', async () => {
+  let providerCalls = 0;
+  const answer = createSupportResponder({
+    findAccountStatus: async () => { throw Error('database unavailable'); },
+    findEvents: async () => { throw Error('database unavailable'); },
+    generateReply: async () => { providerCalls++; return 'Must not be used'; },
+  });
+  const account = await answer({ message: 'Kiểm tra vé của tôi', userId: '507f1f77bcf86cd799439011' });
+  assert.match(account.reply, /chưa đọc được trạng thái/); assert.equal(account.mode, 'guide');
+  const events = await answer({ message: 'Có giải nào sắp diễn ra?' });
+  assert.match(events.reply, /chưa tải được thông tin giải/); assert.equal(events.mode, 'guide');
+  assert.equal(providerCalls, 0);
+});
+
 test('provider errors, malformed/oversized/unfinished outputs and timeouts fall back', async () => {
   const cases = [async () => new Response('unavailable', { status: 503 }), async () => new Response('{'), async () => success('x'.repeat(4001)), async () => success('https://evil.example'), async () => new Response(JSON.stringify({ status: 'incomplete', output: [] })), async () => { throw Error('network failure'); }];
   for (const fetchImpl of cases) {
