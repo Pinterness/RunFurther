@@ -7,7 +7,7 @@ const fs = require('node:fs');
     fs.mkdirSync('artifacts', { recursive: true });
     const page = await browser.newPage({ viewport: { width: 1440, height: 950 } });
     const errors = []; page.on('pageerror', e => errors.push(e.message));
-    let role = 'RUNNER', application = null, moderation = { state: 'ACTIVE' }, read = false;
+    let role = 'RUNNER', application = null, moderation = { state: 'ACTIVE' }, read = false, managementRequests = 0;
     const user = () => ({ id: 'test-user', fullName: 'Người kiểm thử', systemRole: role });
     const events = [0,1,2].map(i => ({ _id: String(i), slug: 'race-' + i, name: 'Hành trình qua rừng ' + (i + 1), categories: ['5K','21K'], status: 'REGISTRATION_OPEN', price: 500000, dateInfo: { raceDate: '2030-10-10' }, location: { city: 'Đà Lạt' } }));
     await page.route('**/api/**', async route => {
@@ -16,8 +16,8 @@ const fs = require('node:fs');
       const reply = data => route.fulfill({ json: data });
       if (path === '/auth/me') return reply({ user: user() });
       if (path === '/events') return reply({ events });
-      if (path === '/admin/events') return reply({ events: [] });
-      if (path === '/organizations/mine') return reply({ organizations: [] });
+      if (path === '/admin/events') { managementRequests++; return reply({ events: [] }); }
+      if (path === '/organizations/mine') { managementRequests++; return reply({ organizations: [] }); }
       if (path === '/admin/organizer-access') { if (body) application = { ...body, _id: 'app-1', status: 'PENDING', userId: { fullName: 'Người tổ chức', email: 'test@example.com' } }; return reply({ application }); }
       if (path === '/admin/platform/applications') return reply({ applications: application ? [application] : [] });
       if (path === '/admin/platform/applications/app-1/review') { application = { ...application, status: body.status, reviewNote: body.reason }; return reply({ application }); }
@@ -32,12 +32,17 @@ const fs = require('node:fs');
     await page.goto('http://localhost:3000');
     await page.evaluate(u => { localStorage.setItem('rf_token','fixture'); localStorage.setItem('rf_user', JSON.stringify(u)); }, user());
     await page.goto('http://localhost:3000/organizer');
-    await expect(page.getByRole('button', { name: 'Tạo sự kiện', exact: false })).toBeDisabled();
+    await expect(page.getByRole('heading', { name: 'Đăng ký quyền tổ chức', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Tạo sự kiện|Bắt đầu tạo giải|Thêm đơn vị tổ chức/ })).toHaveCount(0);
+    await expect(page.locator('.organizer-events, .organizer-intro, .market-guide')).toHaveCount(0);
+    assert.equal(managementRequests, 0, 'Unapproved users must not request management data');
     await page.getByLabel('Tên đơn vị dự kiến').fill('Đội chạy Đường Rừng');
     await page.getByLabel('Số điện thoại liên hệ').fill('0900000000');
     await page.getByLabel('Giới thiệu và kế hoạch tổ chức').fill('Tổ chức giải chạy đường rừng.');
     await page.getByRole('button', { name: 'Gửi xét duyệt' }).click();
     await expect(page.getByRole('status')).toContainText('đang chờ');
+    await expect(page.getByRole('button', { name: /Tạo sự kiện|Bắt đầu tạo giải|Thêm đơn vị tổ chức/ })).toHaveCount(0);
+    assert.equal(managementRequests, 0, 'Pending applicants must remain in onboarding');
     await page.locator('.notification-trigger').click();
     await expect(page.locator('.notification-panel')).toContainText('21K-TEST');
     await page.getByRole('button', { name: 'Đánh dấu đã đọc' }).click();

@@ -30,7 +30,8 @@
     "test:support-chat": "node scripts/checkSupportChat.js",
     "test:cinematic": "node --test tests/cinematic-runner.test.mjs",
     "test:cinematic-ui": "node scripts/checkCinematicScene.js",
-    "test:cinematic-visual": "node scripts/checkRunnerCharacter.js --cinematic"
+    "test:cinematic-visual": "node scripts/checkRunnerCharacter.js --cinematic",
+    "test:account-access": "node scripts/checkAccountAccess.js"
   },
   "dependencies": {
     "autoprefixer": "^10.6.1",

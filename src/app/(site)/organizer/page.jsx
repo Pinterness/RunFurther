@@ -14,14 +14,17 @@ export default function OrganizerPage() {
   const approved = application?.status === 'APPROVED';
   const [organization, setOrganization] = useState({ name: '', slug: '', type: 'ENTERPRISE' });
   async function load() {
-    setLoading(true); setError('');
+    setLoading(true); setError(''); setApplication(null); setEvents([]); setOrganizations([]); setModal('');
     if (!localStorage.getItem('rf_token')) { setGuest(true); setLoading(false); return; }
     try {
       const account = await api('/auth/me');
+      setUser(account.user); setGuest(false);
       if (account.user.systemRole === 'SUPER_ADMIN') { router.replace('/admin'); return; }
-      const [managed, own, access] = await Promise.all([api('/admin/events'), api('/organizations/mine'), api('/admin/organizer-access')]);
+      const access = await api('/admin/organizer-access');
       setApplication(access.application);
-      setUser(account.user); setGuest(false); setEvents(managed.events); setOrganizations(own.organizations);
+      if (access.application?.status !== 'APPROVED') return;
+      const [managed, own] = await Promise.all([api('/admin/events'), api('/organizations/mine')]);
+      setEvents(managed.events); setOrganizations(own.organizations);
     } catch (error) { if (error.status === 401) setGuest(true); else setError(error.message); } finally { setLoading(false); }
   }
   useEffect(() => { load(); }, []);
@@ -36,6 +39,9 @@ export default function OrganizerPage() {
     catch (error) { if (error.status === 401) { setModal(''); setGuest(true); } else setFormError(error.message); setBusy(false); }
   }
   if (guest) return <div className="runner-shell runner-guest"><p className="section-index">DÀNH CHO BAN TỔ CHỨC</p><h1>Đường chạy của bạn.<br />Bắt đầu từ đây.</h1><p>Đăng nhập bằng tài khoản cá nhân để tạo và quản lý sự kiện của bạn.</p><Link className="button-primary" href="/login?next=%2Forganizer">Đăng nhập để bắt đầu</Link><Link className="text-action" href="/register?next=%2Forganizer">Tạo tài khoản</Link></div>;
+  if (loading || user?.systemRole === 'SUPER_ADMIN') return <div className="runner-shell"><p className="runner-empty" role="status">Đang kiểm tra quyền tổ chức...</p></div>;
+  if (error) return <div className="runner-shell"><h1>Chưa thể mở trang tổ chức.</h1><p role="alert" className="notice notice-error">{error}</p><button className="quiet-button" onClick={load}>Thử lại</button></div>;
+  if (!approved) return <div className="runner-shell"><div className="runner-page-heading"><div><p className="section-index">RUNFURTHER / ĐĂNG KÝ TỔ CHỨC</p><h1>Đăng ký trở thành<br />ban tổ chức.</h1></div></div><OrganizerAccess application={application} onChange={setApplication} /></div>;
   return <div className="runner-shell organizer-page"><div className="runner-page-heading"><div><p className="section-index">RUNFURTHER / BAN TỔ CHỨC</p><h1>Tạo nên những<br />đường chạy đáng nhớ.</h1></div><button className="button-primary" disabled={loading || !!error || !approved} onClick={() => { setFormError(''); setModal(organizations.length ? 'event' : 'organization'); }}>Tạo sự kiện ↗</button></div><div className="organizer-intro"><p>Chỉ các sự kiện bạn tạo và còn quyền quản lý được hiển thị tại đây. Nhân sự được phân công riêng trong từng giải.</p><button className="text-action" disabled={loading || !approved} onClick={() => { setFormError(''); setModal('organization'); }}>Thêm đơn vị tổ chức</button></div>
   {!loading && !error && <OrganizerAccess application={application} onChange={setApplication} />}
   {error && <p role="alert" className="notice notice-error">{error} <button className="text-action" onClick={load}>Thử lại</button></p>}

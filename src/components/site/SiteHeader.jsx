@@ -19,12 +19,14 @@ export default function SiteHeader() {
   const [user, setUser] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [organizerApproved, setOrganizerApproved] = useState(false);
   const accountRef = useRef(null);
   const menuButtonRef = useRef(null);
   const accountButtonRef = useRef(null);
 
   useEffect(() => {
     const sync = () => {
+      setOrganizerApproved(false);
       try {
         const token = localStorage.getItem('rf_token');
         const stored = JSON.parse(localStorage.getItem('rf_user') || 'null');
@@ -38,6 +40,28 @@ export default function SiteHeader() {
     window.addEventListener('rf-auth', sync);
     return () => { window.removeEventListener('storage', sync); window.removeEventListener('rf-auth', sync); };
   }, [pathname]);
+
+  useEffect(() => {
+    setOrganizerApproved(false);
+    if (!accountOpen || !user || user.systemRole === 'SUPER_ADMIN') return;
+    const token = localStorage.getItem('rf_token');
+    if (!token) return;
+    const controller = new AbortController();
+    // Organizer approval is separate from RUNNER and from per-event roles.
+    // Recheck when opening the menu; never grant a link from cached profile data.
+    async function checkOrganizerAccess() {
+      try {
+        const response = await fetch((process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api') + '/admin/organizer-access', {
+          signal: controller.signal, cache: 'no-store', headers: { Authorization: 'Bearer ' + token },
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!controller.signal.aborted && localStorage.getItem('rf_token') === token) setOrganizerApproved(data.application?.status === 'APPROVED');
+      } catch { /* Keep organizer navigation hidden when approval cannot be verified. */ }
+    }
+    checkOrganizerAccess();
+    return () => controller.abort();
+  }, [accountOpen, user]);
 
   useEffect(() => {
     const outside = event => {
@@ -56,7 +80,7 @@ export default function SiteHeader() {
   function logout() {
     localStorage.removeItem('rf_token');
     localStorage.removeItem('rf_user');
-    setUser(null); setAccountOpen(false); setMenuOpen(false);
+    setUser(null); setOrganizerApproved(false); setAccountOpen(false); setMenuOpen(false);
     router.push('/login'); router.refresh();
   }
 
@@ -85,7 +109,7 @@ export default function SiteHeader() {
             <p>TÀI KHOẢN CỦA BẠN</p>
             <Link href="/account" onClick={() => setAccountOpen(false)}>Hồ sơ & vé của tôi</Link>
             <Link href="/account/wallet" onClick={() => setAccountOpen(false)}>Ví & RunPoints</Link>
-            <Link href={user.systemRole === 'SUPER_ADMIN' ? '/admin' : '/organizer'} onClick={() => setAccountOpen(false)}>{user.systemRole === 'SUPER_ADMIN' ? 'Kiểm duyệt nền tảng' : 'Khu vực ban tổ chức'}</Link>
+            {user.systemRole === 'SUPER_ADMIN' ? <Link href="/admin" onClick={() => setAccountOpen(false)}>Kiểm duyệt nền tảng</Link> : organizerApproved && <Link href="/organizer" onClick={() => setAccountOpen(false)}>Khu vực ban tổ chức</Link>}
             <button onClick={logout}>Đăng xuất</button>
           </div>}
         </div> : <>
