@@ -33,7 +33,7 @@ const SUPPORT_KNOWLEDGE = [
   {
     id: 'wallet', title: 'Ví và nạp tiền',
     terms: ['nạp ví', 'nạp tiền', 'số dư', 'ví chưa cộng', 'ví của tôi', 'runpoints', 'điểm thưởng'],
-    answer: 'Mở Ví để xem số dư, lịch sử và yêu cầu nạp tiền. Gửi yêu cầu nạp ví chỉ tạo trạng thái chờ đối soát; SUPER_ADMIN duyệt nạp ví sau khi xác minh, lúc đó số dư mới được cộng. Tiền vé chuyển khoản được chủ giải duyệt riêng. Khi mua vé bằng ví, hệ thống kiểm tra số dư rồi trừ tiền và cấp vé trong cùng giao dịch. RunPoints có thể được dùng khi tạo đơn theo mức giảm hiển thị trên trang thanh toán.',
+    answer: 'Mở Ví để xem số dư, lịch sử và nạp tiền. Nhập số tiền rồi bấm Tạo lệnh nạp để nhận mã chuyển khoản dạng NAP… cùng tài khoản nhận và mã QR của RunFurther; chuyển đúng số tiền và ghi đúng mã vào nội dung chuyển khoản. Mã có hiệu lực 24 giờ. SUPER_ADMIN duyệt nạp ví sau khi đối chiếu sao kê, lúc đó số dư mới được cộng. Nếu đã chuyển tiền nhưng mã hết hạn hoặc chưa thấy cộng, hãy gửi yêu cầu hỗ trợ kèm mã. Tiền vé chuyển khoản được chủ giải duyệt riêng. Khi mua vé bằng ví, hệ thống kiểm tra số dư rồi trừ tiền và cấp vé trong cùng giao dịch. RunPoints có thể được dùng khi tạo đơn theo mức giảm hiển thị trên trang thanh toán.',
     sources: [{ title: 'Ví của tôi', url: '/account/wallet' }],
     suggestions: ['Chuyển khoản rồi sao chưa có vé?', 'Mua BIB trên Marketplace thế nào?'],
   },

@@ -43,10 +43,13 @@ Chưa tích hợp SePay/Casso hoặc webhook ngân hàng. Hiện đối soát th
 - `POST /api/bookings/hold`: giữ chỗ 10 phút. Kiểm tra giải đang mở, cự ly thuộc giải, thời gian, tuổi tối thiểu nếu có và quota.
 - `POST /api/bookings/:id/confirm` với `paymentMethod: WALLET`: backend lấy ví của người đăng nhập, trừ tiền/điểm và cấp vé trong một transaction.
 - Cùng endpoint với `paymentMethod: VIETQR`: trả HTTP 202 và yêu cầu PENDING, chưa cấp vé. Frontend thăm dò trạng thái đơn mỗi 5 giây.
-- `POST /api/wallet/topup` với số tiền nguyên dương và header `Idempotency-Key`: tạo yêu cầu PENDING, chưa cộng tiền.
-- `GET /api/wallet/payments`: người dùng xem yêu cầu của mình.
-- `GET /api/admin/payments?status=PENDING`: Super Admin chỉ xem yêu cầu nạp ví cần đối soát.
-- `POST /api/admin/payments/:id/review`: body `{ "status": "APPROVED", "bankReference": "ma-giao-dich-ngan-hang", "reviewNote": "..." }`, hoặc `status: REJECTED`.
+- `POST /api/wallet/topup` với body `{ "amount": 50000 }` và header `Idempotency-Key`: số tiền nguyên từ 10.000đ đến 100.000.000đ. Trả HTTP 202 gồm `paymentRequest` (mã chuyển khoản `transferCode` dạng `NAPxxxxxxxx`, hạn `expiresAt` 24 giờ, tài khoản nhận `bankSnapshot`) và `transfer` (tài khoản nhận, link VietQR). Chưa cộng tiền. Trả 409 khi nạp ví đang tắt (`TOPUP_CLOSED`), ví không hoạt động (`WALLET_INACTIVE`) hoặc đã có 3 lệnh chờ chưa hết hạn (`TOPUP_LIMIT_REACHED`). Gửi lại cùng key trả lại đúng lệnh cũ. Giới hạn 10 lần/phút/IP, đổi bằng `WALLET_TOPUP_RATE_LIMIT`.
+- `GET /api/wallet`: ngoài số dư có thêm `topup { available, minAmount, maxAmount, codeTtlHours, maxActive }` để giao diện không phải tự đặt giới hạn.
+- `GET /api/wallet/payments`: người dùng xem yêu cầu của mình; lệnh nạp kèm `transfer` để mở lại hướng dẫn chuyển khoản. QR chỉ có khi lệnh còn chờ và chưa hết hạn.
+- `GET` và `PUT /api/admin/platform/topup-account` (Super Admin): xem hoặc đặt tài khoản nhận nạp ví, body `{ "bankAccountInfo": { "bankBin": "970422", "accountNo": "0123456789", "accountName": "CONG TY RUNFURTHER" } }`. Để trống toàn bộ để tắt nạp ví. Có lịch sử người đổi; chỉ áp dụng cho lệnh nạp mới.
+- `GET /api/admin/payments?status=PENDING&q=<mã>`: Super Admin chỉ xem lệnh nạp ví, kèm họ tên và email người nạp, cờ `expired`. `q` tìm theo mã chuyển khoản, không phân biệt hoa thường, bỏ qua khoảng trắng và dấu gạch như trên sao kê.
+- `POST /api/admin/payments/:id/review`: body `{ "status": "APPROVED", "bankReference": "ma-giao-dich-ngan-hang", "receivedAmount": 50000, "reviewNote": "Khớp sao kê" }`, hoặc `status: REJECTED`. Khi duyệt nạp ví, `receivedAmount` phải bằng số tiền của lệnh (`TOPUP_AMOUNT_MISMATCH` nếu lệch) và Super Admin không được duyệt lệnh của chính mình (`TOPUP_SELF_APPROVAL`). Lệnh quá hạn hoặc lệnh cũ chưa có mã vẫn duyệt được khi tiền đã vào tài khoản.
+- Lỗi nghiệp vụ trả `{ "message": "...", "code": "..." }`; danh sách mã ở `src/backend/lib/errorCodes.js`.
 - Quản trị viên phải kiểm tra đúng số tiền, tài khoản nhận và nội dung chuyển khoản trước khi duyệt. Mã giao dịch ngân hàng không được sử dụng cho hai yêu cầu.
 - Nếu giữ chỗ hết hạn hoặc đơn đã thanh toán theo cách khác, API từ chối phê duyệt chuyển khoản và giữ yêu cầu để đối soát/hoàn tiền thủ công; không tự mở lại chỗ.
 - Chưa có luồng hoàn tiền tự động. Không chuyển tiền vào tài khoản mẫu trong seed; cấu hình tài khoản nhận thật trước khi bật chuyển khoản cho người dùng.
@@ -131,7 +134,7 @@ Thêm `--apply` mới ghi vào DB. Script chỉ bổ sung chủ cho giải chưa
 2. Super Admin mở /admin → Quyền tổ chức, duyệt hoặc từ chối kèm lý do.
 3. Sau khi duyệt, người tổ chức tạo đơn vị/giải và trở thành chủ riêng của giải vừa tạo.
 4. /admin → Kiểm duyệt giải chỉ cho phép ẩn, tạm ngừng hoặc khôi phục, luôn lưu lý do và lịch sử; không xóa hẳn bất kỳ giải nào.
-5. Chủ giải đối soát tiền vé ở tab Tiền vé. Super Admin đối soát nạp ví ở /admin → Nạp ví.
+5. Chủ giải đối soát tiền vé ở tab Tiền vé. Super Admin cấu hình tài khoản nhận và đối soát nạp ví ở /admin → Nạp ví.
 
 API tiền vé: GET /api/admin/events/:eventId/payments và POST /api/admin/events/:eventId/payments/:paymentId/review, cùng body status/bankReference/reviewNote như nạp ví. Giải bị ẩn/ngừng chặn giao dịch mới; giữ nguyên vé/giao dịch để đối soát và hoàn tiền thủ công. Quyền tổ chức của dữ liệu cũ không tự động được duyệt.
 
@@ -147,7 +150,7 @@ Trong /organizer/events/:eventId → Thông tin giải, chủ giải có thể:
 
 QR thanh toán lấy số tiền/mã đơn từ backend. Thông tin ngân hàng được lưu bất biến khi giữ chỗ; sửa cấu hình giải chỉ áp dụng cho đơn mới. Đơn cũ không có snapshot không tự dùng tài khoản mới. Mã hết hạn hoặc giải bị ẩn/ngừng không tiếp tục hiển thị để chuyển tiền.
 
-Ảnh QR tải lỗi vẫn có thông tin chuyển khoản và nút sao chép/thử lại. Bấm “Tôi đã chuyển khoản” chỉ gửi yêu cầu chờ chủ giải đối soát. Chưa có tải biên lai, QR nạp ví hay xác nhận ngân hàng tự động.
+Ảnh QR tải lỗi vẫn có thông tin chuyển khoản và nút sao chép/thử lại. Bấm “Tôi đã chuyển khoản” chỉ gửi yêu cầu chờ chủ giải đối soát. Chưa có tải biên lai hay xác nhận ngân hàng tự động. Nạp ví có mã chuyển khoản và QR riêng (xem mục Thanh toán và đối soát).
 
 Danh sách ngân hàng dùng [API VietQR](https://www.vietqr.io/danh-sach-api/api-danh-sach-ma-ngan-hang/) với cache và snapshot dự phòng. Công thức ảnh dùng [Quick Link](https://www.vietqr.io/danh-sach-api/link-tao-ma-nhanh/). Tên chủ tài khoản vẫn cần được kiểm tra trong ứng dụng ngân hàng.
 

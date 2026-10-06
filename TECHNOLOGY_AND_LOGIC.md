@@ -1,6 +1,6 @@
 # Công nghệ và thuật toán / logic đã dùng trong cuộc trao đổi
 
-Cập nhật: 24/09/2026. Tài liệu tổng hợp phần đã triển khai và kiểm chứng trong mã nguồn; không xem toàn bộ thư viện được cài là tính năng đã hoàn thành.
+Cập nhật: 05/10/2026. Tài liệu tổng hợp phần đã triển khai và kiểm chứng trong mã nguồn; không xem toàn bộ thư viện được cài là tính năng đã hoàn thành.
 
 ## 1. Các công nghệ
 
@@ -76,7 +76,7 @@ AND EventAccount.status == ACTIVE
 - Unique index hỗ trợ phát hiện trùng booking, BIB trong sự kiện và tham chiếu giao dịch.
 - Nếu số dư/điểm không đủ hoặc một bước thất bại, transaction rollback toàn bộ thay đổi.
 - Tiền dùng số nguyên VNĐ và kiểm tra Number.isSafeInteger ở các đầu vào liên quan.
-- Chuyển khoản/VietQR và nạp ví tạo yêu cầu chờ duyệt. Chỉ cộng tiền/cấp vé sau khi đối soát được xác nhận; chưa có webhook ngân hàng tự động.
+- Chuyển khoản/VietQR và nạp ví tạo yêu cầu chờ duyệt. Chỉ cộng tiền/cấp vé sau khi đối soát được xác nhận; chưa có webhook ngân hàng tự động. Nạp ví dùng mã chuyển khoản riêng (mục 20).
 - RunPoints: 1 điểm giảm 1.000đ; số điểm sử dụng bị giới hạn theo số dư và tối đa 50% tổng tiền. Điểm thưởng là floor(số tiền cuối / 50.000).
 - Không tin walletId do client cung cấp để chọn ví của người khác.
 
@@ -156,7 +156,7 @@ Mục này ghi lại bản cũ; HeroRunners hiện không được gắn vào la
 
 ## 12. Quyền tổ chức, kiểm duyệt và đối soát (quy tắc đã chốt)
 
-- SUPER_ADMIN dùng /admin: duyệt/từ chối quyền tổ chức, ẩn/ngừng/khôi phục giải và duyệt nạp ví. Không tạo/sửa giải, cự ly, nhân sự, kết quả; không xem danh sách vận động viên hoặc duyệt tiền vé.
+- SUPER_ADMIN dùng /admin: duyệt/từ chối quyền tổ chức, ẩn/ngừng/khôi phục giải, cấu hình tài khoản nhận và duyệt nạp ví. Không tạo/sửa giải, cự ly, nhân sự, kết quả; không xem danh sách vận động viên hoặc duyệt tiền vé.
 - Người dùng đăng nhập cá nhân → gửi OrganizerApplication → PENDING → Super Admin APPROVED/REJECTED, bắt buộc lý do. Đơn bị từ chối có thể bổ sung gửi lại. Không suy ra quyền tổ chức từ systemRole cũ hoặc trường client gửi.
 - Đơn được duyệt cho phép tạo đơn vị và giải; mỗi giải tự cấp EVENT_ADMIN cho người tạo, không cấp quyền trên giải người khác.
 - Event.moderation tách khỏi status nghiệp vụ: ACTIVE/HIDDEN/SUSPENDED. Cả HIDDEN và SUSPENDED đều ẩn khỏi danh sách công khai và chặn giao dịch/vận hành mới. Không có API xóa giải.
@@ -199,7 +199,7 @@ Mục này ghi lại bản cũ; HeroRunners hiện không được gắn vào la
 - TransferDetails có nút sao chép số tài khoản/số tiền/nội dung bằng Clipboard API, trạng thái thành công hoặc hướng dẫn sao chép thủ công; lỗi tải ảnh QR vẫn hiển thị thông tin ngân hàng, có nút thử lại.
 - Đơn hết hạn ẩn QR và hướng dẫn liên hệ chủ giải nếu đã chuyển tiền. Bấm gửi đối soát chỉ tạo PENDING; UI khóa gửi lặp/thanh toán ví trong lúc chờ, không tự cấp vé. Chủ giải thấy mã đơn và tài khoản nhận đã chụp tại thời điểm đặt để đối chiếu.
 - QR tiền vé là ảnh từ dịch vụ VietQR, khác QR vé vào cổng do thư viện qrcode tạo cục bộ. Không gửi token vé vào cổng cho VietQR.
-- Chưa bổ sung ảnh biên lai, QR nạp ví, webhook xác nhận ngân hàng hoặc hoàn tiền tự động trong đợt này.
+- Chưa bổ sung ảnh biên lai, webhook xác nhận ngân hàng hoặc hoàn tiền tự động trong đợt này. QR và mã chuyển khoản cho nạp ví được bổ sung ở mục 20.
 
 Nguồn tham chiếu: [VietQR Bank API](https://www.vietqr.io/danh-sach-api/api-danh-sach-ma-ngan-hang/), [VietQR Quick Link](https://www.vietqr.io/danh-sach-api/link-tao-ma-nhanh/), [sharp constructor](https://sharp.pixelplumbing.com/api-constructor/).
 
@@ -382,3 +382,38 @@ Tham chiếu: [Three.js SkinnedMesh](https://threejs.org/docs/pages/SkinnedMesh.
 - Kết quả 01/10/2026: 13/13 kiểm tra model/nhân vật/camera đạt; `test:cinematic-ui`, `test:trail-scene` và `build:web` đạt. Đã xem ảnh sáu tư thế từ ba phía và ảnh về đích 360px để xác nhận quai balo, bảng số và huy chương. Chưa đo FPS trên điện thoại vật lý.
 
 Nguồn model: [Quaternius](https://quaternius.com/packs/ultimatemodularcharacters.html), [model và giấy phép](https://poly.pizza/m/kZ3DmIoGip). Tham chiếu kỹ thuật: [GLTFLoader](https://threejs.org/docs/pages/GLTFLoader.html), [AnimationAction](https://threejs.org/docs/pages/AnimationAction.html), [ScrollTrigger refresh](https://gsap.com/docs/v3/Plugins/ScrollTrigger/refresh()/).
+
+## 20. Nạp ví bằng mã chuyển khoản (05/10/2026)
+
+**Luồng**
+
+- Người dùng nhập số tiền ở /account/wallet. `POST /api/wallet/topup` tạo `PaymentRequest` loại TOPUP, trạng thái PENDING, kèm `transferCode` (`NAP` + 8 ký tự từ bảng 32 ký tự không có 0/O/1/I, sinh bằng `crypto.randomInt`), `bankSnapshot` (tài khoản nhận tại lúc tạo, bất biến) và `expiresAt` (24 giờ).
+- Hướng dẫn chuyển khoản dùng lại `paymentInstructions` (VietQR Quick Link, `addInfo` = mã) và `TransferDetails` biến thể `topup`. Danh sách lệnh của người dùng trả kèm `transfer`, nên tải lại trang vẫn mở lại được hướng dẫn. Trang ví tự cập nhật mỗi 15 giây khi còn lệnh chờ có mã chưa hết hạn và tab đang hiển thị.
+- Super Admin cấu hình tài khoản nhận ở /admin → Nạp ví (`PlatformSetting` key `WALLET_TOPUP`, lưu người đổi và 50 thay đổi gần nhất). Để trống toàn bộ là tắt nạp ví. Form không hiện khi tải cấu hình lỗi, để tránh lưu nhầm form trống.
+- Super Admin tìm mã trong sao kê (ô tìm chuẩn hóa chữ hoa, bỏ khoảng trắng và dấu gạch), nhập mã giao dịch ngân hàng và số tiền thực nhận. Số tiền phải bằng số tiền của lệnh; lệch thì từ chối và hoàn tiền thủ công.
+
+**Bất biến**
+
+- Cộng ví qua `changeBalance` trong `transaction()`, khóa idempotency `TOPUP-<paymentId>`; duyệt đồng thời hoặc gửi lại chỉ cộng một lần.
+- `transferCode` và `bankReference` có unique index một phần; một giao dịch ngân hàng không thể cấp tiền cho hai lệnh.
+- Không thêm trạng thái mới: hết hạn là cờ tính từ `expiresAt`; lệnh quá hạn vẫn duyệt được vì tiền có thể về muộn.
+- Mỗi người tối đa 3 lệnh chờ chưa hết hạn (giới hạn mềm); ví không ACTIVE không tạo được lệnh; Super Admin không tự duyệt lệnh của mình.
+- Lệnh tạo trước tính năng này (không mã/snapshot/hạn) vẫn hiển thị và duyệt như cũ, không cần migration.
+- Lỗi nghiệp vụ trả `{ message, code }` với mã ổn định trong `src/backend/lib/errorCodes.js`; error handler tách ra `src/backend/middlewares/errorHandler.js`.
+
+**Thiết kế mã**
+
+- `services/topupService.js` giữ luật nghiệp vụ (sinh mã, đọc tài khoản nhận, trình bày hướng dẫn, tạo lệnh, duyệt). Controller chỉ xử lý HTTP.
+- Duyệt thanh toán theo loại dùng Strategy (`APPROVERS = { BOOKING, TOPUP }`) thay cho if/else trong một hàm dài.
+- Frontend dùng `useApiQuery` (bỏ phản hồi cũ, không `setState` đồng bộ trong effect), `formatVnd`/`formatDateTime` và nhãn trong `src/lib/payments.js`.
+
+**Kiểm thử**
+
+- `npm test` chạy `tests/topup/*.test.js` (mỗi khu vực một file, dùng chung `tests/helpers/`), `tests/error-handler.test.js` và `tests/format.test.mjs`. Phạm vi: model, sinh mã, cấu hình tài khoản nhận, tạo lệnh, giới hạn, va chạm mã, đua cùng key, rate limit, danh sách, duyệt/từ chối, đồng thời, tái dùng mã giao dịch, tự duyệt, lệnh quá hạn/cũ, thông báo. DB dùng MongoMemoryReplSet.
+- `npm run test:wallet-ui`: Chrome + API fixtures cho ví (tạm đóng, API cũ, tạo lệnh, bấm đúp gửi đúng 1 lần, tải lại, quá hạn, lệnh cũ, lỗi API, chưa đăng nhập) và tab Nạp ví của admin (lưu/tắt tài khoản nhận, tìm mã kiểu sao kê, lệch số tiền, duyệt); 1440/768/390/360px.
+
+**Giới hạn**
+
+- Đối soát vẫn thủ công; chưa có webhook SePay/Casso, hoàn tiền tự động hay ảnh biên lai.
+- Rate limit và giới hạn 3 lệnh là bảo vệ trong một tiến trình; nhiều instance cần kho dùng chung.
+- Hàng đợi admin hiển thị 100 lệnh mới nhất theo bộ lọc; lệnh cũ hơn tìm bằng mã.

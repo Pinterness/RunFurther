@@ -16,6 +16,7 @@ test('curated answers distinguish ticket payment, wallet reviews and automatic B
   assert.match(payment.reply, /EVENT_ADMIN/); assert.match(payment.reply, /SUPER_ADMIN không duyệt tiền vé/);
   const wallet = await answer({ message: 'Nạp ví do ai duyệt?' });
   assert.match(wallet.reply, /SUPER_ADMIN duyệt nạp ví/);
+  assert.match(wallet.reply, /mã chuyển khoản/); assert.match(wallet.reply, /24 giờ/);
   const market = await answer({ message: 'Marketplace' });
   assert.match(market.reply, /110%/); assert.match(market.reply, /không có bước chủ giải duyệt chuyển nhượng BIB/);
   assert.equal(findSupportKnowledge('giu cho het han')[0].id, 'hold');

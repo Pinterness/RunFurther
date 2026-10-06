@@ -168,3 +168,13 @@ Kiểm tra 1440, 1024, 768, 390, 360px; không tràn ngang; đăng nhập/đăng
 - Bảng số, dây balo và huy chương phải nằm trên trang phục; cốc theo bàn tay và tới miệng. Kiểm tra trực tiếp từ trước/bên/sau sau mỗi lần thay model hoặc socket.
 - Không chặn nội dung trong lúc tải model. Tải lỗi dùng nhân vật dự phòng; ít chuyển động/thiếu WebGL vẫn có ảnh và nội dung HTML đầy đủ.
 - Bản mới là một thử nghiệm 3D tương tác theo hướng điện ảnh. Chưa có nhân vật photoreal, quần áo mô phỏng vật lý, động tác mocap chuyên dụng hay hậu kỳ DOF/bloom nặng.
+
+## Ví và nạp tiền
+
+- /account/wallet: thẻ số dư xanh rừng chiếm 1/3 bên trái, giữ chiều cao tự nhiên; khối "Nạp tiền vào ví" chiếm 2/3 bên phải để QR và bảng chuyển khoản đủ chỗ. Dưới 800px xếp một cột.
+- Ô số tiền và nút "Tạo lệnh nạp" trên một hàng; chip gợi ý 50.000đ–1.000.000đ dùng viền, chip đang chọn đổi viền và chữ sang cam đậm. Giới hạn số tiền và thời hạn mã hiển thị ngay dưới chip.
+- Sau khi tạo lệnh, khối chuyển khoản (QR, tài khoản nhận, nội dung = mã, nút sao chép) mở ngay. Lệnh đang chờ là danh sách: mã in đơn cách, nhãn "Chờ đối soát" hoặc "Quá hạn", nút mở lại hướng dẫn.
+- Mã quá hạn không hiện QR. Lệnh cũ không có mã hiện chữ "Yêu cầu cũ" (không dùng kiểu chữ của mã) kèm hướng dẫn gửi hỗ trợ.
+- /admin → Nạp ví: khối "Tài khoản nhận nạp ví" (BankFields có xem trước QR, lịch sử thay đổi) đặt trên hàng đợi "Đối soát nạp ví" (lọc trạng thái, tìm mã, cờ Quá hạn, hộp thoại xác nhận có ô số tiền thực nhận không điền sẵn).
+- Style nằm trong `src/components/site/topup.css`, chỉ dùng token của `globals.css`.
+- Kiểm thử: `npm run test:wallet-ui` (Chrome, web đang chạy, API fixtures); xem ảnh `artifacts/wallet-topup-*.png`, `artifacts/admin-topup-*.png`.
