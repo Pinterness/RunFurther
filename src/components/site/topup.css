@@ -1,0 +1,164 @@
+/* Wallet top-up screens: user wallet (WalletTopup) and Super Admin tab (TopupAccountForm, TopupReview).
+   Colours, radii and timings come from the tokens in src/app/globals.css (see UI_DESIGN.md). */
+
+/* Wallet page: the balance card keeps its natural height and the top-up panel gets room for the QR. */
+.wallet-page .split {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  align-items: start;
+}
+
+/* Same breakpoint as `.split` in globals.css. */
+@media (max-width: 800px) {
+  .wallet-page .split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.topup-panel .amount-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.topup-panel .amount-chips button {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text-main);
+  font-size: 13px;
+  font-weight: 600;
+  transition:
+    border-color var(--duration-fast),
+    color var(--duration-fast);
+}
+
+.topup-panel .amount-chips button:hover,
+.topup-panel .amount-chips button[aria-pressed='true'] {
+  border-color: var(--accent-strong);
+  color: var(--accent-strong);
+}
+
+.topup-limits {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.topup-requests {
+  margin-top: 24px;
+}
+
+.topup-request {
+  display: grid;
+  gap: 12px;
+  padding: 18px 0;
+  border-top: 1px solid var(--border);
+}
+
+.topup-request-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.topup-code {
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  overflow-wrap: anywhere;
+}
+
+.topup-meta {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.topup-state {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.topup-state[data-state='expired'] {
+  color: var(--muted);
+}
+
+.topup-account {
+  max-width: 960px;
+  margin-bottom: 24px;
+  padding: 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+}
+
+.topup-history {
+  margin-top: 16px;
+  font-size: 13px;
+}
+
+.topup-history ul {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  padding-left: 18px;
+}
+
+.topup-queue-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.topup-queue-tools form {
+  display: flex;
+  flex: 1 1 260px;
+  gap: 8px;
+}
+
+.topup-queue-tools input {
+  flex: 1;
+  min-width: 0;
+}
+
+.topup-summary {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.topup-summary div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 16px;
+}
+
+.topup-summary dt {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.topup-summary dd {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 700px) {
+  .topup-account {
+    padding: 22px;
+  }
+}

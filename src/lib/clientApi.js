@@ -6,7 +6,7 @@ export async function api(path, options = {}) {
   const data = await response.json();
   if (!response.ok) {
     if (response.status === 401) { localStorage.removeItem('rf_token'); localStorage.removeItem('rf_user'); window.dispatchEvent(new Event('rf-auth')); }
-    throw Object.assign(new Error(data.message || 'Không thể thực hiện yêu cầu.'), { status: response.status });
+    throw Object.assign(new Error(data.message || 'Không thể thực hiện yêu cầu.'), { status: response.status, code: data.code });
   }
   return data;
 }

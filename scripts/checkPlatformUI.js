@@ -1,6 +1,7 @@
 const { chromium, expect } = require('@playwright/test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const WEB_URL = process.env.WEB_URL ?? 'http://localhost:3000';
 (async () => {
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
   try {
@@ -24,14 +25,23 @@ const fs = require('node:fs');
       if (path === '/admin/platform/events') return reply({ events: [{ ...events[0], moderation, createdBy: { fullName: 'Chủ giải' } }], total: 1 });
       if (path.endsWith('/moderation')) { assert.ok(body.reason.trim()); moderation = { state: body.action, reason: body.reason }; return reply({ event: { ...events[0], moderation } }); }
       if (path.endsWith('/history')) return reply({ history: [{ _id: 'history', action: moderation.state, reason: moderation.reason, createdAt: new Date().toISOString() }] });
-      if (path === '/admin/payments') return reply({ payments: [{ _id: 'topup', kind: 'TOPUP', amount: 50000, requestKey: 'TOPUP-TEST', status: 'PENDING' }] });
+      if (path === '/admin/payments') return reply({ payments: [
+        { _id: 'topup', kind: 'TOPUP', amount: 50000, requestKey: 'TOPUP-TEST', status: 'PENDING' },
+        { _id: 'topup-coded', kind: 'TOPUP', amount: 70000, requestKey: 'TOPUP-CODED', transferCode: 'NAPTEST2345', status: 'PENDING', expired: false, createdAt: new Date().toISOString(), userId: { _id: 'payer', fullName: 'Người nạp', email: 'payer@example.com' } },
+      ] });
+      if (path === '/admin/platform/topup-account') {
+        return reply({ account: { bankBin: '', bankName: '', accountNo: '', accountName: '' }, configured: false, updatedBy: null, updatedAt: null, history: [] });
+      }
+      if (path === '/banks') {
+        return reply({ banks: [] });
+      }
       if (path === '/notifications/read') { read = true; return reply({ success: true }); }
       if (path === '/notifications') return reply({ notifications: [{ key: 'ticket:1', title: 'Vé của bạn: 21K-TEST', detail: 'Xem vé trong tài khoản', at: new Date().toISOString(), href: '/account', read }] });
       return route.fulfill({ status: 404, json: { message: 'Unexpected ' + path } });
     });
-    await page.goto('http://localhost:3000');
+    await page.goto(WEB_URL);
     await page.evaluate(u => { localStorage.setItem('rf_token','fixture'); localStorage.setItem('rf_user', JSON.stringify(u)); }, user());
-    await page.goto('http://localhost:3000/organizer');
+    await page.goto(`${WEB_URL}/organizer`);
     await expect(page.getByRole('heading', { name: 'Đăng ký quyền tổ chức', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: /Tạo sự kiện|Bắt đầu tạo giải|Thêm đơn vị tổ chức/ })).toHaveCount(0);
     await expect(page.locator('.organizer-events, .organizer-intro, .market-guide')).toHaveCount(0);
@@ -52,7 +62,7 @@ const fs = require('node:fs');
     assert.equal(await page.locator('.account-trigger .runner-avatar').evaluate(n => n.getBoundingClientRect().width), 28);
     role = 'SUPER_ADMIN';
     await page.evaluate(u => localStorage.setItem('rf_user', JSON.stringify(u)), user());
-    await page.goto('http://localhost:3000/admin');
+    await page.goto(`${WEB_URL}/admin`);
     await page.getByRole('button', { name: 'Duyệt quyền tổ chức', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Xác nhận quyết định' })).toBeDisabled();
     await page.getByLabel('Lý do quyết định').fill('Đã xác minh thông tin đơn vị.');
@@ -77,7 +87,9 @@ const fs = require('node:fs');
     await page.screenshot({ path: 'artifacts/platform-mobile.png', fullPage: true });
     await page.getByRole('button', { name: 'Nạp ví', exact: true }).click();
     await expect(page.locator('.organizer-panel')).toContainText('TOPUP-TEST');
-    await page.goto('http://localhost:3000');
+    await expect(page.locator('.organizer-panel')).toContainText('NAPTEST2345');
+    await expect(page.locator('.topup-account')).toContainText('Tài khoản nhận nạp ví');
+    await page.goto(WEB_URL);
     await page.setViewportSize({ width: 1440, height: 950 });
     await expect(page.locator('.immersive-journey')).toHaveAttribute('data-enhanced', 'true');
     await page.locator('.immersive-panel-trigger[data-panel="events"]').click();

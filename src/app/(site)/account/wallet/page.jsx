@@ -1,29 +1,153 @@
 'use client';
-import { useEffect, useState } from 'react';
-export default function WalletPage() {
-  const [summary, setSummary] = useState(null), [ledger, setLedger] = useState([]), [payments, setPayments] = useState([]);
-  const [amount, setAmount] = useState(''), [message, setMessage] = useState(''), [busy, setBusy] = useState(false);
-  const [requestKey, setRequestKey] = useState(null);
-  async function request(path, options = {}) {
-    const token = localStorage.getItem('rf_token');
-    if (!token) throw new Error('Vui lòng đăng nhập.');
-    const res = await fetch((process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api') + path, { ...options, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token, ...options.headers } });
-    const data = await res.json(); if (!res.ok) throw new Error(data.message); return data;
-  }
-  async function load() {
-    const [s, l, p] = await Promise.all([request('/wallet'), request('/wallet/ledger'), request('/wallet/payments')]);
-    setSummary(s); setLedger(l.ledger); setPayments(p.payments);
-  }
-  useEffect(() => { load().catch(error => setMessage(error.message)); }, []);
-  async function topup(event) {
-    event.preventDefault(); setBusy(true); setMessage('');
-    const key = requestKey || crypto.randomUUID(); setRequestKey(key);
-    try {
-      const data = await request('/wallet/topup', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify({ amount: Number(amount) }) });
-      setRequestKey(null); setAmount(''); setMessage(data.message); await load();
-    } catch (error) { setMessage(error.message); } finally { setBusy(false); }
-  }
-  const money = value => Number(value).toLocaleString('vi-VN') + ' đ';
-  return <div className="page wallet-page"><h1 className="page-title">Ví của tôi</h1>{message && <p role="status">{message}</p>}<div className="split"><section className="balance-card"><span>Số dư khả dụng</span><strong>{summary ? money(summary.wallet.balance) : '—'}</strong><span>{summary?.runPoints.balance ?? 0} RunPoints</span></section><section className="panel"><h2>Yêu cầu nạp tiền</h2><p>Yêu cầu cần được quản trị viên đối soát trước khi cộng số dư.</p><form onSubmit={topup}><input aria-label="Số tiền VND" type="number" min="1" max="100000000" step="1" required value={amount} onChange={event => { setAmount(event.target.value); setRequestKey(null); }} /><button className="button button-dark" disabled={busy}>Gửi yêu cầu</button></form></section></div><section className="section panel"><h2>Lịch sử giao dịch</h2>{ledger.map(row => <div className="transaction-row" key={row._id}><span>{row.referenceType} · {new Date(row.createdAt).toLocaleString('vi-VN')}</span><strong>{row.type === 'CREDIT' ? '+' : '−'}{money(row.amount)}</strong></div>)}{!ledger.length && <p>Chưa có giao dịch.</p>}<h2>Yêu cầu đối soát</h2>{payments.map(row => <p key={row._id}>{row.kind} · {money(row.amount)} · {row.status}</p>)}<button onClick={() => load().catch(error => setMessage(error.message))}>Cập nhật</button></section></div>;
+import { useCallback, useEffect } from 'react';
+import Link from 'next/link';
+import WalletTopup from '../../../../components/site/WalletTopup';
+import { formatDateTime, formatVnd } from '../../../../lib/format';
+import { PAYMENT_KIND_LABELS, PAYMENT_STATUS_LABELS } from '../../../../lib/payments';
+import { useApiQuery } from '../../../../lib/useApiQuery';
+
+const POLL_INTERVAL_MS = 15_000;
+const LEDGER_LABELS = { TOPUP: 'Nạp ví', REGISTRATION: 'Thanh toán vé' };
+
+// Legacy requests have no code or expiry, so they never stop "waiting": do not poll for them.
+const isWaitingTopup = (payment) =>
+  payment.kind === 'TOPUP' &&
+  payment.status === 'PENDING' &&
+  Boolean(payment.transferCode) &&
+  !payment.transfer?.expired;
+
+function useWalletData() {
+  const summary = useApiQuery('/wallet');
+  const ledger = useApiQuery('/wallet/ledger');
+  const payments = useApiQuery('/wallet/payments');
+  const { reload: reloadSummary } = summary;
+  const { reload: reloadLedger } = ledger;
+  const { reload: reloadPayments } = payments;
+  const refresh = useCallback(() => {
+    reloadSummary();
+    reloadLedger();
+    reloadPayments();
+  }, [reloadSummary, reloadLedger, reloadPayments]);
+  return {
+    summary: summary.data,
+    entries: ledger.data?.ledger ?? [],
+    payments: payments.data?.payments ?? [],
+    error: summary.error ?? ledger.error ?? payments.error,
+    refresh,
+  };
 }
 
+// Refreshes while a top-up waits for the admin, so the new balance appears without a reload.
+function usePolling(enabled, refresh) {
+  useEffect(() => {
+    if (!enabled) {
+      return undefined;
+    }
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        refresh();
+      }
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [enabled, refresh]);
+}
+
+function SignedOut() {
+  return (
+    <div className="page wallet-page">
+      <h1 className="page-title">Ví của tôi</h1>
+      <p role="status" className="notice">
+        Vui lòng đăng nhập để xem ví.
+      </p>
+      <Link className="text-action" href="/login?next=%2Faccount%2Fwallet">
+        Đăng nhập
+      </Link>
+    </div>
+  );
+}
+
+function BalanceCard({ summary }) {
+  return (
+    <section className="balance-card">
+      <span>Số dư khả dụng</span>
+      <strong>{summary ? formatVnd(summary.wallet.balance) : '—'}</strong>
+      <span>{summary?.runPoints.balance ?? 0} RunPoints</span>
+    </section>
+  );
+}
+
+function LedgerList({ entries }) {
+  if (!entries.length) {
+    return <p>Chưa có giao dịch.</p>;
+  }
+  return entries.map((entry) => (
+    <div className="transaction-row" key={entry._id}>
+      <span>
+        {LEDGER_LABELS[entry.referenceType] ?? entry.referenceType} ·{' '}
+        {formatDateTime(entry.createdAt)}
+      </span>
+      <strong>
+        {entry.type === 'CREDIT' ? '+' : '−'}
+        {formatVnd(entry.amount)}
+      </strong>
+    </div>
+  ));
+}
+
+function PaymentHistory({ payments }) {
+  const history = payments.filter(
+    (payment) => !(payment.kind === 'TOPUP' && payment.status === 'PENDING'),
+  );
+  if (!history.length) {
+    return <p>Chưa có yêu cầu thanh toán nào được xử lý.</p>;
+  }
+  return history.map((payment) => (
+    <p key={payment._id}>
+      {[
+        PAYMENT_KIND_LABELS[payment.kind] ?? payment.kind,
+        formatVnd(payment.amount),
+        payment.transferCode,
+        PAYMENT_STATUS_LABELS[payment.status] ?? payment.status,
+        payment.reviewNote,
+      ]
+        .filter(Boolean)
+        .join(' · ')}
+    </p>
+  ));
+}
+
+export default function WalletPage() {
+  const { summary, entries, payments, error, refresh } = useWalletData();
+  usePolling(payments.some(isWaitingTopup), refresh);
+
+  if (error?.status === 401) {
+    return <SignedOut />;
+  }
+
+  return (
+    <div className="page wallet-page">
+      <h1 className="page-title">Ví của tôi</h1>
+      {error && (
+        <p role="alert" className="notice notice-error">
+          {error.message}{' '}
+          <button type="button" onClick={refresh}>
+            Thử lại
+          </button>
+        </p>
+      )}
+      <div className="split">
+        <BalanceCard summary={summary} />
+        <WalletTopup rules={summary?.topup} payments={payments} onChanged={refresh} />
+      </div>
+      <section className="section panel">
+        <h2>Lịch sử giao dịch</h2>
+        <LedgerList entries={entries} />
+        <h2>Yêu cầu thanh toán đã xử lý</h2>
+        <PaymentHistory payments={payments} />
+        <button type="button" className="quiet-button" onClick={refresh}>
+          Cập nhật
+        </button>
+      </section>
+    </div>
+  );
+}
