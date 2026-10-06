@@ -31,6 +31,7 @@ const rateLimit = require('./middlewares/rateLimit');
 app.use('/api/auth', rateLimit(30));
 app.use('/api/staff', rateLimit(300));
 app.use('/api/registrations/lookup', rateLimit(30));
+app.use('/api/wallet/topup', rateLimit(Number(process.env.WALLET_TOPUP_RATE_LIMIT) || 10));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/events", eventRoutes);
@@ -58,11 +59,7 @@ app.use((req, res) => {
     .json({ message: `Route not found: ${req.method} ${req.originalUrl}` });
 });
 
-app.use((err, _req, res, _next) => {
-  const status = err.statusCode || (err.code === 11000 ? 409 : ['ValidationError', 'CastError'].includes(err.name) || err.type === 'entity.parse.failed' ? 400 : 500);
-  if (status === 500) console.error(err);
-  res.status(status).json({ message: status === 500 ? 'Internal server error' : err.code === 11000 ? 'Duplicate record or transaction reference.' : err.message });
-});
+app.use(require('./middlewares/errorHandler').errorHandler);
 
 async function startServer() {
   if (!MONGODB_URI) {

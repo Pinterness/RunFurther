@@ -18,6 +18,9 @@ router.post('/platform/applications/:applicationId/review', verifyUserToken, req
 router.get('/platform/events', verifyUserToken, requireSuperAdmin, platform.listEvents);
 router.post('/platform/events/:eventId/moderation', verifyUserToken, requireSuperAdmin, platform.moderateEvent);
 router.get('/platform/events/:eventId/history', verifyUserToken, requireSuperAdmin, platform.history);
+const topupAccount = require('../controllers/topupAccountController');
+router.get('/platform/topup-account', verifyUserToken, requireSuperAdmin, topupAccount.getTopupAccountSetting);
+router.put('/platform/topup-account', verifyUserToken, requireSuperAdmin, topupAccount.saveTopupAccountSetting);
 router.get('/events/:eventId', verifyUserToken, requireEventAdmin, organizer.getEvent);
 router.get('/events/:eventId/staff', verifyUserToken, requireEventAdmin, organizer.listStaff);
 router.post('/events/:eventId/staff', verifyUserToken, requireEventAdmin, organizer.createStaff);

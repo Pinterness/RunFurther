@@ -4,6 +4,8 @@ const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const { MongoMemoryReplSet } = require('mongodb-memory-server');
 process.env.JWT_SECRET = 'isolated-test-secret-not-for-production';
+// The top-up rate limiter is keyed by IP and every request in this suite comes from 127.0.0.1.
+process.env.WALLET_TOPUP_RATE_LIMIT = '1000';
 const { app } = require('../src/backend/server');
 const User = require('../src/backend/models/User');
 const Event = require('../src/backend/models/Event');
@@ -20,6 +22,7 @@ const Listing = require('../src/backend/models/MarketplaceListing');
 const RunnerProfile = require('../src/backend/models/RunnerProfile');
 const Organization = require('../src/backend/models/Organization');
 const Application = require('../src/backend/models/OrganizerApplication');
+const PlatformSetting = require('../src/backend/models/PlatformSetting');
 const { expireBookings } = require('../src/backend/services/bookingService');
 let repl, server, base, seq = 0;
 const nativeFetch = global.fetch;
@@ -30,6 +33,8 @@ before(async () => {
   repl = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   await mongoose.connect(repl.getUri('runfurther_test'));
   await Promise.all(Object.values(mongoose.models).map(m => m.init()));
+  // Wallet top-ups need a receiving account; tests/topup/create-topup.test.js covers the closed state.
+  await PlatformSetting.create({ key: 'WALLET_TOPUP', bankAccountInfo: { bankBin: '970422', bankName: 'MBBank', accountNo: '0123456789', accountName: 'CONG TY RUNFURTHER' } });
   server = app.listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
   base = 'http://127.0.0.1:' + server.address().port + '/api';
@@ -192,7 +197,7 @@ test('VietQR requires admin reconciliation; one bank reference cannot approve tw
   assert.equal((await api(path, 'POST', { status: 'APPROVED', bankReference: 'BANK-1' }, f.owner)).status, 200);
   const top = await api('/wallet/topup', 'POST', { amount: 10000 }, f.u, { 'Idempotency-Key': 'test-topup-1' });
   assert.equal(top.status, 202);
-  assert.equal((await api('/admin/payments/' + top.paymentRequest._id + '/review', 'POST', { status: 'APPROVED', bankReference: 'BANK-1' }, admin)).status, 409);
+  assert.equal((await api('/admin/payments/' + top.paymentRequest._id + '/review', 'POST', { status: 'APPROVED', bankReference: 'BANK-1', receivedAmount: 10000 }, admin)).status, 409);
   assert.equal((await Wallet.findOne({ userId: f.u._id })).balance, 2000000);
 });
 test('Top-ups credit only after approval and retries do not duplicate credit', async () => {
@@ -201,7 +206,7 @@ test('Top-ups credit only after approval and retries do not duplicate credit', a
   const p = await create();
   assert.equal((await create()).paymentRequest._id, p.paymentRequest._id);
   assert.equal((await Wallet.findOne({ userId: u._id })).balance, 2000000);
-  const review = () => api('/admin/payments/' + p.paymentRequest._id + '/review', 'POST', { status: 'APPROVED', bankReference: 'BANK-2' }, admin);
+  const review = () => api('/admin/payments/' + p.paymentRequest._id + '/review', 'POST', { status: 'APPROVED', bankReference: 'BANK-2', receivedAmount: 50000 }, admin);
   await Promise.all([review(), review()]);
   assert.equal((await Wallet.findOne({ userId: u._id })).balance, 2050000);
 });

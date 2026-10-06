@@ -4,7 +4,8 @@
   "private": true,
   "main": "src/backend/server.js",
   "scripts": {
-    "test": "node --test tests/backend.test.js",
+    "test": "node --test --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/backend.test.js tests/error-handler.test.js tests/format.test.mjs \"tests/topup/*.test.js\"",
+    "test:topup": "node --test \"tests/topup/*.test.js\"",
     "test:layout": "node scripts/checkLayout.js",
     "test:hero": "node scripts/checkTrailScene.js",
     "test:scroll": "node scripts/checkScrollMotion.js",
@@ -20,6 +21,7 @@
     "build:web": "next build",
     "start:web": "next start",
     "test:platform-ui": "node scripts/checkPlatformUI.js",
+    "test:wallet-ui": "node scripts/checkWalletTopupUI.js",
     "test:event-media-ui": "node scripts/checkEventMediaUI.js",
     "test:trail-scene": "node scripts/checkTrailScene.js",
     "test:camera": "node --test tests/race-camera.test.mjs",
