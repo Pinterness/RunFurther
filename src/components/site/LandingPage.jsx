@@ -1,4 +1,5 @@
 'use client';
+import { API_BASE_URL } from '../../lib/apiUrl';
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
@@ -40,7 +41,7 @@ export default function LandingPage() {
     let active = true;
     const timeout = setTimeout(() => controller.abort(), 10000);
     setEventsStatus('loading');
-    fetch((process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api') + '/events?upcoming=true&limit=20&page=' + eventPage, { signal: controller.signal, cache: 'no-store' })
+    fetch((API_BASE_URL) + '/events?upcoming=true&limit=20&page=' + eventPage, { signal: controller.signal, cache: 'no-store' })
       .then(response => { if (!response.ok) throw new Error('Unavailable'); return response.json(); })
       .then(data => {
         if (!Array.isArray(data.events)) throw new Error('Invalid event list');

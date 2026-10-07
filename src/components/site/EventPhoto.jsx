@@ -1,7 +1,8 @@
 'use client';
+import { API_BASE_URL } from '../../lib/apiUrl';
 import { useState } from 'react';
 export function eventImageUrl(value) {
-  if (value?.startsWith('/api/media/images/')) return (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '') + value;
+  if (value?.startsWith('/api/media/images/')) return (API_BASE_URL).replace(/\/api\/?$/, '') + value;
   return value;
 }
 export default function EventPhoto({ src, alt = '', ...props }) {

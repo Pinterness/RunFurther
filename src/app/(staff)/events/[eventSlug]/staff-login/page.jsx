@@ -1,4 +1,5 @@
 'use client';
+import { API_BASE_URL, readApiJson } from '../../../../../lib/apiUrl';
 
 import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
@@ -17,10 +18,10 @@ export default function StaffLoginPage({ params }) {
   useEffect(() => {
     async function loadEvent() {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+        const apiUrl = API_BASE_URL;
         const res = await fetch(`${apiUrl}/events/${eventSlug}`);
         if (res.ok) {
-          const data = await res.json();
+          const data = await readApiJson(res);
           setEvent(data.event);
         }
       } catch (err) {
@@ -38,14 +39,14 @@ export default function StaffLoginPage({ params }) {
     setLoading(true);
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+      const apiUrl = API_BASE_URL;
       const res = await fetch(`${apiUrl}/staff/events/${event._id}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ loginCode: pinCode.trim().toUpperCase() }),
       });
 
-      const data = await res.json();
+      const data = await readApiJson(res);
       if (!res.ok) {
         throw new Error(data.message || 'Mã PIN nhân viên không đúng.');
       }

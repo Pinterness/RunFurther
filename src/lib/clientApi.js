@@ -1,9 +1,10 @@
+import { API_BASE_URL, readApiJson } from './apiUrl';
 export async function api(path, options = {}) {
   const token = typeof window !== 'undefined' ? localStorage.getItem('rf_token') : null;
-  const response = await fetch((process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api') + path, {
+  const response = await fetch((API_BASE_URL) + path, {
     ...options, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}), ...options.headers },
   });
-  const data = await response.json();
+  const data = await readApiJson(response);
   if (!response.ok) {
     if (response.status === 401) { localStorage.removeItem('rf_token'); localStorage.removeItem('rf_user'); window.dispatchEvent(new Event('rf-auth')); }
     throw Object.assign(new Error(data.message || 'Không thể thực hiện yêu cầu.'), { status: response.status, code: data.code });

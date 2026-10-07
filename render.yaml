@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: runfurther-api
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 24.x
+      - key: MONGODB_URI
+        sync: false
+      - key: CLIENT_ORIGIN
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: TRUST_PROXY_HOPS
+        value: "1"
+      - key: SUPPORT_AI_PROVIDER
+        value: guide
+      - key: WALLET_TOPUP_RATE_LIMIT
+        value: "10"

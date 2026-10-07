@@ -1,4 +1,5 @@
 'use client';
+import { API_BASE_URL, readApiJson } from '../../../lib/apiUrl';
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -20,14 +21,14 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+      const apiUrl = API_BASE_URL;
       const res = await fetch(`${apiUrl}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
 
-      const data = await res.json();
+      const data = await readApiJson(res);
       if (!res.ok) {
         throw new Error(data.message || 'Đăng nhập không thành công.');
       }

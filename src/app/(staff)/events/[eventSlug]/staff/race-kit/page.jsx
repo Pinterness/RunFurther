@@ -1,4 +1,5 @@
 'use client';
+import { API_BASE_URL, readApiJson } from '../../../../../../lib/apiUrl';
 
 import { useState, useEffect, use } from 'react';
 
@@ -20,10 +21,10 @@ export default function StaffRaceKitPage({ params }) {
   useEffect(() => {
     async function loadEvent() {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+        const apiUrl = API_BASE_URL;
         const res = await fetch(`${apiUrl}/events/${eventSlug}`);
         if (res.ok) {
-          const data = await res.json();
+          const data = await readApiJson(res);
       if (!res.ok) throw new Error(data.message || 'Thao t?c th?t b?i.');
           setEvent(data.event);
         }
@@ -49,9 +50,9 @@ export default function StaffRaceKitPage({ params }) {
     setRunner(null);
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+      const apiUrl = API_BASE_URL;
       const res = await fetch(`${apiUrl}/staff/events/${event._id}/search?q=${encodeURIComponent(query.trim())}`, { headers: staffHeaders() });
-      const data = await res.json();
+      const data = await readApiJson(res);
       if (!res.ok) throw new Error(data.message || 'Thao t?c th?t b?i.');
 
       if (res.ok && data.runners && data.runners.length > 0) {
@@ -77,7 +78,7 @@ export default function StaffRaceKitPage({ params }) {
     setMessage('');
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+      const apiUrl = API_BASE_URL;
       const res = await fetch(`${apiUrl}/staff/events/${event._id}/race-kit`, {
         method: 'POST',
         headers: staffHeaders(),
@@ -87,7 +88,7 @@ export default function StaffRaceKitPage({ params }) {
         }),
       });
 
-      const data = await res.json();
+      const data = await readApiJson(res);
       if (!res.ok) throw new Error(data.message || 'Thao t?c th?t b?i.');
       if (res.ok) {
         setMessage(data.message);

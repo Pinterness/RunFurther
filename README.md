@@ -2,6 +2,10 @@
 
 Next.js frontend + Express API + MongoDB. Ví sử dụng VND; 1 RunPoint giảm 1.000 VND, tối đa 50% giá trị đơn và chỉ dùng số điểm nguyên.
 
+## Triển khai Vercel + Render
+
+Xem [DEPLOYMENT.md](DEPLOYMENT.md) để thiết lập host và điền môi trường. Có `vercel.json`, `render.yaml`, mẫu trong `deployment/`, và lệnh `npm run deploy:env -- --api-url https://API.onrender.com --web-url https://WEB.vercel.app` tạo file private (gitignore) từ URI Atlas hiện tại. Frontend chỉ cần `NEXT_PUBLIC_API_URL`; bí mật database/JWT chỉ đặt ở Render. Cấu hình miễn phí dành cho thử nghiệm phi thương mại, có giới hạn uptime và điều kiện của nhà cung cấp.
+
 ## Chạy dự án
 
 1. `npm install`

@@ -1,4 +1,5 @@
 'use client';
+import { API_BASE_URL, readApiJson } from '../../lib/apiUrl';
 import Link from 'next/link';
 import { Bell } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -14,8 +15,8 @@ export default function NotificationBell({ userId }) {
       try {
         const token = localStorage.getItem('rf_token');
         if (!token) return;
-        const response = await fetch((process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api') + '/notifications', { signal: controller.signal, headers: { Authorization: 'Bearer ' + token } });
-        if (response.ok) { const data = await response.json(); if (!controller.signal.aborted) setItems(data.notifications); }
+        const response = await fetch((API_BASE_URL) + '/notifications', { signal: controller.signal, headers: { Authorization: 'Bearer ' + token } });
+        if (response.ok) { const data = await readApiJson(response); if (!controller.signal.aborted) setItems(data.notifications); }
       } catch { /* Opening the panel provides an explicit error and retry. */ }
     };
     refresh();

@@ -13,18 +13,17 @@ const staffRoutes = require("./routes/staffRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const marketplaceRoutes = require("./routes/marketplaceRoutes");
 const organizationRoutes = require("./routes/organizationRoutes");
+const { readHttpConfig, corsOptions, validateStartup } = require('./config/deployment');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 5000;
 const MONGODB_URI = process.env.MONGODB_URI;
+const httpConfig = readHttpConfig();
 
+app.set('trust proxy', httpConfig.trustProxy);
+app.disable('x-powered-by');
 app.use(helmet());
-app.use(
-  cors({
-    origin: process.env.CLIENT_ORIGIN || "*",
-    credentials: process.env.CLIENT_ORIGIN ? true : false,
-  }),
-);
+app.use(cors(corsOptions(httpConfig)));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 const rateLimit = require('./middlewares/rateLimit');
@@ -50,7 +49,8 @@ app.get('/api/banks', async (_req, res, next) => {
 });
 
 app.get("/health", (_req, res) => {
-  res.status(200).json({ status: "ok" });
+  const ready = mongoose.connection.readyState === 1;
+  res.set('Cache-Control', 'no-store').status(ready ? 200 : 503).json({ status: ready ? 'ok' : 'unavailable' });
 });
 
 app.use((req, res) => {
@@ -62,12 +62,8 @@ app.use((req, res) => {
 app.use(require('./middlewares/errorHandler').errorHandler);
 
 async function startServer() {
-  if (!MONGODB_URI) {
-    throw new Error("MONGODB_URI is required. Add it to your .env file.");
-  }
-
-  if (!process.env.JWT_SECRET) throw new Error('JWT_SECRET is required.');
-  await mongoose.connect(MONGODB_URI);
+  validateStartup();
+  await mongoose.connect(MONGODB_URI, { maxPoolSize: 10, serverSelectionTimeoutMS: 15000 });
   const topology = await mongoose.connection.db.admin().command({ hello: 1 });
   if (!topology.setName && topology.msg !== 'isdbgrid') throw new Error('MongoDB replica set or sharded cluster is required for transactions.');
   await Promise.all(Object.values(mongoose.models).map(model => model.init()));
@@ -83,7 +79,7 @@ async function startServer() {
   const expiryTimer = setInterval(clean, 30000);
   expiryTimer.unref();
 
-  return app.listen(PORT, () => {
+  return app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server is running on port ${PORT}`);
   });
 }

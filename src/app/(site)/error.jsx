@@ -1,4 +1,10 @@
 'use client';
-export default function SiteError({ reset }) {
-  return <div className="page-container"><section className="panel"><h1>Chưa tải được dữ liệu</h1><p>Vui lòng thử lại sau khi kết nối được khôi phục.</p><button className="button-dark" onClick={reset}>Thử lại</button></section></div>;
+import Link from 'next/link';
+
+export default function SiteError({ retry }) {
+  return <section className="runner-shell runner-guest" role="alert">
+    <p className="section-index">RUNFURTHER</p><h1>Chưa thể tải trang.</h1>
+    <p>Máy chủ có thể đang khởi động hoặc kết nối bị gián đoạn. Bạn hãy chờ khoảng một phút rồi thử lại.</p>
+    <div className="runner-error-actions"><button className="button-primary" onClick={() => retry()}>Thử lại</button><Link className="quiet-button" href="/">Về trang chủ</Link></div>
+  </section>;
 }

@@ -1,4 +1,5 @@
 'use client';
+import { API_BASE_URL, readApiJson } from '../../../../../lib/apiUrl';
 
 import { useState, useEffect, use } from 'react';
 import Link from 'next/link';
@@ -71,8 +72,8 @@ export default function RegistrationPage({ params }) {
       inFlight = true;
       try {
         const token = localStorage.getItem('rf_token');
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/bookings/${bookingData.booking._id}`, { headers: { Authorization: `Bearer ${token}` } });
-        const data = await response.json();
+        const response = await fetch(`${API_BASE_URL}/bookings/${bookingData.booking._id}`, { headers: { Authorization: `Bearer ${token}` } });
+        const data = await readApiJson(response);
         if (disposed) return;
         if (!response.ok) throw new Error(data.message);
         setSecondsLeft(data.holdSecondsRemaining);
@@ -92,7 +93,7 @@ export default function RegistrationPage({ params }) {
   useEffect(() => {
     const token = localStorage.getItem('rf_token');
     if (!token) return;
-    fetch((process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api') + '/wallet', { headers: { Authorization: 'Bearer ' + token } })
+    fetch((API_BASE_URL) + '/wallet', { headers: { Authorization: 'Bearer ' + token } })
       .then(r => r.ok ? r.json() : null).then(data => { if (data) setPointsBalance(data.runPoints.balance); }).catch(() => {});
   }, []);
 
@@ -100,11 +101,11 @@ export default function RegistrationPage({ params }) {
   useEffect(() => {
     async function loadEventData() {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+        const apiUrl = API_BASE_URL;
         const res = await fetch(`${apiUrl}/events/${eventSlug}/categories`);
         if (!res.ok) throw new Error('Không tải được thông tin giải chạy.');
         if (res.ok) {
-          const data = await res.json();
+          const data = await readApiJson(res);
           setEvent(data.event);
           setCategories(data.categories || []);
           if (data.categories && data.categories.length > 0) {
@@ -160,7 +161,7 @@ export default function RegistrationPage({ params }) {
       const token = typeof window !== 'undefined' ? localStorage.getItem('rf_token') : null;
       if (!token) throw new Error('Vui lòng đăng nhập trước khi đăng ký giải.');
       if (!event?._id || !selectedCat?._id) throw new Error('Vui lòng chọn cự ly hợp lệ.');
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+      const apiUrl = API_BASE_URL;
 
       const res = await fetch(`${apiUrl}/bookings/hold`, {
         method: 'POST',
@@ -188,7 +189,7 @@ export default function RegistrationPage({ params }) {
         }),
       });
 
-      const data = await res.json();
+      const data = await readApiJson(res);
       if (!res.ok) {
         throw new Error(data.message || 'Không thể tạo đơn giữ chỗ.');
       }
@@ -211,7 +212,7 @@ export default function RegistrationPage({ params }) {
 
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('rf_token') : null;
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+      const apiUrl = API_BASE_URL;
 
       const res = await fetch(`${apiUrl}/bookings/${bookingData.booking._id}/confirm`, {
         method: 'POST',
@@ -222,7 +223,7 @@ export default function RegistrationPage({ params }) {
         body: JSON.stringify({ paymentMethod: method }),
       });
 
-      const data = await res.json();
+      const data = await readApiJson(res);
       if (!res.ok) {
         throw new Error(data.message || 'Xác nhận thanh toán không thành công.');
       }

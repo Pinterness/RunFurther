@@ -1,4 +1,5 @@
 'use client';
+import { API_BASE_URL, readApiJson } from '../../lib/apiUrl';
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -51,11 +52,11 @@ export default function SiteHeader() {
     // Recheck when opening the menu; never grant a link from cached profile data.
     async function checkOrganizerAccess() {
       try {
-        const response = await fetch((process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api') + '/admin/organizer-access', {
+        const response = await fetch((API_BASE_URL) + '/admin/organizer-access', {
           signal: controller.signal, cache: 'no-store', headers: { Authorization: 'Bearer ' + token },
         });
         if (!response.ok) return;
-        const data = await response.json();
+        const data = await readApiJson(response);
         if (!controller.signal.aborted && localStorage.getItem('rf_token') === token) setOrganizerApproved(data.application?.status === 'APPROVED');
       } catch { /* Keep organizer navigation hidden when approval cannot be verified. */ }
     }

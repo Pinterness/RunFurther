@@ -2,9 +2,11 @@
   "name": "runfurther",
   "version": "1.0.0",
   "private": true,
+  "engines": { "node": "24.x" },
   "main": "src/backend/server.js",
   "scripts": {
-    "test": "node --test --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/backend.test.js tests/error-handler.test.js tests/format.test.mjs \"tests/topup/*.test.js\"",
+    "test": "node --test --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/backend.test.js tests/deployment.test.js tests/error-handler.test.js tests/format.test.mjs \"tests/topup/*.test.js\"",
+    "deploy:env": "node scripts/prepareDeployEnv.js",
     "test:topup": "node --test \"tests/topup/*.test.js\"",
     "test:layout": "node scripts/checkLayout.js",
     "test:hero": "node scripts/checkTrailScene.js",

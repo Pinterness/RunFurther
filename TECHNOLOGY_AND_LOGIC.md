@@ -1,6 +1,19 @@
 # Công nghệ và thuật toán / logic đã dùng trong cuộc trao đổi
 
-Cập nhật: 07/10/2026. Tài liệu tổng hợp phần đã triển khai và kiểm chứng trong mã nguồn; không xem toàn bộ thư viện được cài là tính năng đã hoàn thành.
+Cập nhật: 08/10/2026. Tài liệu tổng hợp phần đã triển khai và kiểm chứng trong mã nguồn; không xem toàn bộ thư viện được cài là tính năng đã hoàn thành.
+
+## Cấu hình Vercel / Render — 08/10/2026
+
+- Kiến trúc: Next.js trên Vercel, Express trên Render, MongoDB Atlas hiện có. Không migrate/xóa/seed dữ liệu khi cấu hình host. Hướng dẫn thao tác và toàn bộ ENV nằm trong [DEPLOYMENT.md](DEPLOYMENT.md).
+- `vercel.json` chọn Next.js và `npm run build:web`; `render.yaml` khai báo Web Service Node/Free, `npm ci --omit=dev`, `npm start`, health check `/health`. `engines.node=24.x` giữ cùng major Node giữa local và hai host.
+- `src/lib/apiConfig.mjs` chuẩn hóa URL origin hoặc `/api`, bỏ dấu `/` cuối và từ chối URL kèm credentials/query/hash. Các màn tài khoản, vé, đăng nhập nhân sự, tra cứu, thông báo, trang chủ và ảnh đều dùng `API_BASE_URL` từ `NEXT_PUBLIC_API_URL`. `next.config.mjs` chặn build Vercel nếu thiếu URL hoặc dùng localhost/HTTP. Đổi NEXT_PUBLIC phải build/redeploy.
+- Backend bind `0.0.0.0` trên PORT của Render; database pool tối đa 10, timeout chọn server 15 giây. `/health` trả 200 khi kết nối Mongoose sẵn sàng, 503 khi chưa sẵn sàng. Quyền và transaction giữ nguyên.
+- CORS so khớp origin đầy đủ, hỗ trợ nhiều origin phân cách bằng dấu phẩy; không cho wildcard Vercel. Server/CLI không gửi Origin vẫn được gọi API và vẫn phải xác thực ở endpoint riêng tư. CORS không phải cơ chế phân quyền. Cho phép preflight Authorization, Content-Type, Idempotency-Key, x-login-code; không dùng cookie cross-site.
+- `TRUST_PROXY_HOPS=1` dành cho đường truy cập trực tiếp qua proxy Render; local mặc định 0. Không tin tùy ý địa chỉ đầu tiên trong X-Forwarded-For. Rate limit vẫn nằm trong một process, phù hợp một instance nhỏ; cần kho dùng chung khi scale nhiều instance.
+- `readApiJson` chuyển phản hồi HTML lúc host khởi động/lỗi gateway thành thông báo có thể thử lại, không đưa HTML host vào UI và không tự gửi lại POST thanh toán/đơn. Error boundary dùng `retry()` đúng API Next đang cài để tải lại route server khi lỗi.
+- `npm run deploy:env -- --api-url ... --web-url ...` chuẩn bị `.env.vercel.local` chỉ chứa API URL và `.env.render.local` chứa URI Atlas cũ + JWT secret mới 48 byte ngẫu nhiên, các biến backend. File private đã gitignore; không in secret ra terminal, không ghi đè secret cũ, không kết nối DB. Hai URL vẫn cần thay khi chưa có project thật.
+- SUPPORT_AI_PROVIDER=guide để không gọi nhà cung cấp AI tính phí; khóa/model không đưa vào frontend. Ảnh trong MongoDB không mất khi Render restart. Có giới hạn thực tế về uptime, băng thông, database backup; Vercel Hobby chỉ dành cho phi thương mại, không tự coi đủ điều kiện bán vé thật trên gói miễn phí.
+- Kiểm chứng: 74 test backend/cấu hình đạt; build local và build dùng HTTPS API giả lập đạt; `scripts/checkDeploymentUI.js` chạy preview production, kiểm tra đăng nhập/tài khoản/thông báo dùng host mới, lỗi cold start và không retry write. Chưa kiểm chứng URL cloud thực tế vì chưa có dịch vụ/URL để kết nối.
 
 ## Dọn dữ liệu demo và nối luồng tình nguyện viên — 07/10/2026
 

@@ -1,4 +1,5 @@
 'use client';
+import { API_BASE_URL, readApiJson } from '../../../lib/apiUrl';
 import { useState } from 'react';
 export default function LookupBibPage() {
   const [query, setQuery] = useState('');
@@ -8,8 +9,8 @@ export default function LookupBibPage() {
   async function lookup(event) {
     event.preventDefault(); setLoading(true); setTicket(null); setMessage('');
     try {
-      const response = await fetch((process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api') + '/registrations/lookup?query=' + encodeURIComponent(query.trim()));
-      const data = await response.json();
+      const response = await fetch((API_BASE_URL) + '/registrations/lookup?query=' + encodeURIComponent(query.trim()));
+      const data = await readApiJson(response);
       if (!response.ok) throw new Error(data.message);
       setTicket(data.ticket);
     } catch (error) { setMessage(error.message); }
