@@ -68,26 +68,60 @@ async function applyVolunteer(req, res, next) {
     assert(event, 409, 'This event is not accepting volunteers.');
     const application = await VolunteerApplication.create({ eventId: event._id, userId: req.userId || null, applicant, desiredRole });
     res.status(201).json({ application, message: 'Đã gửi đơn tình nguyện viên.' });
-  } catch (error) { next(error); }
+  } catch (error) {
+    if (error.code === 11000) return res.status(409).json({ message: 'Email này đã có đơn đang chờ duyệt cho giải. Vui lòng theo dõi đơn trong tài khoản hoặc liên hệ ban tổ chức.' });
+    next(error);
+  }
 }
 async function listVolunteerApplications(req, res, next) {
   try {
     const filter = { eventId: req.params.eventId };
-    if (req.query.status) filter.status = req.query.status;
-    res.json({ applications: await VolunteerApplication.find(filter).sort({ createdAt: -1 }).limit(200).lean() });
+    if (req.query.status) {
+      assert(['PENDING', 'APPROVED', 'REJECTED'].includes(req.query.status), 400, 'Invalid application status.');
+      filter.status = req.query.status;
+    }
+    const page = Number(req.query.page || 1), limit = 50;
+    assert(Number.isSafeInteger(page) && page > 0, 400, 'Invalid page.');
+    const [applications, total] = await Promise.all([
+      VolunteerApplication.find(filter).select('-loginCode').sort({ createdAt: -1, _id: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+      VolunteerApplication.countDocuments(filter),
+    ]);
+    res.json({ applications, total, page, totalPages: Math.max(1, Math.ceil(total / limit)) });
+  } catch (error) { next(error); }
+}
+async function listMyVolunteerApplications(req, res, next) {
+  try {
+    const page = Number(req.query.page || 1), limit = 20;
+    assert(Number.isSafeInteger(page) && page > 0, 400, 'Invalid page.');
+    const filter = { userId: req.userId };
+    const [applications, total] = await Promise.all([
+      VolunteerApplication.find(filter).select('-loginCode -reviewedBy -applicant -userId')
+        .populate('eventId', 'name slug moderation.state')
+        .populate({ path: 'eventAccountId', match: { userId: req.userId, status: 'ACTIVE' }, select: 'eventId accountType loginCode' })
+        .sort({ createdAt: -1, _id: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+      VolunteerApplication.countDocuments(filter),
+    ]);
+    res.json({ applications: applications.map(({ eventAccountId: account, ...application }) => ({
+      ...application,
+      // Read the current credential, never the obsolete copy saved when approving.
+      loginCode: application.status === 'APPROVED' && account && String(account.eventId) === String(application.eventId?._id)
+        && !['HIDDEN', 'SUSPENDED'].includes(application.eventId?.moderation?.state) ? account.loginCode : null,
+    })), total, page, totalPages: Math.max(1, Math.ceil(total / limit)) });
   } catch (error) { next(error); }
 }
 async function reviewVolunteerApplication(req, res, next) {
   try {
     const { status, assignedRole, reviewNote = '' } = req.body;
     assert(['APPROVED', 'REJECTED'].includes(status), 400, 'Invalid review status.');
+    assert(typeof reviewNote === 'string' && reviewNote.length <= 300, 400, 'Review note must be at most 300 characters.');
     const result = await transaction(async session => {
       await lockOperationalEvent(req.params.eventId, session);
       const application = await VolunteerApplication.findOne({ _id: req.params.applicationId, eventId: req.params.eventId }).session(session);
       assert(application, 404, 'Application not found.');
       if (application.status !== 'PENDING') {
         assert(application.status === status, 409, 'Application already reviewed.');
-        return { application, loginCode: application.loginCode };
+        const account = application.eventAccountId && await EventAccount.findOne({ _id: application.eventAccountId, eventId: req.params.eventId, status: 'ACTIVE' }).session(session);
+        return { application: { ...application.toObject(), loginCode: account?.loginCode || null }, loginCode: account?.loginCode || null };
       }
       const reviewer = req.userId || req.staffAccount?.userId || req.staffAccount?.createdBy;
       application.status = status;
@@ -98,7 +132,7 @@ async function reviewVolunteerApplication(req, res, next) {
         const role = assignedRole || application.desiredRole;
         assert(roles.includes(role), 400, 'Volunteer applications cannot grant administrative roles.');
         let pin;
-        do { pin = String(crypto.randomInt(100000, 1000000)); }
+        do { pin = crypto.randomBytes(8).toString('hex').toUpperCase(); }
         while (await EventAccount.exists({ eventId: req.params.eventId, loginCode: pin }).session(session));
         const [account] = await EventAccount.create([{ eventId: req.params.eventId, userId: application.userId, employeeName: application.applicant.fullName, accountType: role, loginCode: pin, createdBy: reviewer }], { session });
         application.assignedRole = role;
@@ -111,5 +145,5 @@ async function reviewVolunteerApplication(req, res, next) {
     res.json(result);
   } catch (error) { next(error); }
 }
-module.exports = { staffLogin, searchRunner, checkinRunner: logisticsAction('checkin'), issueRaceKit: logisticsAction('kit'), applyVolunteer, listVolunteerApplications, reviewVolunteerApplication };
+module.exports = { staffLogin, searchRunner, checkinRunner: logisticsAction('checkin'), issueRaceKit: logisticsAction('kit'), applyVolunteer, listVolunteerApplications, listMyVolunteerApplications, reviewVolunteerApplication };
 

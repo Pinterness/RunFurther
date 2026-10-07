@@ -9,7 +9,7 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.route('**/api/events?limit=3', route => route.fulfill({ json: { events: [] } }));
+    await page.route('**/api/events?upcoming=true&limit=20&page=*', route => route.fulfill({ json: { events: [] } }));
     await page.goto(base, { waitUntil: 'networkidle' });
     await page.locator('#hero-heading').waitFor();
     await expect(page.locator('.immersive-journey')).toHaveAttribute('data-enhanced', 'true', { timeout: 20000 });
@@ -83,7 +83,7 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await page.goto(base + '/account', { waitUntil: 'networkidle' });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     let allowRetry = false;
-    await page.route('**/api/events?limit=3', route => {
+    await page.route('**/api/events?upcoming=true&limit=20&page=*', route => {
       return route.fulfill({ status: allowRetry ? 200 : 503, contentType: 'application/json', body: JSON.stringify(allowRetry ? { events: [] } : { message: 'Unavailable' }) });
     });
     await page.goto(base, { waitUntil: 'networkidle' });

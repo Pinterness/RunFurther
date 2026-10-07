@@ -19,7 +19,7 @@ const steps = [
 ];
 const questions = [
   ['Tôi mới bắt đầu chạy, nên chọn cự ly nào?', 'Bạn có thể bắt đầu tìm hiểu các giải 5 km, đọc điều kiện tham gia và chọn cự ly phù hợp với khả năng hiện tại. Bộ lọc giải chạy giúp bạn so sánh địa điểm, cự ly và ngày thi đấu.'],
-  ['Sau khi đăng ký, tôi nhận vé ở đâu?', 'Sau khi thanh toán được xác nhận, vé, số BIB và mã QR được hiển thị trong mục “Vé giải chạy” ở tài khoản của bạn. Chuyển khoản cần được quản trị viên đối soát trước khi cấp vé.'],
+  ['Sau khi đăng ký, tôi nhận vé ở đâu?', 'Sau khi thanh toán được xác nhận, vé, số BIB và mã QR được hiển thị trong mục “Hồ sơ & vé của tôi” ở tài khoản của bạn. Chuyển khoản tiền vé cần được chủ giải đối soát trước khi cấp vé.'],
   ['Tôi có thể chuyển nhượng BIB không?', 'Bạn có thể đăng BIB đủ điều kiện lên sàn chuyển nhượng trước khi giải diễn ra, nếu chưa check-in hoặc nhận race-kit. Khi giao dịch thành công, vé được đổi chủ và cấp mã QR mới.'],
   ['RunPoints được sử dụng như thế nào?', 'RunPoints có thể dùng để giảm giá khi đăng ký giải: 1 điểm tương đương 1.000 đồng, tối đa 50% giá trị đơn. Số điểm khả dụng hiển thị trong ví của bạn.'],
 ];
@@ -32,6 +32,7 @@ export default function LandingPage() {
   const [events, setEvents] = useState([]);
   const [eventsStatus, setEventsStatus] = useState('loading');
   const [retry, setRetry] = useState(0);
+  const [eventPage, setEventPage] = useState(1), [pagination, setPagination] = useState(null);
   const selected = distances[distance];
 
   useEffect(() => {
@@ -39,13 +40,19 @@ export default function LandingPage() {
     let active = true;
     const timeout = setTimeout(() => controller.abort(), 10000);
     setEventsStatus('loading');
-    fetch((process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api') + '/events?limit=3', { signal: controller.signal })
+    fetch((process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api') + '/events?upcoming=true&limit=20&page=' + eventPage, { signal: controller.signal, cache: 'no-store' })
       .then(response => { if (!response.ok) throw new Error('Unavailable'); return response.json(); })
-      .then(data => { if (active) { setEvents(data.events || []); setEventsStatus('ready'); } })
+      .then(data => {
+        if (!Array.isArray(data.events)) throw new Error('Invalid event list');
+        if (active) {
+          setEvents(previous => eventPage === 1 ? data.events : [...new Map([...previous, ...data.events].map(event => [event._id || event.slug, event])).values()]);
+          setPagination(data.pagination || null); setEventsStatus('ready');
+        }
+      })
       .catch(() => { if (active) setEventsStatus('error'); })
       .finally(() => clearTimeout(timeout));
     return () => { active = false; clearTimeout(timeout); controller.abort(); };
-  }, [retry]);
+  }, [retry, eventPage]);
 
   function chooseDistance(index) { setDistance(index); }
   function tabKeys(event, index, total, select, prefix) {
@@ -76,8 +83,9 @@ export default function LandingPage() {
       <div className="landing-section">
         <div className="events-section-heading" data-reveal="left"><div><p className="section-index">02 / HẸN NHAU Ở VẠCH XUẤT PHÁT</p><h2 id="events-heading">Lịch hẹn với chính mình.</h2></div><Link className="text-action" href="/events">Tất cả giải chạy <Arrow diagonal /></Link></div>
         <div className="landing-event-grid" aria-live="polite" aria-busy={eventsStatus === 'loading'}>
-          {eventsStatus === 'loading' ? [0,1,2].map(i => <div className="event-skeleton" key={i}><div /><p>Đang tìm đường chạy...</p></div>) : eventsStatus === 'error' ? <div className="events-empty"><h3>Đường chạy đang được cập nhật.</h3><p>Chưa tải được lịch giải. Bạn có thể thử kết nối lại.</p><button className="text-action" onClick={() => setRetry(value => value + 1)}>Thử lại <Arrow /></button></div> : events.length ? <div data-reveal="rise"><EventCarousel events={events} /></div> : <div className="events-empty"><h3>Hành trình mới sắp bắt đầu.</h3><p>Các giải chạy sẽ xuất hiện tại đây khi được công bố.</p><Link className="text-action" href="/events">Khám phá danh sách giải <Arrow /></Link></div>}
+          {events.length ? <div data-reveal="rise"><EventCarousel events={events} /></div> : eventsStatus === 'loading' ? [0,1,2].map(i => <div className="event-skeleton" key={i}><div /><p>Đang tìm đường chạy...</p></div>) : eventsStatus === 'error' ? <div className="events-empty"><h3>Đường chạy đang được cập nhật.</h3><p>Chưa tải được lịch giải. Bạn có thể thử kết nối lại.</p><button className="text-action" onClick={() => setRetry(value => value + 1)}>Thử lại <Arrow /></button></div> : <div className="events-empty"><h3>Hành trình mới sắp bắt đầu.</h3><p>Chưa có giải sắp diễn ra được công bố. Bạn vẫn có thể xem các giải trước đây trong danh sách đầy đủ.</p><Link className="text-action" href="/events">Khám phá danh sách giải <Arrow /></Link></div>}
         </div>
+        {events.length > 0 && <div className="landing-calendar-footer"><p role="status">Đang hiển thị {events.length}{pagination ? ' / ' + pagination.total : ''} giải sắp diễn ra.</p>{eventsStatus === 'error' ? <div><p role="alert">Chưa tải được các giải tiếp theo.</p><button type="button" className="text-action" onClick={() => setRetry(value => value + 1)}>Thử tải lại</button></div> : pagination?.page < pagination?.totalPages && <button type="button" className="quiet-button" disabled={eventsStatus === 'loading'} onClick={() => setEventPage(pagination.page + 1)}>{eventsStatus === 'loading' ? 'Đang tải thêm...' : 'Xem thêm giải'}</button>}</div>}
       </div>
     </section>,
 

@@ -5,6 +5,14 @@ Thể thao, tự nhiên, rõ ràng. Ảnh đường chạy và typography là đ
 Không dùng icon trang trí ở mọi dòng, emoji thay nhãn, thẻ kính, gradient neon hay nhiều màu nhấn cùng lúc.
 Trang chủ là không gian khám phá; các trang tài khoản và nghiệp vụ ưu tiên thao tác nhanh.
 
+## Tình nguyện viên và dữ liệu thật — 07/10/2026
+
+- Ban tổ chức có tab Tình nguyện viên trong từng giải: bộ lọc trạng thái, danh sách có khoảng cách rõ ràng, nút duyệt/từ chối và dialog xác nhận vị trí/lời nhắn. Có loading, lỗi/thử lại, trống và phân trang; không ẩn các đơn vượt giới hạn trang đầu.
+- Tài khoản có tab Tình nguyện viên để xem đơn đã gửi, kết quả và lời nhắn. Mã nhân sự chỉ mở khi người dùng bấm xem, dùng mã hiện hành; không hiển thị mã cũ đã thu hồi.
+- Chuông dẫn trực tiếp đến tab tương ứng ở trang tài khoản/chủ giải, kể cả khi đang ở cùng trang. Form gửi đơn hiển thị mã đã lưu và nút theo dõi, không dùng thông báo tự biến mất làm bằng chứng duy nhất.
+- Dùng dialog chung hỗ trợ bàn phím, khóa cuộn nền và trả focus. Nút có khoảng cách, danh sách co giãn trên điện thoại, thông tin liên hệ dài được xuống dòng.
+- Không gắn quyền lợi hoặc thống kê demo cho giải thật. Trang chi tiết dùng địa điểm/lịch do ban tổ chức cấu hình; chỉ hiển thị nội dung chưa có dữ liệu dưới dạng chưa công bố. Minh họa 3D và nội dung giới thiệu chung vẫn là tài sản thiết kế.
+
 ## Màu sắc
 - Nền giấy: #f8f7f3.
 - Chữ chính: #20241e; chữ phụ: #6b7166.
@@ -40,7 +48,7 @@ Trang chủ là không gian khám phá; các trang tài khoản và nghiệp v�
 - Ảnh thẻ giải scale tối đa 1.06; không làm thay đổi kích thước bố cục.
 - Tabs cự ly và bước hướng dẫn đổi nội dung thật; CTA giữ đúng lựa chọn.
 - FAQ mở từng mục; icon cộng xoay thành dấu đóng.
-- Không hiệu ứng con trỏ tùy biến. Carousel được tự chuyển mỗi 4,2 giây theo yêu cầu sản phẩm, phải có nút dừng và tự dừng khi hover/focus hoặc reduced motion.
+- Không hiệu ứng con trỏ tùy biến. Carousel được tự chuyển mỗi 2 giây theo yêu cầu sản phẩm, phải có nút dừng và tự dừng khi hover/focus bàn phím hoặc reduced motion.
 - Tôn trọng prefers-reduced-motion: bỏ animation/transition và giữ nội dung hiển thị.
 - Luôn có focus-visible. Tabs hỗ trợ phím mũi tên, Home/End. Menu hỗ trợ Escape.
 
@@ -102,7 +110,8 @@ Kiểm tra 1440, 1024, 768, 390, 360px; không tràn ngang; đăng nhập/đăng
 
 ## Vòng xoay, chuông và avatar
 
-- “Lịch hẹn với chính mình” dùng carousel có chiều sâu: thẻ chính rõ và lớn, hai thẻ bên thu nhỏ; dữ liệu API thật. Tự chuyển 4,2 giây, dừng khi hover/focus, có nút dừng và các điều khiển thủ công.
+- “Lịch hẹn với chính mình” dùng carousel có chiều sâu: thẻ chính rõ và lớn, hai thẻ bên thu nhỏ; dữ liệu API thật. Tự chuyển 2 giây, dừng khi hover/focus bàn phím, có nút dừng và các điều khiển thủ công. Sau khi bấm mũi tên bằng chuột, đưa chuột ra ngoài sẽ tiếp tục tự chuyển.
+- Lịch trang chủ chỉ hiển thị giải công khai sắp diễn ra. Hiện số đã tải/tổng số và nút Xem thêm giải khi còn trang tiếp theo; không giới hạn cố định ở ba giải. Tối đa năm chấm điều hướng trong một khung nhìn; không tạo thẻ giả khi chỉ có một giải.
 - Carousel chuyển thẻ trong 440ms, nội suy transform/opacity đồng bộ; nút trước/sau và chỉ báo nằm trên bộ thẻ, căn giữa bằng grid. Mobile chia hai hàng điều khiển để nút không bị đẩy xuống dưới thẻ.
 - Mobile cho thấy mép thẻ kế tiếp để gợi ý vuốt; không tràn viewport. Reduced motion tắt tự chuyển và transition.
 - Chuông dành cho tài khoản đã đăng nhập; dấu chưa đọc dựa vào API. Panel có tải/rỗng/lỗi, đóng khi bấm ngoài hoặc Escape và trả focus. Không dùng chấm thông báo giả.

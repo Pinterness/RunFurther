@@ -1,6 +1,29 @@
 # Công nghệ và thuật toán / logic đã dùng trong cuộc trao đổi
 
-Cập nhật: 05/10/2026. Tài liệu tổng hợp phần đã triển khai và kiểm chứng trong mã nguồn; không xem toàn bộ thư viện được cài là tính năng đã hoàn thành.
+Cập nhật: 07/10/2026. Tài liệu tổng hợp phần đã triển khai và kiểm chứng trong mã nguồn; không xem toàn bộ thư viện được cài là tính năng đã hoàn thành.
+
+## Dọn dữ liệu demo và nối luồng tình nguyện viên — 07/10/2026
+
+- Đã đối chiếu dữ liệu với seed và kiểm tra toàn bộ collection trước khi dọn. Xóa đúng 3 giải mẫu Hue Heritage Run 2025, Dalat Ultra Trail 2024, HCMC Night Run 10K 2024; 10 cự ly, 9 mã/phân công nhân sự demo và đơn vị VNG Marathon Series gắn với chúng. Đây là ngoại lệ dọn fixture theo yêu cầu, không thay đổi chính sách chỉ ẩn/ngừng giải thật.
+- Giữ nguyên cả 5 tài khoản User (kể cả tài khoản được seed), mật khẩu/quyền hiện có, Cantho Heritage và đơn vị thật, 3 đơn tình nguyện viên, vé, booking, ví, RunPoints, ledger và yêu cầu thanh toán. Các bộ đếm vé trong 3 giải demo không có vé/booking/giao dịch tương ứng; không suy luận dữ liệu demo chỉ từ ngày chạy đã qua.
+- Script `scripts/cleanupLegacyDemo.js` mặc định dry-run, chỉ nhận diện ID/slug/tên/đơn vị và giá trị đã kiểm tra của snapshot legacy này. `--apply` sao lưu BSON Extended JSON vào `.cache/demo-cleanup-*/backup.ejson`, xác minh bản sao trước khi xóa, chạy transaction snapshot/majority, so sánh SHA-256 của mọi bản ghi được giữ lại. Bất kỳ tham chiếu từ dữ liệu khác vào tập sắp xóa hoặc thay đổi fingerprint đều chặn thao tác. Không dùng script này để tự động xóa mọi giải cùng tên. Bản sao lưu có thông tin nội bộ, đã nằm trong đường dẫn gitignore.
+- Đơn TNV đã được backend lưu MongoDB qua `VolunteerApplication.create`; lỗi cũ là thiếu giao diện xử lý cho chủ giải và thiếu phản hồi cho người gửi. Kiểm tra thực tế thấy 3 đơn `PENDING` của Cantho Heritage, trong đó đơn mới nhất gửi lúc 02:07 ngày 07/10/2026 (UTC+7). Các đơn này được giữ nguyên, không tự động duyệt.
+- Chủ giải vào **Ban tổ chức → Chọn giải → Tình nguyện viên**: lọc chờ duyệt/đã duyệt/từ chối, phân trang 50 đơn, xem thông tin đăng ký, chọn vị trí và lời nhắn khi duyệt; từ chối lưu lý do. API `/admin/events/:eventId/volunteers` và `/:applicationId/review` kiểm tra creator cùng phân công EVENT_ADMIN còn hoạt động. Super Admin, chủ giải khác và runner không thể truy cập. API cũ của STAFF_MANAGER vẫn giữ phạm vi đúng giải. Giải bị ẩn/ngừng cho chủ giải xem đơn nhưng chặn duyệt.
+- Duyệt đơn dùng MongoDB transaction, chỉ chuyển từ `PENDING`, kiểm tra role được phép, tạo đúng một EventAccount kể cả yêu cầu lặp; mã mới dùng `crypto.randomBytes(8)` → 16 ký tự hex. Không thể xin quyền EVENT_ADMIN/STAFF_MANAGER qua đơn TNV.
+- Người đăng ký đã đăng nhập xem **Tài khoản → Tình nguyện viên** (`GET /staff/volunteers/me`, 20 đơn/trang). Chỉ lọc theo userId từ token, không nhận userId/email do client cung cấp. Sau khi duyệt hiển thị lời nhắn, vai trò và mã đang hoạt động từ EventAccount; mã đã đổi/khóa hoặc giải bị ẩn/ngừng không được trả lại từ bản sao cũ của đơn.
+- Chuông lấy thông báo đơn chờ cho đúng chủ giải và trạng thái xét duyệt cho người gửi, dùng cơ chế NotificationReceipt hiện có. Mở chuông tải dữ liệu mới; nền kiểm tra mỗi 60 giây. Sau gửi/duyệt ở cùng trình duyệt có sự kiện `rf-notifications` để làm mới. Link có `#volunteers` mở đúng tab kể cả đang ở ngay trang đó.
+- Form TNV dùng dialog chung, chỉ báo thành công khi API lưu xong và trả mã đơn; không tự đóng sau 2,5 giây. Người gửi không đăng nhập vẫn có mã đối chiếu nhưng không tự gắn vào tài khoản tạo sau đó; giao diện nói rõ ban tổ chức phải liên hệ thủ công. Chưa tự gửi email/SMS và chưa có realtime push.
+- Trang chi tiết giải bỏ lời quảng bá mẫu về áo 2025, chip timing, ảnh nhận diện BIB và hàng nghìn người tham gia; thay bằng địa điểm và lịch đăng ký từ API. Race-kit/quyền lợi chưa có trường nội dung riêng trong Event nên không bịa dữ liệu cho từng giải.
+- Kiểm tra hồi quy: `npm test` (69 kiểm tra), `npm run test:volunteer-ui` (API ghi dùng fixtures), `npm run test:event-calendar`, `npm run test:organizer-ui`, `npm run test:platform-ui`, `npm run build:web`. Kiểm tra API chạy thật chỉ đọc, xác nhận chủ giải nhận đủ 3 đơn và 3 thông báo chờ.
+
+## Lịch giải trang chủ — cập nhật 06/10/2026
+
+- Lịch dùng dữ liệu API/MongoDB, không có danh sách tên giải viết sẵn trong component. Trước đây `/events?limit=3` lấy ba ngày chạy cũ nhất, khiến giải mới nằm ngoài ba kết quả không xuất hiện.
+- Trang chủ dùng `/events?upcoming=true&limit=20&page=...`: chỉ lấy giải công khai chưa qua ngày chạy, loại COMPLETED, DRAFT, CANCELLED và giải bị ẩn/ngừng trước khi phân trang; sắp xếp ngày chạy rồi ID để thứ tự ổn định. Danh sách `/events` mặc định vẫn cho xem giải cũ.
+- Nút Xem thêm giải nối trang tiếp theo, hiển thị số đã tải/tổng số từ API. Tải thêm lỗi giữ các thẻ đã tải và cho thử lại đúng trang, không thay bằng dữ liệu mẫu. Dãy chấm điều hướng chỉ hiện tối đa 5 chấm quanh thẻ hiện tại để không tràn điện thoại.
+- Một giải sắp tới chỉ hiển thị một thẻ; không nhân bản dữ liệu để tạo chuyển động. Từ hai giải trở lên giữ tự chuyển 2 giây/lần.
+- Nội dung giới thiệu, gợi ý 5/10/21/42 km, hướng dẫn và FAQ hiện là nội dung biên tập trong mã; cảnh 3D, đường chạy và race kit là minh họa. Chưa có CMS quản trị các nội dung này. Tên giải, ảnh do chủ giải tải lên, địa điểm, lịch, cự ly và giá trên thẻ lấy từ dữ liệu giải; ảnh thiếu dùng ảnh dự phòng.
+- Kiểm thử: trường hợp ba giải cũ che giải mới và bộ lọc/phân trang nằm trong `tests/backend.test.js`; `npm run test:event-calendar` kiểm tra giải thứ tư, tải 22 giải, thử lại, mobile, trạng thái một giải và không có giải.
 
 ## 1. Các công nghệ
 
@@ -168,7 +191,7 @@ Mục này ghi lại bản cũ; HeroRunners hiện không được gắn vào la
 
 ## 13. Vòng xoay và thông báo
 
-- EventCarousel: chỉ số tuần hoàn modulo, CSS perspective/translate/scale/rotateY để tạo vòng xoay; React quản lý slide hiện tại. Timer 4,2 giây dừng khi hover, focus, tab ẩn, người dùng dừng hoặc prefers-reduced-motion.
+- EventCarousel: chỉ số tuần hoàn modulo, CSS perspective/translate/scale/rotateY để tạo vòng xoay; React quản lý slide hiện tại. Timer 2 giây dừng khi hover, focus bàn phím, tab ẩn, người dùng dừng hoặc prefers-reduced-motion. Bấm điều khiển bằng chuột rồi đưa chuột ra ngoài sẽ tiếp tục tự chuyển, không bị giữ bởi focus của lần bấm. Nút Bật tự chuyển cho phép tiếp tục bằng bàn phím.
 - Điều khiển bằng nút, phím trái/phải, chấm chọn và vuốt cảm ứng; ngưỡng vuốt 45px, ngăn kích hoạt link sau thao tác vuốt. Dữ liệu lấy từ API giải hiện có, không thêm số liệu/giải giả.
 - Chuông dùng Lucide Bell. API /notifications tổng hợp vé, yêu cầu thanh toán, đơn tổ chức và quyết định kiểm duyệt thực tế. Super Admin thấy thêm đơn tổ chức/nạp ví chờ duyệt.
 - NotificationReceipt có unique index (userId, key), lưu đã đọc tại server. API đánh dấu chỉ nhận key thuộc feed người dùng. Poll 60 giây khi tab hiển thị, tải lại khi mở panel; chưa có WebSocket hay push notification.
@@ -254,7 +277,7 @@ Tham chiếu: [GSAP ScrollTrigger](https://gsap.com/docs/v3/Plugins/ScrollTrigge
 - Checkout và màn đăng nhập/check-in/phát race kit của nhân sự dùng token và nút chung; giữ nguyên màu báo lỗi/thành công và toàn bộ logic nghiệp vụ.
 - Token màu và chuyển động tập trung tại globals.css; site.css dùng lại cho header, footer, nút, form, thẻ giải, bảng và ví. Header/footer xanh rừng tối nối với cảnh 3D; bề mặt nội dung màu giấy để đọc/nhập liệu. Không ảnh hưởng API hoặc phân quyền.
 - Trang đăng nhập bỏ màu xanh dương và inline style cũ, dùng bố cục onboarding với nền đường rừng, input có autocomplete và lỗi role=alert. Giữ nguyên đích chuyển tiếp sau đăng nhập.
-- EventCarousel giữ chỉ số modulo và CSS perspective; chuyển thẻ 440ms bằng translate3d/scale/rotateY cùng opacity, tự chuyển sau 4,2 giây. Điều khiển ở trên bộ thẻ, mobile bố trí hai hàng. Giữ dừng khi hover/focus, nút dừng, vuốt, bàn phím và reduced motion.
+- EventCarousel giữ chỉ số modulo và CSS perspective; chuyển thẻ 440ms bằng translate3d/scale/rotateY cùng opacity, tự chuyển sau 2 giây. Điều khiển ở trên bộ thẻ, mobile bố trí hai hàng. Giữ dừng khi hover/focus bàn phím, nút dừng, vuốt, bàn phím và reduced motion.
 - Kiểm tra: test:layout, test:runner-ui, test:platform-ui, test:event-media-ui, build:web; kiểm tra trực tiếp vị trí nút carousel và tràn ngang ở 1440/1024/768/390/360px.
 
 ## 17. Trợ lý hướng dẫn và yêu cầu hỗ trợ

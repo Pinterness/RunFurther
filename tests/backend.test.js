@@ -243,6 +243,73 @@ test('Volunteer review prevents role escalation and duplicate staff accounts', a
   assert.equal(results[0].loginCode, results[1].loginCode);
   assert.equal(await EventAccount.countDocuments({ eventId: f.event._id, accountType: 'RACE_KIT' }), 1);
 });
+
+test('Volunteer requests persist, reach only their owner, and deliver private review results with current credentials', async () => {
+  const f = await fixture(), other = await fixture(), moderator = await user('SUPER_ADMIN');
+  const payload = { applicant: { fullName: 'Persisted Volunteer', email: f.u.email, phone: '0900000000' }, desiredRole: 'CHECKIN' };
+  const submitted = await api('/staff/events/' + f.event._id + '/volunteers/apply', 'POST', payload, f.u);
+  assert.equal(submitted.status, 201);
+  const id = submitted.application._id, list = '/admin/events/' + f.event._id + '/volunteers';
+  assert.equal((await Volunteer.findById(id)).status, 'PENDING');
+  assert.equal((await api('/staff/events/' + f.event._id + '/volunteers/apply', 'POST', payload, f.u)).status, 409);
+  assert.equal((await api(list)).status, 401);
+  for (const outsider of [f.u, other.owner, moderator]) {
+    assert.equal((await api(list, 'GET', null, outsider)).status, 403);
+    assert.equal((await api(list + '/' + id + '/review', 'POST', { status: 'APPROVED' }, outsider)).status, 403);
+  }
+  const listed = await api(list + '?status=PENDING', 'GET', null, f.owner);
+  assert.equal(listed.total, 1); assert.equal(listed.applications[0]._id, id);
+  assert.equal((await api(list + '?status=INVALID', 'GET', null, f.owner)).status, 400);
+  assert.equal((await api(list + '?page=0', 'GET', null, f.owner)).status, 400);
+  assert.equal((await api('/admin/events/' + other.event._id + '/volunteers/' + id + '/review', 'POST', { status: 'APPROVED' }, other.owner)).status, 404);
+  const ownerFeed = await api('/notifications', 'GET', null, f.owner);
+  const alert = ownerFeed.notifications.find(item => item.key === 'volunteer-review:' + id);
+  assert.equal(alert.href, '/organizer/events/' + f.event._id + '#volunteers');
+  for (const outsider of [other.owner, moderator]) assert.ok(!(await api('/notifications', 'GET', null, outsider)).notifications.some(item => item.key === alert.key));
+  assert.equal((await api('/staff/volunteers/me')).status, 401);
+  assert.equal((await api('/staff/volunteers/me', 'GET', null, other.u)).total, 0);
+  const own = await api('/staff/volunteers/me', 'GET', null, f.u);
+  assert.equal(own.applications[0]._id, id); assert.equal(own.applications[0].loginCode, null);
+  assert.equal(own.applications[0].applicant, undefined);
+  const reviewed = await api(list + '/' + id + '/review', 'POST', { status: 'APPROVED', assignedRole: 'RACE_KIT', reviewNote: 'Meet at gate A' }, f.owner);
+  assert.equal(reviewed.status, 200); assert.match(reviewed.loginCode, /^[0-9A-F]{16}$/);
+  const mine = (await api('/staff/volunteers/me', 'GET', null, f.u)).applications[0];
+  assert.equal(mine.status, 'APPROVED'); assert.equal(mine.reviewNote, 'Meet at gate A'); assert.equal(mine.loginCode, reviewed.loginCode);
+  const newAlert = (await api('/notifications', 'GET', null, f.u)).notifications.find(item => item.key === 'volunteer:' + id + ':APPROVED');
+  assert.equal(newAlert.href, '/account#volunteers'); assert.equal(newAlert.read, false);
+  await api('/notifications/read', 'POST', { keys: [newAlert.key] }, f.u);
+  assert.equal((await api('/notifications', 'GET', null, f.u)).notifications.find(item => item.key === newAlert.key).read, true);
+  assert.ok(!(await api('/notifications', 'GET', null, f.owner)).notifications.some(item => item.key === alert.key));
+  await EventAccount.updateOne({ _id: reviewed.application.eventAccountId }, { loginCode: 'ROTATEDCURRENTCODE' });
+  assert.equal((await api('/staff/volunteers/me', 'GET', null, f.u)).applications[0].loginCode, 'ROTATEDCURRENTCODE');
+  assert.equal((await api(list + '/' + id + '/review', 'POST', { status: 'APPROVED' }, f.owner)).loginCode, 'ROTATEDCURRENTCODE');
+  await EventAccount.updateOne({ _id: reviewed.application.eventAccountId }, { status: 'INACTIVE' });
+  assert.equal((await api('/staff/volunteers/me', 'GET', null, f.u)).applications[0].loginCode, null);
+  assert.equal((await api(list + '/' + id + '/review', 'POST', { status: 'REJECTED' }, f.owner)).status, 409);
+});
+
+test('Volunteer queues paginate; hidden events allow owner inspection but block approval; guest requests remain unclaimed', async () => {
+  const f = await fixture();
+  const applications = await Volunteer.insertMany(Array.from({ length: 51 }, (_, index) => ({ eventId: f.event._id, userId: f.u._id, applicant: { fullName: 'Volunteer ' + index, email: 'page' + index + '@test.local', phone: '0900000000' }, desiredRole: 'CHECKIN' })));
+  const list = '/admin/events/' + f.event._id + '/volunteers';
+  const first = await api(list + '?status=PENDING', 'GET', null, f.owner), second = await api(list + '?status=PENDING&page=2', 'GET', null, f.owner);
+  assert.equal(first.total, 51); assert.equal(first.applications.length, 50); assert.equal(second.applications.length, 1);
+  assert.equal(new Set([...first.applications, ...second.applications].map(item => item._id)).size, 51);
+  const mine = await api('/staff/volunteers/me?page=3', 'GET', null, f.u);
+  assert.equal(mine.applications.length, 11);
+  await Event.updateOne({ _id: f.event._id }, { 'moderation.state': 'HIDDEN' });
+  assert.equal((await api(list, 'GET', null, f.owner)).status, 200);
+  assert.equal((await api(list + '/' + applications[0]._id + '/review', 'POST', { status: 'APPROVED' }, f.owner)).status, 409);
+  await Event.updateOne({ _id: f.event._id }, { 'moderation.state': 'ACTIVE' });
+  const rejected = await api(list + '/' + applications[0]._id + '/review', 'POST', { status: 'REJECTED', reviewNote: 'Team is full' }, f.owner);
+  assert.equal(rejected.status, 200); assert.equal(rejected.application.eventAccountId, null);
+  const guest = await api('/staff/events/' + f.event._id + '/volunteers/apply', 'POST', { applicant: { fullName: 'Guest', email: f.owner.email, phone: '0900000000' } });
+  assert.equal(guest.status, 201); assert.equal(guest.application.userId, null);
+  assert.equal((await api('/staff/volunteers/me', 'GET', null, f.owner)).total, 0);
+  await EventAccount.updateOne({ eventId: f.event._id, userId: f.owner._id }, { status: 'INACTIVE' });
+  assert.equal((await api(list, 'GET', null, f.owner)).status, 403);
+  assert.ok(!(await api('/notifications', 'GET', null, f.owner)).notifications.some(item => item.key.startsWith('volunteer-review:')));
+});
 test('Banned users cannot reuse tokens, malformed IDs return 400', async () => {
   const u = await user();
   assert.equal((await api('/bookings/not-an-id', 'GET', null, u)).status, 400);
@@ -285,6 +352,37 @@ test('Achievements count verified results, not purchased tickets', async () => {
   assert.equal(created.status, 201, JSON.stringify(created));
   assert.equal(created.event.status, 'DRAFT');
   assert.equal((await api('/events/' + created.event.slug)).status, 404);
+ });
+ test('Homepage calendar excludes old or non-public races before pagination and keeps later events reachable', async () => {
+  const f = await fixture(), prefix = 'Calendar ' + (++seq) + ' ';
+  const day = 86400000, now = Date.now();
+  await Event.findByIdAndUpdate(f.event._id, { name: prefix + 'Current open race' });
+  const makeEvent = (suffix, raceOffset, status = 'REGISTRATION_OPEN', state = 'ACTIVE') => Event.create({
+    name: prefix + suffix, slug: 'calendar-' + seq + '-' + suffix.toLowerCase().replaceAll(' ', '-'),
+    status, createdBy: f.owner._id, organizerId: f.org._id, moderation: { state },
+    location: { city: 'Can Tho', venue: 'Park' },
+    dateInfo: { raceDate: new Date(now + raceOffset * day), registrationStart: new Date(now + (raceOffset - 10) * day), registrationEnd: new Date(now + (raceOffset - 1) * day) },
+  });
+  await Promise.all(['old-one', 'old-two', 'old-three'].map((suffix, i) => makeEvent(suffix, -20 + i)));
+  await Promise.all([
+    makeEvent('Upcoming published', 3, 'PUBLISHED'), makeEvent('Upcoming closed', 4, 'REGISTRATION_CLOSED'),
+    makeEvent('Next race', 5), makeEvent('Last race', 6),
+    makeEvent('Hidden race', 1, 'REGISTRATION_OPEN', 'HIDDEN'),
+    makeEvent('Suspended race', 1, 'REGISTRATION_OPEN', 'SUSPENDED'),
+    makeEvent('Draft race', 1, 'DRAFT'), makeEvent('Cancelled race', 1, 'CANCELLED'),
+    makeEvent('Completed race', 1, 'COMPLETED'),
+  ]);
+  const path = '/events?search=' + encodeURIComponent(prefix);
+  const oldList = await api(path + '&limit=3');
+  assert.ok(oldList.events.every(event => new Date(event.dateInfo.raceDate).getTime() < now));
+  const first = await api(path + '&upcoming=true&limit=3');
+  assert.equal(first.status, 200); assert.equal(first.pagination.total, 5); assert.equal(first.pagination.totalPages, 2);
+  assert.equal(first.events[0]._id, String(f.event._id)); assert.equal(first.events[0].price, 100000);
+  assert.deepEqual(first.events.map(event => event.status), ['REGISTRATION_OPEN', 'PUBLISHED', 'REGISTRATION_CLOSED']);
+  const second = await api(path + '&upcoming=true&limit=3&page=2');
+  assert.equal(second.events.length, 2);
+  assert.equal(new Set([...first.events, ...second.events].map(event => event._id)).size, 5);
+  assert.equal((await api(path + '&upcoming=invalid')).status, 400);
  });
  test('Public events expose real quotas and results without runner contacts', async () => {
   const f = await fixture(), p = await paid(f), admin = f.owner;

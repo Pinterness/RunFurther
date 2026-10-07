@@ -5,6 +5,7 @@ const { getPlatformOverview, listManagedEvents } = require('../controllers/admin
 const router = express.Router();
 const management = require('../controllers/managementController');
 const organizer = require('../controllers/organizerController');
+const volunteers = require('../controllers/staffController');
 const platform = require('../controllers/platformController');
 const images = require('../controllers/imageController');
 const imageLimit = require('../middlewares/rateLimit')(20);
@@ -23,6 +24,8 @@ router.get('/platform/topup-account', verifyUserToken, requireSuperAdmin, topupA
 router.put('/platform/topup-account', verifyUserToken, requireSuperAdmin, topupAccount.saveTopupAccountSetting);
 router.get('/events/:eventId', verifyUserToken, requireEventAdmin, organizer.getEvent);
 router.get('/events/:eventId/staff', verifyUserToken, requireEventAdmin, organizer.listStaff);
+router.get('/events/:eventId/volunteers', verifyUserToken, requireEventAdmin, volunteers.listVolunteerApplications);
+router.post('/events/:eventId/volunteers/:applicationId/review', verifyUserToken, requireEventAdmin, volunteers.reviewVolunteerApplication);
 router.post('/events/:eventId/staff', verifyUserToken, requireEventAdmin, organizer.createStaff);
 router.patch('/events/:eventId/staff/:accountId', verifyUserToken, requireEventAdmin, organizer.updateStaff);
 router.post('/events', verifyUserToken, platform.requireOrganizerApproval, management.createEvent);

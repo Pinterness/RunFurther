@@ -13,7 +13,7 @@ export default async function EventPage({ params }) {
         <EventPhoto src={event.bannerUrl} />
         <div className="event-cover-content">
           {event.logoUrl && <EventPhoto className="event-brand-logo" src={event.logoUrl} alt={'Logo ' + event.name} />}
-          <span className="tag">ROAD & TRAIL RUN</span>
+          <span className="tag">RUNFURTHER / GIẢI CHẠY</span>
           <h1>{event.name}</h1>
           <p>⌖ {event.location?.city}　　▣ {new Date(event.dateInfo.raceDate).toLocaleDateString('vi-VN')}</p>
         </div>
@@ -25,7 +25,7 @@ export default async function EventPage({ params }) {
             <Link className="active" href={`/events/${event.slug}`}>
               Tổng quan
             </Link>
-            <Link href="#route">Sơ đồ đường chạy</Link>
+            <Link href="#route">Địa điểm</Link>
             <Link href="#schedule">Lịch trình</Link>
             <Link href={`/events/${event.slug}/results`}>Kết quả</Link>
             <Link href={`/events/${event.slug}/staff-login`} className="staff-entry-link">
@@ -33,21 +33,16 @@ export default async function EventPage({ params }) {
             </Link>
           </nav>
 
-          <h2>Giới thiệu về giải chạy</h2>
-          <p>
-            {event.name} là hành trình dành cho cộng đồng chạy bộ yêu thử thách.
-            Trải nghiệm cung đường đầy cảm xúc và khám phá giới hạn mới của bản thân
-            cùng hàng nghìn runner trên khắp Việt Nam.
-          </p>
-
-          <h2>Quyền lợi vận động viên</h2>
+          <h2 id="route">Địa điểm tổ chức</h2>
+          <p>{event.location?.venue} · {event.location?.city}</p>
+          <h2 id="schedule">Lịch trình đăng ký</h2>
           <ul className="checklist">
-            <li>Áo đấu thể thao phiên bản giới hạn 2025.</li>
-            <li>Bộ Race-Kit bao gồm BIB, Chip Timing chuẩn quốc tế.</li>
-            <li>Huy chương hoàn thành (Finisher Medal) đúc nổi tinh xảo.</li>
-            <li>Hình ảnh lưu niệm chất lượng cao từ đường chạy nhận diện tự động qua BIB.</li>
-            <li>Tích lũy điểm thưởng RunPoints để đổi vé miễn phí cho các giải sau.</li>
+            <li>Mở đăng ký: {new Date(event.dateInfo.registrationStart).toLocaleString('vi-VN')}.</li>
+            <li>Đóng đăng ký: {new Date(event.dateInfo.registrationEnd).toLocaleString('vi-VN')}.</li>
+            <li>Ngày chạy: {new Date(event.dateInfo.raceDate).toLocaleString('vi-VN')}.</li>
           </ul>
+          <h2>Race-kit và quyền lợi</h2>
+          <p>Thông tin chi tiết về race-kit, huy chương và quyền lợi do ban tổ chức công bố. Vui lòng xác nhận với ban tổ chức trước khi đăng ký.</p>
         </section>
 
         <aside className="card order-card">

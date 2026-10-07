@@ -3,6 +3,7 @@ import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { api } from '../../../../../lib/clientApi';
 import EventEditor, { eventStatuses } from '../../../../../components/site/EventEditor';
+import VolunteerApplications from '../../../../../components/site/VolunteerApplications';
 import PaymentReview from '../../../../../components/site/PaymentReview';
 import Modal from '../../../../../components/site/Modal';
 const roles = { STAFF_MANAGER: 'Quản lý nhân sự', CHECKIN: 'Check-in', RACE_KIT: 'Phát race-kit', CHECKPOINT: 'Trạm kiểm soát', MARSHAL: 'Điều phối đường chạy', TIMING: 'Tính giờ', WATER_STATION: 'Trạm nước', MEDICAL: 'Y tế', VOLUNTEER: 'Tình nguyện viên' };
@@ -18,6 +19,11 @@ export default function ManagedEventPage({ params }) {
     try { setData(await api(endpoint)); setGuest(false); } catch (error) { if (error.status === 401) setGuest(true); else setError(error.message); } finally { setLoading(false); }
   }
   useEffect(() => { setData(null); load(); }, [eventId]);
+  useEffect(() => {
+    const syncTab = () => { if (window.location.hash === '#volunteers') setTab('volunteers'); };
+    syncTab(); window.addEventListener('hashchange', syncTab);
+    return () => window.removeEventListener('hashchange', syncTab);
+  }, [eventId]);
   useEffect(() => {
     if (!data || !['staff','runners'].includes(tab)) return;
     const controller = new AbortController(); setDetailsLoading(true); setDetailsError('');
@@ -54,9 +60,10 @@ export default function ManagedEventPage({ params }) {
   if (loading && !data) return <div className="runner-shell" role="status">Đang tải sự kiện...</div>;
   if (!data) return <div className="runner-shell"><h1>Chưa thể mở sự kiện.</h1><p role="alert" className="notice notice-error">{error}</p><div className="runner-error-actions"><button className="quiet-button" onClick={load}>Thử lại</button><Link className="text-action" href="/organizer">Về sự kiện của tôi</Link></div></div>;
   const suspended = ['HIDDEN', 'SUSPENDED'].includes(data.event.moderation?.state);
-  return <div className="runner-shell organizer-page"><Link className="text-action" href="/organizer">← Sự kiện của tôi</Link><div className="runner-page-heading organizer-heading"><div><p className="section-index">{eventStatuses[data.event.status]} / BAN TỔ CHỨC</p><h1>{data.event.name}</h1></div>{!['DRAFT','CANCELLED'].includes(data.event.status) && <Link className="quiet-button" href={'/events/' + data.event.slug}>Xem trang công khai ↗</Link>}</div><div className="runner-toolbar"><div className="runner-tabs">{[['info','Thông tin giải'],['categories','Cự ly & vé'],['staff','Nhân sự'],['runners','Người chạy'],['payments','Tiền vé']].map(([key,label]) => <button key={key} aria-pressed={tab === key} disabled={busy} onClick={() => { setTab(key); setError(''); setNotice(''); }}>{label}</button>)}</div></div>
+  return <div className="runner-shell organizer-page"><Link className="text-action" href="/organizer">← Sự kiện của tôi</Link><div className="runner-page-heading organizer-heading"><div><p className="section-index">{eventStatuses[data.event.status]} / BAN TỔ CHỨC</p><h1>{data.event.name}</h1></div>{!['DRAFT','CANCELLED'].includes(data.event.status) && <Link className="quiet-button" href={'/events/' + data.event.slug}>Xem trang công khai ↗</Link>}</div><div className="runner-toolbar"><div className="runner-tabs">{[['info','Thông tin giải'],['categories','Cự ly & vé'],['staff','Nhân sự'],['volunteers','Tình nguyện viên'],['runners','Người chạy'],['payments','Tiền vé']].map(([key,label]) => <button key={key} aria-pressed={tab === key} disabled={busy} onClick={() => { setTab(key); setError(''); setNotice(''); }}>{label}</button>)}</div></div>
   {error && <p role="alert" className="notice notice-error">{error}</p>}{notice && <p role="status" className="notice">{notice}</p>}
   {suspended && <p className="notice notice-error">Giải đã bị ẩn/tạm ngừng: {data.event.moderation.reason}. Dữ liệu được giữ lại; chỉ Super Admin có thể khôi phục.</p>}
+  {tab === 'volunteers' && <VolunteerApplications key={eventId} endpoint={endpoint + '/volunteers'} manage suspended={suspended} />}
   {tab === 'payments' && <PaymentReview endpoint={endpoint} suspended={suspended} />}
   <fieldset disabled={suspended} style={{ minWidth: 0, border: 0, padding: 0 }}>
   {tab === 'info' && <section className="organizer-panel"><h2>Thông tin & lịch trình</h2><p className="organizer-hint">Chỉ chủ giải được thay đổi thông tin này. Super Admin chỉ kiểm duyệt giải.</p><EventEditor key={data.event._id} event={data.event} onSave={saveEvent} busy={busy} /></section>}

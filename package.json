@@ -33,7 +33,9 @@
     "test:cinematic": "node --test tests/cinematic-runner.test.mjs",
     "test:cinematic-ui": "node scripts/checkCinematicScene.js",
     "test:cinematic-visual": "node scripts/checkRunnerCharacter.js --cinematic",
-    "test:account-access": "node scripts/checkAccountAccess.js"
+    "test:account-access": "node scripts/checkAccountAccess.js",
+    "test:event-calendar": "node scripts/checkEventCalendar.js",
+    "test:volunteer-ui": "node scripts/checkVolunteerUI.js"
   },
   "dependencies": {
     "autoprefixer": "^10.6.1",

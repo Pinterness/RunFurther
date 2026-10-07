@@ -28,6 +28,11 @@ async function listEvents(req, res, next) {
     );
     const limit = parsePositiveInteger(req.query.limit, 20, 100);
     const filter = { ...availableEvent, status: { $in: PUBLIC_EVENT_STATUSES } };
+    assert(req.query.upcoming === undefined || ['true', 'false'].includes(req.query.upcoming), 400, 'Invalid upcoming filter.');
+    if (req.query.upcoming === 'true') {
+      filter['dateInfo.raceDate'] = { $gte: new Date() };
+      filter.status = { $in: PUBLIC_EVENT_STATUSES.filter(status => status !== 'COMPLETED') };
+    }
     if (req.query.city) filter['location.city'] = { $regex: escapeRegex(String(req.query.city).slice(0, 100)), $options: 'i' };
     if (req.query.search) filter.name = { $regex: escapeRegex(String(req.query.search).slice(0, 120)), $options: 'i' };
     if (req.query.distance) {
@@ -39,7 +44,7 @@ async function listEvents(req, res, next) {
     const [events, total] = await Promise.all([
       Event.find(filter)
         .select("slug name status dateInfo location createdAt bannerUrl logoUrl")
-        .sort({ "dateInfo.raceDate": 1 })
+        .sort({ "dateInfo.raceDate": 1, _id: 1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .lean(),

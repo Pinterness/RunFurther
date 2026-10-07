@@ -83,7 +83,7 @@ Nhân sự gửi `x-login-code` của đúng giải hoặc Bearer token có phâ
 
 ## Phần tiếp theo
 
-- Hoàn thiện màn duyệt tình nguyện viên và các màn nghiệp vụ nhân sự ngoài check-in/phát kit (ban tổ chức đã có tạo giải, cự ly và phân công).
+- Hoàn thiện các màn nghiệp vụ nhân sự ngoài check-in/phát kit. Màn duyệt tình nguyện viên đã có trong Ban tổ chức → Chọn giải → Tình nguyện viên; người gửi đã đăng nhập theo dõi kết quả tại Tài khoản → Tình nguyện viên. Đơn gửi không đăng nhập cần ban tổ chức liên hệ thủ công; chưa tự gửi email/SMS.
 - Chọn nhà cung cấp ngân hàng để tự động đối soát, hoàn tiền và xử lý khoản chuyển muộn.
 - Hồ sơ cộng đồng hiện vẫn là giao diện mẫu; chưa có API hồ sơ công khai, theo dõi hoặc bài viết.
 - Xác minh email/quên mật khẩu, gửi email vé và tải ảnh avatar cá nhân (hiện có avatar theo tên và màu).

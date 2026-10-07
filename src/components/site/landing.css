@@ -201,6 +201,9 @@ details[open] .faq-plus { transform: rotate(45deg); }
 }
 
 /* Start running on pointer hover or keyboard focus, without changing selection. */
+.landing-calendar-footer { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; margin-top:20px; font-size:13px; color:var(--text-muted); }
+.landing-calendar-footer p { margin:0; }
+.landing-calendar-footer [role=alert] { margin-bottom:8px; }
 .runner-orbit { position:absolute; width:340px; height:206px; transform:rotate(-28deg); pointer-events:none; }
 .track-runner { position:absolute; top:0; left:0; width:38px; height:38px; offset-path:ellipse(170px 103px at 170px 103px); offset-distance:10%; offset-rotate:0deg; display:grid; place-items:center; background:#ee592c; color:#fffaf1; border:4px solid #f1f1e7; border-radius:50%; box-sizing:content-box; box-shadow:0 3px 12px #70462822; animation:runner-lap 4s linear infinite paused; }
 .track-runner svg { width:30px; height:30px; transform:rotate(28deg); }

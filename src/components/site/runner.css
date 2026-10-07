@@ -69,6 +69,14 @@ button:hover .avatar-orbit { transform:rotate(0deg); }
 .organizer-section-heading { display:flex; align-items:center; justify-content:space-between; gap:24px; margin:28px 0; }.organizer-section-heading p { font-size:12px; line-height:1.7; margin-top:8px; color:#637155; }
 .organizer-staff-list { display:grid; gap:16px; }.organizer-staff { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:24px; padding:24px; border:1px solid #d8ddce; border-radius:6px; background:#fffefa; }.organizer-staff>div:first-child { flex:1; min-width:190px; }.organizer-staff p,.organizer-staff small { display:block; color:#647157; font-size:12px; margin-top:8px; overflow-wrap:anywhere; }.organizer-staff summary { cursor:pointer; font-size:12px; }.organizer-staff code { display:block; background:#e9eddf; padding:8px; margin-top:8px; font-size:12px; letter-spacing:.06em; }.organizer-row-actions { display:flex; align-items:center; flex-wrap:wrap; gap:12px; }
 .runner-fields + .organizer-row-actions,.organizer-event > .organizer-row-actions { margin-top:20px; }
+.volunteer-list { display:grid; gap:18px; }
+.volunteer-card { width:100%; overflow-wrap:anywhere; }
+.volunteer-card-heading { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+.volunteer-card h3 { margin:0; font-size:20px; }
+.volunteer-card p { margin:14px 0; }
+.volunteer-card .organizer-row-actions,.volunteer-access { margin-top:20px; display:flex; align-items:center; flex-wrap:wrap; gap:16px; }
+.volunteer-access summary { cursor:pointer; }
+.volunteer-access code { display:block; margin-top:12px; padding:12px; background:#e9eddf; letter-spacing:.06em; }
 .runner-error-actions { display:flex; align-items:center; flex-wrap:wrap; gap:12px 20px; }
 .notice > button { display:block; margin-top:12px; }
 .organizer-table-wrap { overflow-x:auto; border:1px solid #d8ddce; border-radius:6px; }.organizer-table { width:100%; min-width:680px; text-align:left; border-collapse:collapse; font-size:12px; background:#fffefa; }.organizer-table th { background:#e9eddf; font-weight:600; }.organizer-table td,.organizer-table th { padding:16px; border-bottom:1px solid #e2e5da; }.organizer-table small { display:block; margin-top:6px; color:#637155; }

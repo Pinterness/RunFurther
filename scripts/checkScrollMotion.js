@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     let release;
     const ready = new Promise(resolve => { release = resolve; });
-    await page.route('**/api/events?limit=3', async route => { await ready; await route.fulfill({ json: { events: [0,1,2].map(i => ({ _id: String(i), slug: 'motion-' + i, name: 'Giải kiểm thử ' + i, categories: ['5K'], location: { city: 'Đà Lạt' } })) } }); });
+    await page.route('**/api/events?upcoming=true&limit=20&page=*', async route => { await ready; await route.fulfill({ json: { events: [0,1,2].map(i => ({ _id: String(i), slug: 'motion-' + i, name: 'Giải kiểm thử ' + i, categories: ['5K'], location: { city: 'Đà Lạt' } })) } }); });
     await page.goto(process.env.WEB_TEST_URL || 'http://localhost:3000', { waitUntil: 'domcontentloaded' });
     const scene = page.locator('.immersive-journey'), dialog = page.locator('.immersive-panel-dialog');
     const trigger = key => page.locator('.immersive-panel-trigger[data-panel="' + key + '"]:visible').first();

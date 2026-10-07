@@ -21,7 +21,8 @@ export default function NotificationBell({ userId }) {
     refresh();
     const timer = setInterval(refresh, 60000);
     document.addEventListener('visibilitychange', refresh);
-    return () => { controller.abort(); clearInterval(timer); document.removeEventListener('visibilitychange', refresh); };
+    window.addEventListener('rf-notifications', refresh);
+    return () => { controller.abort(); clearInterval(timer); document.removeEventListener('visibilitychange', refresh); window.removeEventListener('rf-notifications', refresh); };
   }, [userId]);
   useEffect(() => {
     if (!open) return;
@@ -36,8 +37,19 @@ export default function NotificationBell({ userId }) {
     setError('');
     try { await api('/notifications/read', { method: 'POST', body: JSON.stringify({ keys: items.map(i => i.key) }) }); setItems(list => list.map(i => ({ ...i, read: true }))); } catch (e) { setError(e.message); }
   }
+  function followNotification(event, href) {
+    setOpen(false);
+    const destination = new URL(href, window.location.origin);
+    // Next's same-page Link navigation uses pushState, which does not emit hashchange.
+    // Keep in-page tabs in sync, including reopening the same notification after switching tabs.
+    if (destination.origin === window.location.origin && destination.pathname === window.location.pathname && destination.hash) {
+      event.preventDefault();
+      if (window.location.hash !== destination.hash) window.location.hash = destination.hash;
+      else window.dispatchEvent(new Event('hashchange'));
+    }
+  }
   const unread = items.filter(i => !i.read).length;
   return <div className="notification-control" ref={root}><button type="button" ref={trigger} className="notification-trigger" aria-label={'Thông báo' + (unread ? `, ${unread} chưa đọc` : '')} aria-expanded={open} aria-controls="notification-panel" onClick={() => setOpen(value => !value)}><Bell size={19} strokeWidth={1.6} />{unread > 0 && <span className="notification-dot" />}</button>
-    {open && <section className="notification-panel" id="notification-panel" aria-label="Thông báo của bạn"><div className="notification-heading"><h2>Thông báo</h2>{unread > 0 && <button onClick={markRead}>Đánh dấu đã đọc</button>}</div>{loading ? <p role="status">Đang tải...</p> : error ? <p role="alert">{error}</p> : items.length ? <ul>{items.map(item => <li key={item.key} className={item.read ? '' : 'is-unread'}><Link href={item.href} onClick={() => setOpen(false)}><strong>{item.title}</strong><span>{item.detail}</span><small>{new Date(item.at).toLocaleString('vi-VN')}</small></Link></li>)}</ul> : <p>Bạn chưa có thông báo mới.</p>}</section>}
+    {open && <section className="notification-panel" id="notification-panel" aria-label="Thông báo của bạn"><div className="notification-heading"><h2>Thông báo</h2>{unread > 0 && <button onClick={markRead}>Đánh dấu đã đọc</button>}</div>{loading ? <p role="status">Đang tải...</p> : error ? <p role="alert">{error}</p> : items.length ? <ul>{items.map(item => <li key={item.key} className={item.read ? '' : 'is-unread'}><Link href={item.href} onClick={event => followNotification(event, item.href)}><strong>{item.title}</strong><span>{item.detail}</span><small>{new Date(item.at).toLocaleString('vi-VN')}</small></Link></li>)}</ul> : <p>Bạn chưa có thông báo mới.</p>}</section>}
   </div>;
 }

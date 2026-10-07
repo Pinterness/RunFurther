@@ -93,6 +93,7 @@ const volunteerApplicationSchema = new mongoose.Schema(
 );
 
 volunteerApplicationSchema.index({ eventId: 1, "applicant.email": 1 });
+volunteerApplicationSchema.index({ userId: 1, createdAt: -1 });
 volunteerApplicationSchema.index({ eventId: 1, 'applicant.email': 1, status: 1 }, { unique: true, partialFilterExpression: { status: 'PENDING' } });
 
 module.exports =

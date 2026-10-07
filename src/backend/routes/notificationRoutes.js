@@ -6,6 +6,8 @@ const Application = require('../models/OrganizerApplication');
 const Registration = require('../models/Registration');
 const Event = require('../models/Event');
 const Moderation = require('../models/EventModeration');
+const Volunteer = require('../models/VolunteerApplication');
+const EventAccount = require('../models/EventAccount');
 const schema = new mongoose.Schema({ userId: { type: mongoose.Schema.Types.ObjectId, required: true }, key: { type: String, required: true }, readAt: Date });
 schema.index({ userId: 1, key: 1 }, { unique: true });
 const Receipt = mongoose.models.NotificationReceipt || mongoose.model('NotificationReceipt', schema);
@@ -23,6 +25,13 @@ async function feed(userId, systemRole) {
   if (application) items.push({ key: `organizer:${application._id}:${application.updatedAt.toISOString()}`, title: `Quyền tổ chức ${labels[application.status]}`, detail: application.reviewNote || application.organizationName, href: '/organizer', at: application.updatedAt });
   for (const ticket of tickets) items.push({ key: `ticket:${ticket._id}`, title: `Vé của bạn: ${ticket.bibNumber}`, detail: 'Xem thông tin vé trong tài khoản.', href: '/account', at: ticket.updatedAt || ticket.createdAt });
   for (const h of history) items.push({ key: `moderation:${h._id}`, title: `${h.eventId?.name || 'Giải chạy'}: ${h.action === 'ACTIVE' ? 'đã khôi phục' : h.action === 'HIDDEN' ? 'đã ẩn' : 'đã tạm ngừng'}`, detail: h.reason, href: '/organizer', at: h.createdAt });
+  const ownVolunteers = await Volunteer.find({ userId }).populate('eventId', 'name').sort({ updatedAt: -1 }).limit(10).lean();
+  for (const a of ownVolunteers) items.push({ key: `volunteer:${a._id}:${a.status}`, title: `Đơn tình nguyện viên ${labels[a.status]}`, detail: [a.eventId?.name || 'Giải chạy', a.reviewNote].filter(Boolean).join(' · '), href: '/account#volunteers', at: a.updatedAt });
+  if (systemRole !== 'SUPER_ADMIN' && events.length) {
+    const owned = await EventAccount.distinct('eventId', { eventId: { $in: events }, userId, accountType: 'EVENT_ADMIN', status: 'ACTIVE' });
+    const pendingVolunteers = await Volunteer.find({ eventId: { $in: owned }, status: 'PENDING' }).populate('eventId', 'name').sort({ createdAt: -1 }).limit(10).lean();
+    for (const a of pendingVolunteers) items.push({ key: `volunteer-review:${a._id}`, title: 'Đơn tình nguyện viên chờ duyệt', detail: a.eventId?.name || 'Giải chạy', href: `/organizer/events/${a.eventId._id}#volunteers`, at: a.createdAt });
+  }
   if (systemRole === 'SUPER_ADMIN') {
     const [applications, topups] = await Promise.all([Application.find({ status: 'PENDING' }).sort({ updatedAt: -1 }).limit(10).lean(), Payment.find({ kind: 'TOPUP', status: 'PENDING' }).sort({ createdAt: -1 }).limit(10).lean()]);
     for (const a of applications) items.push({ key: `review:${a._id}:${a.updatedAt.toISOString()}`, title: 'Đơn tổ chức chờ xét duyệt', detail: a.organizationName, href: '/admin', at: a.updatedAt });

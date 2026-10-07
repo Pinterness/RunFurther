@@ -12,10 +12,12 @@ const {
   issueRaceKit,
   applyVolunteer,
   listVolunteerApplications,
+  listMyVolunteerApplications,
   reviewVolunteerApplication,
 } = require("../controllers/staffController");
 
 const router = express.Router();
+router.get('/volunteers/me', verifyUserToken, listMyVolunteerApplications);
 
 // Staff Login with PIN
 router.post("/events/:eventId/login", require('../middlewares/rateLimit')(15), staffLogin);
