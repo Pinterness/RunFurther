@@ -4,6 +4,8 @@ Cập nhật: 08/10/2026. Tài liệu tổng hợp phần đã triển khai và 
 
 ## Cấu hình Vercel / Render — 08/10/2026
 
+- Xử lý log Render `Missing script: "build"`: service API chỉ cần cài dependency (`npm ci --omit=dev`) và chạy `npm start`. Build Command trong dashboard phải được sửa trực tiếp nếu tạo service thủ công; biến môi trường và `render.yaml` chưa gắn Blueprint không ghi đè setting đó.
+- Vá dependency cho lần deploy: Next từ 16.3.4 lên 16.3.6, sharp từ 0.35.4 lên 0.35.5; overrides đặt proxy-addr ≥2.0.8, source-map-js ≥1.2.2 và brace-expansion ≥5.0.12. Audit production (`--omit=dev`) còn 0 cảnh báo; audit đầy đủ còn 3 mục high thuộc nodemon/chokidar/braces chỉ dùng khi phát triển, chưa có bản vá braces công bố. Cảnh báo audit được xử lý riêng với lỗi thiếu script; không chạy audit fix --force để hạ nodemon về bản cũ.
 - Kiến trúc: Next.js trên Vercel, Express trên Render, MongoDB Atlas hiện có. Không migrate/xóa/seed dữ liệu khi cấu hình host. Hướng dẫn thao tác và toàn bộ ENV nằm trong [DEPLOYMENT.md](DEPLOYMENT.md).
 - `vercel.json` chọn Next.js và `npm run build:web`; `render.yaml` khai báo Web Service Node/Free, `npm ci --omit=dev`, `npm start`, health check `/health`. `engines.node=24.x` giữ cùng major Node giữa local và hai host.
 - `src/lib/apiConfig.mjs` chuẩn hóa URL origin hoặc `/api`, bỏ dấu `/` cuối và từ chối URL kèm credentials/query/hash. Các màn tài khoản, vé, đăng nhập nhân sự, tra cứu, thông báo, trang chủ và ảnh đều dùng `API_BASE_URL` từ `NEXT_PUBLIC_API_URL`. `next.config.mjs` chặn build Vercel nếu thiếu URL hoặc dùng localhost/HTTP. Đổi NEXT_PUBLIC phải build/redeploy.

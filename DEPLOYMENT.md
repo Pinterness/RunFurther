@@ -69,6 +69,10 @@ WALLET_TOPUP_RATE_LIMIT=10
 
 Không nhập dấu `< >`; chúng chỉ đánh dấu giá trị cần sao chép. Render tự cấp `PORT`, backend đã bind `0.0.0.0:$PORT`. Không chạy `npm run dev`, `next build` hay `npm run seed` trên service backend. [Cấu hình Web Service](https://render.com/docs/web-services), [Node version](https://render.com/docs/node-version).
 
+**Nếu log báo `Missing script: "build"`:** vào chính service Render → **Settings → Build & Deploy**, sửa Build Command thành **chỉ** `npm ci --omit=dev`, Start Command thành `npm start`; bỏ `npm run build` khỏi cả Build và Pre-Deploy Command. Root Directory để trống. Lưu rồi chọn **Manual Deploy → Clear build cache & deploy**. Biến môi trường không sửa được lỗi lệnh build. Thêm `render.yaml` vào repo không tự thay settings của service được tạo thủ công; file này được áp dụng qua Blueprint. [Các lệnh triển khai và clear cache](https://render.com/docs/deploys).
+
+Log `npm fund` chỉ mang tính thông tin; dòng cảnh báo vulnerabilities cần xử lý riêng nhưng không phải nguyên nhân của lỗi thiếu script. Lockfile đã cập nhật Next 16.3.6, sharp 0.35.5, proxy-addr 2.0.8, source-map-js 1.2.2 và brace-expansion 5.0.12. `npm audit --omit=dev` không còn cảnh báo tại thời điểm kiểm tra. Audit toàn bộ vẫn còn 3 mục high thuộc chuỗi nodemon → chokidar → braces trong công cụ phát triển; braces chưa có bản vá công bố, không được cài trên Render với `--omit=dev`. Dùng lockfile đã commit với `npm ci`, không dùng `npm audit fix --force` để hạ nodemon về bản cũ. [Thông tin lỗi braces](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm).
+
 Nếu chưa có URL Vercel, giữ hostname dự kiến trong CLIENT_ORIGIN để backend khởi động, rồi **bắt buộc thay đúng URL sau bước 4**. `/health` và các request từ server không có Origin vẫn hoạt động; trình duyệt chưa được phép gọi API từ hostname khác.
 
 Trong Render service chọn **Connect → Outbound**, sao chép **tất cả dải IP** được liệt kê. Trong Atlas → **Network Access / IP Access List**, thêm các dải này. Giữ IP máy của bạn nếu còn quản trị local. Không cần thêm IP Vercel vào Atlas vì frontend chỉ gọi Render. [Outbound IP của Render](https://render.com/docs/outbound-ip-addresses).
@@ -130,6 +134,7 @@ Không có công việc nền chạy khi Render Free đang ngủ. Đơn giữ ch
 
 | Triệu chứng | Kiểm tra |
 | --- | --- |
+| `npm error Missing script: "build"` | Settings → Build & Deploy: Build = `npm ci --omit=dev`, Start = `npm start`, Pre-Deploy trống; không build Next trên service API |
 | Render `MongooseServerSelectionError` / không thấy port | URI, mật khẩu database, IP allowlist; backend chỉ mở cổng sau khi DB/index sẵn sàng |
 | `/health` trả 503 | Database đang mất kết nối; xem Render logs/Atlas, không coi deploy là khỏe |
 | Trình duyệt báo CORS | CLIENT_ORIGIN phải khớp origin đang mở, kể cả preview/custom domain; không kèm `/api` |
