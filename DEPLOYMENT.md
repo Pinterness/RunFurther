@@ -71,7 +71,7 @@ Không nhập dấu `< >`; chúng chỉ đánh dấu giá trị cần sao chép.
 
 **Nếu log báo `Missing script: "build"`:** vào chính service Render → **Settings → Build & Deploy**, sửa Build Command thành **chỉ** `npm ci --omit=dev`, Start Command thành `npm start`; bỏ `npm run build` khỏi cả Build và Pre-Deploy Command. Root Directory để trống. Lưu rồi chọn **Manual Deploy → Clear build cache & deploy**. Biến môi trường không sửa được lỗi lệnh build. Thêm `render.yaml` vào repo không tự thay settings của service được tạo thủ công; file này được áp dụng qua Blueprint. [Các lệnh triển khai và clear cache](https://render.com/docs/deploys).
 
-Log `npm fund` chỉ mang tính thông tin; dòng cảnh báo vulnerabilities cần xử lý riêng nhưng không phải nguyên nhân của lỗi thiếu script. Lockfile đã cập nhật Next 16.3.6, sharp 0.35.5, proxy-addr 2.0.8, source-map-js 1.2.2 và brace-expansion 5.0.12. `npm audit --omit=dev` không còn cảnh báo tại thời điểm kiểm tra. Audit toàn bộ vẫn còn 3 mục high thuộc chuỗi nodemon → chokidar → braces trong công cụ phát triển; braces chưa có bản vá công bố, không được cài trên Render với `--omit=dev`. Dùng lockfile đã commit với `npm ci`, không dùng `npm audit fix --force` để hạ nodemon về bản cũ. [Thông tin lỗi braces](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm).
+Log `npm fund` chỉ mang tính thông tin; dòng cảnh báo vulnerabilities cần xử lý riêng nhưng không phải nguyên nhân của lỗi thiếu script. Lockfile đã cập nhật Next 16.3.8, sharp 0.35.5, proxy-addr 2.0.8, source-map-js 1.2.2 và brace-expansion 5.0.12. `npm audit --omit=dev` không còn cảnh báo tại thời điểm kiểm tra. Audit toàn bộ vẫn còn 3 mục high thuộc chuỗi nodemon → chokidar → braces trong công cụ phát triển; braces chưa có bản vá công bố, không được cài trên Render với `--omit=dev`. Dùng lockfile đã commit với `npm ci`, không dùng `npm audit fix --force` để hạ nodemon về bản cũ. [Thông tin lỗi braces](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm).
 
 Nếu chưa có URL Vercel, giữ hostname dự kiến trong CLIENT_ORIGIN để backend khởi động, rồi **bắt buộc thay đúng URL sau bước 4**. `/health` và các request từ server không có Origin vẫn hoạt động; trình duyệt chưa được phép gọi API từ hostname khác.
 
@@ -97,6 +97,8 @@ Trong Vercel: **Add New → Project → Import Git Repository → Pinterness/Run
 | Output Directory | `.next` / mặc định Next.js |
 
 `vercel.json` đã khai báo các lệnh. Không đặt Start Command là `npm start` trên Vercel: script đó phục vụ backend Render. [Project configuration](https://vercel.com/docs/project-configuration), [Node.js versions](https://vercel.com/docs/functions/runtimes/node-js/node-js-versions).
+
+**Nếu log báo `EUSAGE`, `Missing: @emnapi/runtime` hoặc `@emnapi/core from lock file`:** đây là lỗi lockfile thiếu dependency, xảy ra trước bước build nên không liên quan NEXT_PUBLIC_API_URL. Đã tái hiện bằng npm 11.21.0, dù npm 11.6.2 trên máy local cài thành công. Lockfile sửa bằng npm 11.21.0 ghi đủ runtime của sharp và các dependency được bundle trong Tailwind oxide. Giữ `npm ci --include=dev`, chọn deployment chứa commit sửa lockfile mới nhất trên `main`; redeploy một deployment cũ không lấy bản sửa mới. Không dùng `--force` hoặc bỏ kiểm tra lockfile để né lỗi. [Cơ chế npm ci](https://docs.npmjs.com/cli/v11/commands/npm-ci/).
 
 Trong **Settings → Environment Variables**, chọn **Production**:
 
@@ -135,6 +137,7 @@ Không có công việc nền chạy khi Render Free đang ngủ. Đơn giữ ch
 | Triệu chứng | Kiểm tra |
 | --- | --- |
 | `npm error Missing script: "build"` | Settings → Build & Deploy: Build = `npm ci --omit=dev`, Start = `npm start`, Pre-Deploy trống; không build Next trên service API |
+| `npm ci` báo `Missing @emnapi/runtime` / `@emnapi/core from lock file` | Deploy commit có lockfile đã sửa bằng npm 11.21.0; giữ lệnh npm ci, kiểm tra Source commit trong deployment, không sửa ENV để xử lý lỗi dependency |
 | Render `MongooseServerSelectionError` / không thấy port | URI, mật khẩu database, IP allowlist; backend chỉ mở cổng sau khi DB/index sẵn sàng |
 | `/health` trả 503 | Database đang mất kết nối; xem Render logs/Atlas, không coi deploy là khỏe |
 | Trình duyệt báo CORS | CLIENT_ORIGIN phải khớp origin đang mở, kể cả preview/custom domain; không kèm `/api` |
