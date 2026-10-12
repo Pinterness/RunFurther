@@ -1,5 +1,18 @@
 const { assert } = require('../lib/errors');
+const { birthdayError } = require('../../lib/runnerValidation.cjs');
 const genders = { Nam: 'MALE', 'Nữ': 'FEMALE', Khác: 'OTHER', 'Không chia sẻ': 'PREFER_NOT_TO_SAY' };
+function runnerDetails(input, options) {
+  assert(input && typeof input === 'object' && !Array.isArray(input), 400, 'Hồ sơ người chạy không hợp lệ.');
+  const error = birthdayError(input.birthday, options);
+  assert(!error, 400, error);
+  const details = {};
+  if (input.birthday !== undefined) details.birthday = input.birthday || '';
+  if (input.nationality !== undefined) {
+    assert(typeof input.nationality === 'string' && input.nationality.trim().length <= 80, 400, 'Quốc tịch phải là văn bản, tối đa 80 ký tự.');
+    details.nationality = input.nationality.trim();
+  }
+  return details;
+}
 function profileData(input = {}) {
   assert(input && typeof input === 'object' && !Array.isArray(input), 400, 'Hồ sơ người chạy không hợp lệ.');
   const data = {};
@@ -7,16 +20,10 @@ function profileData(input = {}) {
     assert(genders[input.gender], 400, 'Giới tính không hợp lệ.');
     data.gender = genders[input.gender];
   }
-  if (input.birthday !== undefined) {
-    if (!input.birthday) data.dob = null;
-    else {
-      assert(typeof input.birthday === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.birthday), 400, 'Ngày sinh phải có dạng YYYY-MM-DD.');
-      const dob = new Date(input.birthday);
-      assert(Number.isFinite(dob.getTime()) && dob.toISOString().slice(0, 10) === input.birthday && dob <= new Date() && dob.getUTCFullYear() >= 1900, 400, 'Ngày sinh không hợp lệ.');
-      data.dob = dob;
-    }
-  }
-  for (const key of ['nationality', 'club']) if (input[key] !== undefined) {
+  const details = runnerDetails(input);
+  if (details.birthday !== undefined) data.dob = details.birthday ? new Date(details.birthday) : null;
+  if (details.nationality !== undefined) data.nationality = details.nationality;
+  for (const key of ['club']) if (input[key] !== undefined) {
     assert(typeof input[key] === 'string', 400, 'Thông tin hồ sơ không hợp lệ.');
     data[key] = input[key].trim();
   }
@@ -38,4 +45,4 @@ function serializeProfile(profile) {
     emergencyContact: profile?.emergencyContact?.name || '', emergencyPhone: profile?.emergencyContact?.phone || '',
   };
 }
-module.exports = { profileData, serializeProfile };
+module.exports = { profileData, serializeProfile, runnerDetails };

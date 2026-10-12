@@ -1,6 +1,15 @@
 # Công nghệ và thuật toán / logic đã dùng trong cuộc trao đổi
 
-Cập nhật: 12/10/2026. Tài liệu tổng hợp phần đã triển khai và kiểm chứng trong mã nguồn; không xem toàn bộ thư viện được cài là tính năng đã hoàn thành.
+Cập nhật: 13/10/2026. Tài liệu tổng hợp phần đã triển khai và kiểm chứng trong mã nguồn; không xem toàn bộ thư viện được cài là tính năng đã hoàn thành.
+
+## Quốc tịch và giới hạn ngày sinh — 13/10/2026
+
+- Form đăng ký giải có ô **Quốc tịch** hiển thị và chỉnh sửa được, điền từ hồ sơ; giá trị người chạy nhập được lưu vào booking và vé. Đây là ô văn bản tối đa 80 ký tự, không áp đặt danh sách quốc tịch cố định.
+- `src/lib/runnerValidation.cjs` dùng chung giữa React và Express: ngày sinh dạng YYYY-MM-DD, phải là ngày có thật, từ 01/01/1900 đến ngày hiện tại theo lịch Việt Nam (`Asia/Ho_Chi_Minh`). Cùng quy tắc cho đăng ký tài khoản, hồ sơ, đặt vé và hồ sơ người nhận BIB. Ngày sinh vẫn tùy chọn trừ cự ly có tuổi tối thiểu.
+- Khi đăng ký giải, tuổi tối thiểu tính vào ngày thi đấu của cự ly; ngày vừa đủ tuổi hợp lệ, nhỏ hơn một ngày bị chặn. Giới hạn trong date picker đổi theo cự ly; cutoff ngày nhuận được kẹp về ngày cuối tháng tương ứng. API danh sách cự ly trả thêm `event.dateInfo.raceDate` để giao diện tính cùng mốc với server.
+- API đặt vé kiểm tra ngày sinh ngay cả khi cự ly không có `minAge`; ngày tương lai, trước 1900, ngày không tồn tại và quốc tịch sai kiểu/quá dài trả 400. Giao dịch thất bại không giữ suất, không cấp vé; dữ liệu người dùng hiện có không bị sửa hàng loạt.
+- Kiểm thử bổ sung tại `tests/runner-validation.test.js`, `tests/backend.test.js` và `scripts/checkRunnerFlows.js`: ngày nhuận, đổi ngày ở UTC+7, tuổi biên, quota rollback, lưu quốc tịch lên vé, chặn submit ngày sai và giữ hành vi hồ sơ/đăng ký tài khoản.
+- Kết quả: 81/81 kiểm thử đạt; build production Next 16.3.8 đạt; kiểm tra Chrome ở 1440/768/390/360px đạt, dùng API fixtures và DB riêng, không ghi dữ liệu production.
 
 ## Tài khoản nhận tiền: tắt, bật lại và thay thế — 12/10/2026
 

@@ -7,6 +7,7 @@ const User = require('../models/User');
 const { changeBalance } = require('../services/walletService');
 const transaction = require('../services/transaction');
 const { assert, escapeRegex } = require('../lib/errors');
+const { runnerDetails } = require('../services/runnerProfileService');
 
 async function listListings(req, res, next) {
   try {
@@ -68,7 +69,7 @@ async function buyListing(req, res, next) {
         const reg = await Registration.findOne({ _id: listing.registrationId, userId: listing.sellerId, status: 'PENDING_TRANSFER', 'logistics.hasCheckedIn': false, 'logistics.raceKitIssued': false }).session(session);
         assert(reg, 409, 'Ticket cannot be transferred.');
         reg.userId = req.userId;
-        reg.runnerProfile = profile;
+        reg.runnerProfile = { ...profile, ...runnerDetails(profile) };
         if (profile.shirtSize) reg.logistics.shirtSize = profile.shirtSize;
         reg.qrToken = 'RF-' + crypto.randomBytes(24).toString('hex');
         reg.status = 'CONFIRMED';

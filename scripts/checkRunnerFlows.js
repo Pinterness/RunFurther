@@ -1,6 +1,7 @@
 const { chromium, expect } = require('@playwright/test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const { calendarDate } = require('../src/lib/runnerValidation.cjs');
 const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
 (async () => {
   fs.mkdirSync('artifacts', { recursive: true });
@@ -18,7 +19,7 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
       { _id: 'listing-2', listingType: 'BIB_TRANSFER', title: 'Suất chạy 10km dành cho người bắt đầu', description: 'Một đường chạy đẹp và nhiều năng lượng. Mình nhượng lại đúng giá gốc.', price: 350000, originalPrice: 350000, bibNumber: '10K-0314', categoryInfo: '10 km', eventId: { ...race, name: 'Saigon Riverside Run' }, sellerId: { _id: 'seller-2', fullName: 'Lê Thảo My' } },
       { _id: 'listing-3', listingType: 'BIB_TRANSFER', title: 'Chuyển nhượng BIB full marathon', description: 'Sẵn sàng cho cự ly mới cùng cộng đồng.', price: 850000, originalPrice: 950000, bibNumber: '42K-0046', categoryInfo: 'Full Marathon · 42 km', eventId: { ...race, name: 'Hanoi Autumn Marathon' }, sellerId: { _id: 'seller-3', fullName: 'Phạm Quốc Huy' } }
     ];
-    let expired = false, registrationRequests = 0, signupBody, createBody, buyBody, savedBody, profileUnavailable = false, marketUnavailable = false;
+    let expired = false, registrationRequests = 0, signupBody, createBody, buyBody, savedBody, holdBody, holdPosts = 0, profileUnavailable = false, marketUnavailable = false;
     await page.route('**/api/**', async route => {
       const url = new URL(route.request().url()), path = url.pathname.replace(/^\/api/, ''), method = route.request().method();
       const reply = (data, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) });
@@ -41,7 +42,12 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
         return reply({ listings: filtered, pagination: { total: filtered.length, totalPages: filtered.length ? 1 : 0, page: 1 } });
       }
       if (path.endsWith('/buy')) { buyBody = route.request().postDataJSON(); return reply({ message: 'Success' }); }
-      if (path === '/events/dalat-forest/categories') return reply({ event: race, categories: [category] });
+      if (path === '/events/dalat-forest/categories') return reply({ event: race, categories: [category, { ...category, _id: 'category-2', code: '5K', distance: 5, name: 'Fun run', rules: {} }] });
+      if (path === '/bookings/hold' && method === 'POST') {
+        holdBody = route.request().postDataJSON(); holdPosts++;
+        return reply({ booking: { _id: 'checkout-hold', orderCode: 'RUNTEST', finalAmount: 650000 }, bankInfo: null, vietQrUrl: null, holdSecondsRemaining: 600 }, 201);
+      }
+      if (path === '/bookings/checkout-hold') return reply({ booking: { status: 'HOLD' }, holdSecondsRemaining: 600, bankInfo: null, vietQrUrl: null });
       if (path === '/events') return reply({ events: [] });
       return reply({ message: 'Unexpected API ' + path }, 404);
     });
@@ -95,11 +101,15 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await page.keyboard.press('Escape');
     await page.screenshot({ path: 'artifacts/account-desktop.png', fullPage: true });
     await page.getByRole('button', { name: 'Hồ sơ người chạy', exact: true }).click();
+    await expect(page.getByLabel('Ngày sinh', { exact: true })).toHaveAttribute('min', '1900-01-01');
+    await expect(page.getByLabel('Ngày sinh', { exact: true })).toHaveAttribute('max', calendarDate());
+    await page.getByLabel('Quốc tịch', { exact: true }).fill('Nhật Bản');
     await page.getByLabel('Họ và tên', { exact: true }).fill('Nguyễn Minh An');
     await page.getByRole('button', { name: 'Đại dương', exact: true }).click();
     await page.getByRole('button', { name: 'Lưu hồ sơ', exact: true }).click();
     await expect(page.getByRole('status')).toContainText('Đã lưu hồ sơ');
     assert.equal(savedBody.avatarTheme, 'ocean');
+    assert.equal(savedBody.profile.nationality, 'Nhật Bản');
     await expect(page.locator('.account-trigger .avatar-ocean')).toHaveCount(1);
     await page.evaluate(() => { document.activeElement.blur(); scrollTo({ top: 0, behavior: 'instant' }); });
     await page.screenshot({ path: 'artifacts/profile-desktop.png', fullPage: true });
@@ -112,6 +122,28 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await page.goto(base + '/events/dalat-forest/register', { waitUntil: 'networkidle' });
     assert.equal(await page.locator('input[type="email"]').inputValue(), account.user.email);
     await expect(page.locator('#runner-birthday')).toHaveValue(account.profile.birthday);
+    await expect(page.getByLabel('Quốc tịch', { exact: true })).toHaveValue('Nhật Bản');
+    await expect(page.locator('#runner-birthday')).toHaveAttribute('min', '1900-01-01');
+    await expect(page.locator('#runner-birthday')).toHaveAttribute('max', '2014-10-20');
+    for (const birthday of ['2999-01-01', '1899-12-31', '2014-10-21', '']) {
+      await page.locator('#runner-birthday').fill(birthday);
+      await page.getByRole('button', { name: 'Giữ Chỗ & Thanh Toán (10p)', exact: true }).click();
+      assert.equal(await page.locator('#runner-birthday').evaluate(input => input.validity.valid), false);
+      assert.equal(holdPosts, 0, 'Invalid date must not submit a booking');
+    }
+    await page.getByRole('button', { name: /5K/ }).click();
+    await expect(page.locator('#runner-birthday')).toHaveAttribute('max', calendarDate());
+    await page.locator('#runner-birthday').fill('2999-01-01');
+    await page.getByRole('button', { name: 'Giữ Chỗ & Thanh Toán (10p)', exact: true }).click();
+    assert.equal(holdPosts, 0, 'Even a category without a minimum age rejects future birth dates');
+    await page.getByRole('button', { name: /21K/ }).click();
+    await page.locator('#runner-birthday').fill('2014-10-20');
+    await page.getByLabel('Quốc tịch', { exact: true }).fill('Hàn Quốc');
+    await page.getByRole('button', { name: 'Giữ Chỗ & Thanh Toán (10p)', exact: true }).click();
+    await expect.poll(() => holdPosts).toBe(1);
+    assert.equal(holdBody.runnerInfo.birthday, '2014-10-20');
+    assert.equal(holdBody.runnerInfo.nationality, 'Hàn Quốc');
+    await page.goto(base + '/events/dalat-forest/register', { waitUntil: 'networkidle' });
     const values = await page.locator('input').evaluateAll(nodes => nodes.map(node => node.value));
     assert.ok(values.includes('Nguyễn Minh An')); assert.ok(values.includes('0900111222'));
     // Responsive checks cover account tickets, profile, marketplace and signup.
@@ -139,6 +171,8 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await page.getByLabel('Số điện thoại', { exact: true }).fill('0900999888');
     await page.getByLabel('Mật khẩu', { exact: true }).fill('test-password-123');
     await page.getByRole('button', { name: 'Tiếp tục' }).click();
+    await expect(page.getByLabel('Ngày sinh', { exact: true })).toHaveAttribute('max', calendarDate());
+    await page.getByLabel('Quốc tịch', { exact: true }).fill('Singapore');
     await page.getByLabel('Ngày sinh', { exact: true }).fill('1998-06-12');
     await page.locator('#signup-runner-gender').selectOption('Nữ');
     await page.getByLabel('Size áo mặc định').selectOption('L');
@@ -147,6 +181,7 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await page.getByRole('button', { name: 'Tạo tài khoản & lưu hồ sơ' }).click();
     await page.waitForURL('**/account');
     assert.equal(signupBody.profile.shirtSize, 'L'); assert.equal(signupBody.profile.birthday, '1998-06-12');
+    assert.equal(signupBody.profile.nationality, 'Singapore');
     await page.goto(base, { waitUntil: 'networkidle' });
     await expect(page.locator('.immersive-journey')).toHaveAttribute('data-enhanced', 'true', { timeout: 20000 });
     await page.locator('.immersive-panel-trigger[data-panel="distance"]').click();

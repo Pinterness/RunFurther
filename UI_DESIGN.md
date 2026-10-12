@@ -75,6 +75,9 @@ Kiểm tra 1440, 1024, 768, 390, 360px; không tràn ngang; đăng nhập/đăng
 
 ## Hồ sơ và marketplace
 
+- Form mua vé phải có ô **Quốc tịch** hiển thị rõ, tự điền từ hồ sơ và cho sửa cho lượt đăng ký hiện tại. Giữ nhãn/input liên kết để dùng được bằng bàn phím và trình đọc màn hình; không tự thay giá trị người dùng đang nhập.
+- Ngày sinh dùng date picker, từ 01/01/1900 đến hôm nay. Form mua vé ghi tuổi tối thiểu theo cự ly và tính vào ngày thi đấu; đổi cự ly cập nhật giới hạn ngày ngay. Giao diện và API dùng chung quy tắc, không chỉ dựa vào thuộc tính HTML.
+
 - `runner.css` quản lý account, đăng ký, marketplace và modal. Thành phần chung: RunnerAvatar, RunnerFields, TicketCard, Modal.
 - Avatar dùng chữ viết tắt từ tên, có bốn bảng màu và đường vòng trang trí; không hiển thị ảnh người dùng giả.
 - Phân biệt vé đã cấp với đơn chờ thanh toán. QR tạo cục bộ từ token vé thật; không gửi token cho dịch vụ QR bên ngoài.

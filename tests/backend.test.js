@@ -91,7 +91,7 @@ test('Signup persists runner details; profile edits are private and cannot eleva
   assert.equal((await api('/auth/me', 'GET', null, owner)).profile.club, 'New club');
 });
 test('Invalid runner details roll back account creation and profile updates', async () => {
-  for (const [suffix, profile] of [['date', { birthday: '2025-02-30' }], ['shirt', { shirtSize: 'INVALID' }], ['contact', { emergencyContact: 'Name only' }]]) {
+  for (const [suffix, profile] of [['date', { birthday: '2025-02-30' }], ['old-date', { birthday: '1899-12-31' }], ['country', { nationality: ['Việt Nam'] }], ['country-length', { nationality: 'x'.repeat(81) }], ['shirt', { shirtSize: 'INVALID' }], ['contact', { emergencyContact: 'Name only' }]]) {
     const email = suffix + '@invalid-profile.local';
     const response = await api('/auth/register', 'POST', { email, password: 'long-test-password', fullName: 'Invalid profile', profile });
     assert.equal(response.status, 400, JSON.stringify(response));
@@ -129,6 +129,46 @@ async function paid(f) {
   const r = await api('/bookings/' + b._id + '/confirm', 'POST', { paymentMethod: 'WALLET' }, f.u);
   assert.equal(r.status, 200, JSON.stringify(r)); return r;
 }
+
+test('Checkout validates birthday/nationality even without an age rule and preserves them on the ticket', async () => {
+  const f = await fixture();
+  for (const details of [{ birthday: '2999-01-01' }, { birthday: '1899-12-31' }, { birthday: '2025-02-30' }, { birthday: false }, { nationality: {} }, { nationality: 'x'.repeat(81) }]) {
+    const response = await api('/bookings/hold', 'POST', { ...holdBody(f), runnerInfo: { ...holdBody(f).runnerInfo, ...details } }, f.u);
+    assert.equal(response.status, 400, JSON.stringify(response));
+  }
+  assert.equal((await Category.findById(f.category._id)).quotaHold, 0);
+  assert.equal(await Booking.countDocuments({ eventId: f.event._id }), 0);
+  const booking = await hold(f, { runnerInfo: { ...holdBody(f).runnerInfo, birthday: '2000-02-29', nationality: '  Nhật Bản  ' } });
+  assert.equal(booking.runnerInfo.nationality, 'Nhật Bản');
+  const payment = await api('/bookings/' + booking._id + '/confirm', 'POST', { paymentMethod: 'WALLET' }, f.u);
+  assert.equal(payment.status, 200);
+  assert.equal(payment.registration.runnerProfile.birthday, '2000-02-29');
+  assert.equal(payment.registration.runnerProfile.nationality, 'Nhật Bản');
+});
+
+test('Checkout enforces the age cutoff at the race date, including the exact birthday', async () => {
+  const f = await fixture();
+  const { birthdayBounds } = require('../src/lib/runnerValidation.cjs');
+  await Category.updateOne({ _id: f.category._id }, { 'rules.minAge': 18 });
+  const cutoff = birthdayBounds({ raceDate: f.event.dateInfo.raceDate, minAge: 18 }).max;
+  const younger = new Date(cutoff + 'T00:00:00Z'); younger.setUTCDate(younger.getUTCDate() + 1);
+  for (const birthday of ['', younger.toISOString().slice(0, 10)]) {
+    assert.equal((await api('/bookings/hold', 'POST', { ...holdBody(f), runnerInfo: { ...holdBody(f).runnerInfo, birthday } }, f.u)).status, 400);
+  }
+  assert.equal((await Category.findById(f.category._id)).quotaHold, 0);
+  assert.equal((await api('/events/' + f.event.slug + '/categories')).event.dateInfo.raceDate, f.event.dateInfo.raceDate.toISOString());
+  assert.equal((await hold(f, { runnerInfo: { ...holdBody(f).runnerInfo, birthday: cutoff } })).runnerInfo.birthday, cutoff);
+});
+
+test('Invalid birth dates on BIB transfers cannot change ownership or debit the buyer', async () => {
+  const f = await fixture(), ticket = await paid(f), buyer = await user();
+  const listing = await api('/marketplace', 'POST', { listingType: 'BIB_TRANSFER', registrationId: ticket.registration._id, title: 'Birthday validation', price: 100000 }, f.u);
+  const result = await api('/marketplace/' + listing.listing._id + '/buy', 'POST', { newRunnerProfile: { fullName: 'Buyer', email: buyer.email, phone: '0900000000', birthday: '2999-01-01' } }, buyer);
+  assert.equal(result.status, 400);
+  assert.equal(String((await Registration.findById(ticket.registration._id)).userId), String(f.u._id));
+  assert.equal((await Wallet.findOne({ userId: buyer._id })).balance, 2000000);
+  assert.equal((await Listing.findById(listing.listing._id)).status, 'ACTIVE');
+});
 
 test('Staff APIs reject anonymous, wrong-role and cross-event access', async () => {
   const f = await fixture();
@@ -386,7 +426,9 @@ test('Achievements count verified results, not purchased tickets', async () => {
  });
  test('Public events expose real quotas and results without runner contacts', async () => {
   const f = await fixture(), p = await paid(f), admin = f.owner;
-  const events = await api('/events?search=' + encodeURIComponent(f.event.name) + '&distance=21');
+  // Use a unique name so this test does not depend on the number/order of earlier fixtures.
+  await Event.updateOne({ _id: f.event._id }, { name: 'Quota check ' + f.event.slug });
+  const events = await api('/events?search=' + encodeURIComponent('Quota check ' + f.event.slug) + '&distance=21');
   assert.equal(events.status, 200);
   const event = events.events.find(e => e._id === String(f.event._id));
   assert.equal(event.price, 100000); assert.equal(event.quota, 1);

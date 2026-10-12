@@ -10,6 +10,7 @@ const transaction = require('../services/transaction');
 const { expireBookings, completeBooking } = require('../services/bookingService');
 const { assert } = require('../lib/errors');
 const { paymentInstructions, activeBankAccount, sameBankAccount } = require('../services/bankService');
+const { runnerDetails } = require('../services/runnerProfileService');
 
 function bookingTransfer(booking, event) {
   const instructions = paymentInstructions(booking.bankSnapshot, booking.finalAmount, booking.orderCode);
@@ -38,19 +39,14 @@ async function createBookingHold(req, res, next) {
         $expr: { $lt: [{ $add: ['$quotaSold', '$quotaHold'] }, '$quotaTotal'] },
       }, { $inc: { quotaHold: 1 } }, { session, new: true });
       assert(category, 409, 'Category is unavailable or sold out.');
-      if (category.rules?.minAge) {
-        const birthday = new Date(runnerInfo.birthday);
-        const race = new Date(event.dateInfo.raceDate);
-        const age = race.getUTCFullYear() - birthday.getUTCFullYear() - (race.getUTCMonth() < birthday.getUTCMonth() || (race.getUTCMonth() === birthday.getUTCMonth() && race.getUTCDate() < birthday.getUTCDate()) ? 1 : 0);
-        assert(Number.isFinite(birthday.getTime()) && age >= category.rules.minAge, 400, 'Runner does not meet the age requirement.');
-      }
+      const details = runnerDetails(runnerInfo, { minAge: category.rules?.minAge, raceDate: event.dateInfo.raceDate, now });
       const totalAmount = category.price + (addons.photoPackage === true ? 150000 : 0) + (addons.pastaParty === true ? 100000 : 0);
       assert(Number.isSafeInteger(totalAmount), 400, 'Invalid category price.');
       const points = usePoints === true ? await RunPoints.findOne({ userId: req.userId }).session(session) : null;
       const pointsDiscount = Math.min(Math.floor(totalAmount / 2000), Math.floor(points?.balance || 0)) * 1000;
       const [booking] = await Booking.create([{
         orderCode: 'RUN' + crypto.randomBytes(8).toString('hex').toUpperCase(),
-        userId: req.userId, eventId, categoryId, runnerInfo,
+        userId: req.userId, eventId, categoryId, runnerInfo: { ...runnerInfo, ...details },
         addons: { photoPackage: addons.photoPackage === true, pastaParty: addons.pastaParty === true },
         price: category.price, totalAmount, pointsDiscount, finalAmount: totalAmount - pointsDiscount,
         paymentMethod, status: 'HOLD', expiresAt: new Date(Date.now() + 10 * 60 * 1000),
