@@ -563,6 +563,46 @@ test('Event image upload decodes real images, enforces ownership and serves safe
   assert.equal((await upload(f.u, png, 'image/png', '/admin/images?kind=logo')).status, 403);
 });
 
+test('Event owners can disable, restore, delete and replace their bank without losing pending transfers', async () => {
+  const f = await fixture(), moderator = await user('SUPER_ADMIN'), outsider = await user();
+  const path = '/admin/events/' + f.event._id;
+  const pendingBooking = await hold(f), reusable = await hold(f);
+  const pending = await api('/bookings/' + pendingBooking._id + '/confirm', 'POST', { paymentMethod: 'VIETQR' }, f.u);
+  assert.equal(pending.status, 202);
+  for (const denied of [f.u, moderator, outsider]) {
+    assert.equal((await api(path, 'PATCH', { bankTransferEnabled: false }, denied)).status, 403);
+  }
+  const disabled = await api(path, 'PATCH', { bankTransferEnabled: false }, f.owner);
+  assert.equal(disabled.status, 200);
+  assert.equal(disabled.event.bankAccountInfo.accountNo, '123456789');
+  assert.equal((await api(path, 'GET', null, f.owner)).event.bankTransferEnabled, false);
+  assert.equal((await api('/events/' + f.event.slug)).event.bankAccountInfo, undefined);
+  const hidden = await api('/bookings/' + reusable._id, 'GET', null, f.u);
+  assert.equal(hidden.bankInfo, null);
+  assert.equal(hidden.vietQrUrl, null);
+  assert.equal(hidden.booking.bankSnapshot, undefined);
+  assert.equal(hidden.booking.eventId.bankAccountInfo, undefined);
+  assert.equal((await api('/bookings/' + reusable._id + '/confirm', 'POST', { paymentMethod: 'VIETQR' }, f.u)).status, 409);
+  const walletOnly = await api('/bookings/hold', 'POST', holdBody(f), f.u);
+  assert.equal(walletOnly.bankInfo, null);
+  const paidFromWallet = await api('/bookings/' + walletOnly.booking._id + '/confirm', 'POST', { paymentMethod: 'WALLET' }, f.u);
+  assert.equal(paidFromWallet.status, 200);
+  assert.equal(paidFromWallet.booking.bankSnapshot, undefined);
+  assert.equal((await api(path, 'PATCH', { bankTransferEnabled: true }, f.owner)).status, 200);
+  assert.ok((await api('/bookings/' + reusable._id, 'GET', null, f.u)).vietQrUrl);
+  const removed = await api(path, 'PATCH', { bankAccountInfo: {}, bankTransferEnabled: false }, f.owner);
+  assert.equal(removed.event.bankAccountInfo.accountNo, '');
+  assert.equal((await api(path, 'PATCH', { bankTransferEnabled: true }, f.owner)).status, 400);
+  const review = await api(path + '/payments/' + pending.paymentRequest._id + '/review', 'POST', { status: 'APPROVED', bankReference: 'PAID-BEFORE-EVENT-BANK-DISABLED' }, f.owner);
+  assert.equal(review.status, 200, JSON.stringify(review));
+  assert.equal((await Booking.findById(pendingBooking._id)).bankSnapshot.accountNo, '123456789');
+  assert.equal((await Booking.findById(pendingBooking._id)).status, 'PAID');
+  const replacement = { bankBin: '970422', accountNo: '765432100', accountName: 'NEW ORGANIZER BANK' };
+  assert.equal((await api(path, 'PATCH', { bankAccountInfo: replacement, bankTransferEnabled: true }, f.owner)).status, 200);
+  assert.equal((await api('/bookings/' + reusable._id, 'GET', null, f.u)).vietQrUrl, null);
+  assert.equal((await api('/bookings/hold', 'POST', holdBody(f), f.u)).bankInfo.accountNo, replacement.accountNo);
+});
+
 test('Bank settings validate against the directory; checkout freezes destination and amount', async () => {
   const f = await fixture();
   const banks = await api('/banks');
@@ -580,12 +620,15 @@ test('Bank settings validate against the directory; checkout freezes destination
   assert.equal(url.pathname, '/image/970422-00123456789-compact2.png');
   assert.equal(url.searchParams.get('amount'), '100000');
   assert.equal(url.searchParams.get('addInfo'), holdResult.booking.orderCode);
-  await api('/admin/events/' + f.event._id, 'PATCH', { bankAccountInfo: { ...bank, accountNo: '999999999' } }, f.owner);
-  const restored = await api('/bookings/' + holdResult.booking._id, 'GET', null, f.u);
-  assert.equal(restored.bankInfo.accountNo, '00123456789');
-  assert.equal(restored.vietQrUrl, holdResult.vietQrUrl);
   const pending = await api('/bookings/' + holdResult.booking._id + '/confirm', 'POST', { paymentMethod: 'VIETQR' }, f.u);
   assert.equal(pending.status, 202);
+  await api('/admin/events/' + f.event._id, 'PATCH', { bankAccountInfo: { ...bank, accountNo: '999999999' } }, f.owner);
+  const restored = await api('/bookings/' + holdResult.booking._id, 'GET', null, f.u);
+  assert.equal(restored.bankInfo, null);
+  assert.equal(restored.vietQrUrl, null);
+  assert.equal(restored.transferBlocked, true);
+  assert.equal((await Booking.findById(holdResult.booking._id)).bankSnapshot.accountNo, '00123456789');
+  assert.equal((await api('/bookings/' + holdResult.booking._id + '/confirm', 'POST', { paymentMethod: 'VIETQR' }, f.u)).status, 409);
   const reviewList = await api('/admin/events/' + f.event._id + '/payments', 'GET', null, f.owner);
   assert.equal(reviewList.payments[0].bookingId.orderCode, holdResult.booking.orderCode);
   assert.equal(reviewList.payments[0].bookingId.bankSnapshot.accountNo, '00123456789');

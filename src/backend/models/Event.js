@@ -57,6 +57,7 @@ const eventSchema = new mongoose.Schema(
       ref: "Organization",
       default: null,
     },
+    bankTransferEnabled: { type: Boolean, default: true },
     bankAccountInfo: {
       bankBin: { type: String, default: '', trim: true },
       bankName: { type: String, default: "", trim: true },

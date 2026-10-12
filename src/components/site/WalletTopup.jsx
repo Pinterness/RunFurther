@@ -103,7 +103,7 @@ function TopupForm({ rules, onCreated, onRulesChanged }) {
   );
 }
 
-function TopupRequestCard({ payment, open, onToggle }) {
+function TopupRequestCard({ payment, open, onToggle, available }) {
   const transfer = payment.transfer ?? {};
   const expired = Boolean(transfer.expired);
   const expiry = payment.expiresAt
@@ -133,6 +133,7 @@ function TopupRequestCard({ payment, open, onToggle }) {
       {open && (
         <TransferDetails
           variant="topup"
+          blocked={available === false || transfer.blocked}
           bankInfo={transfer.bankInfo}
           amount={payment.amount}
           orderCode={payment.transferCode}
@@ -188,6 +189,7 @@ export default function WalletTopup({ rules = DEFAULT_TOPUP_RULES, payments, onC
             <TopupRequestCard
               key={payment._id}
               payment={payment}
+              available={rules.available}
               open={openId === payment._id}
               onToggle={() => setOpenId(openId === payment._id ? null : payment._id)}
             />

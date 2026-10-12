@@ -13,11 +13,13 @@ const platformSettingSchema = new mongoose.Schema(
   {
     key: { type: String, enum: ['WALLET_TOPUP'], required: true, unique: true },
     bankAccountInfo: bankAccountFields(),
+    bankTransferEnabled: { type: Boolean, default: true },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     history: [
       {
         _id: false,
         bankAccountInfo: bankAccountFields(),
+        bankTransferEnabled: Boolean,
         changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
         changedAt: { type: Date, default: Date.now },
       },

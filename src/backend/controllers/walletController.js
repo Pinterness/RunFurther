@@ -4,7 +4,7 @@ const RunPoints = require('../models/RunPoints');
 const User = require('../models/User');
 const ERROR_CODES = require('../lib/errorCodes');
 const { assert } = require('../lib/errors');
-const { createTopupRequest, presentTopup, topupConfig } = require('../services/topupService');
+const { createTopupRequest, presentTopup, topupConfig, getTopupAccount } = require('../services/topupService');
 
 const LEDGER_PAGE_SIZE = 100;
 const IDEMPOTENCY_KEY_PATTERN = /^[\w-]{8,100}$/;
@@ -69,10 +69,14 @@ async function topUpWallet(req, res, next) {
       amount: req.body.amount,
       key,
     });
+    const { bankSnapshot, ...paymentRequest } = payment.toObject();
+    const transfer = presentTopup(payment, new Date(), await getTopupAccount());
     res.status(202).json({
-      paymentRequest: payment,
-      transfer: presentTopup(payment),
-      message: TOPUP_MESSAGES[payment.status],
+      paymentRequest,
+      transfer,
+      message: transfer.blocked && payment.status === 'PENDING'
+        ? 'Tài khoản nhận đã tắt hoặc thay đổi. Không chuyển theo mã cũ; liên hệ hỗ trợ nếu đã chuyển tiền.'
+        : TOPUP_MESSAGES[payment.status],
     });
   } catch (error) {
     next(error);

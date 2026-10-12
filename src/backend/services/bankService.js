@@ -37,4 +37,21 @@ function paymentInstructions(bank, amount, orderCode) {
   const query = new URLSearchParams({ amount: String(amount), addInfo: orderCode, accountName: bankInfo.accountName });
   return { bankInfo, vietQrUrl: `https://img.vietqr.io/image/${bankInfo.bankBin}-${bankInfo.accountNo}-compact2.png?${query}` };
 }
-module.exports = { listBanks, normalizeBank, paymentInstructions };
+function activeBankAccount(setting) {
+  if (!setting || setting.bankTransferEnabled === false) return null;
+  try { return normalizeBank(setting.bankAccountInfo || {}, { optional: false }); } catch { return null; }
+}
+function sameBankAccount(left, right) {
+  return Boolean(left && right && ['bankBin', 'accountNo', 'accountName'].every(key => left[key] === right[key]));
+}
+function bankSettingsPatch(body, current = {}) {
+  assert(body.bankTransferEnabled === undefined || typeof body.bankTransferEnabled === 'boolean', 400, 'Trạng thái chuyển khoản phải là bật hoặc tắt.');
+  // Switching off must also work for incomplete legacy accounts; keep their saved fields.
+  const bankAccountInfo = body.bankAccountInfo === undefined && body.bankTransferEnabled === false
+    ? Object.fromEntries(['bankBin', 'bankName', 'accountNo', 'accountName'].map(key => [key, current.bankAccountInfo?.[key] || '']))
+    : normalizeBank(body.bankAccountInfo === undefined ? current.bankAccountInfo || {} : body.bankAccountInfo);
+  const hasAccount = Boolean(bankAccountInfo.accountNo);
+  assert(body.bankTransferEnabled !== true || hasAccount, 400, 'Thêm tài khoản nhận hợp lệ trước khi bật chuyển khoản.');
+  return { bankAccountInfo, bankTransferEnabled: hasAccount && (body.bankTransferEnabled ?? current.bankTransferEnabled ?? true) };
+}
+module.exports = { listBanks, normalizeBank, paymentInstructions, activeBankAccount, sameBankAccount, bankSettingsPatch };

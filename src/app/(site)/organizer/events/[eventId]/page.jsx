@@ -35,7 +35,7 @@ export default function ManagedEventPage({ params }) {
   }, [data, tab, page, refresh, endpoint]);
   async function saveEvent(value) {
     setBusy(true); setError(''); setNotice('');
-    try { const result = await api(endpoint, { method: 'PATCH', body: JSON.stringify(value) }); setData({ ...data, event: result.event }); setNotice('Đã lưu thông tin sự kiện.'); }
+    try { const result = await api(endpoint, { method: 'PATCH', body: JSON.stringify(value) }); setData({ ...data, event: result.event }); setNotice('Đã lưu thông tin sự kiện.'); return result; }
     catch (error) { if (error.status === 401) setGuest(true); else setError(error.message); } finally { setBusy(false); }
   }
   async function saveModal(e) {

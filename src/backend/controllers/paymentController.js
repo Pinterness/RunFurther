@@ -2,7 +2,7 @@ const PaymentRequest = require('../models/PaymentRequest');
 const Booking = require('../models/Booking');
 const transaction = require('../services/transaction');
 const { completeBooking, expireBookings } = require('../services/bookingService');
-const { approveTopup, isExpired, presentTopup } = require('../services/topupService');
+const { approveTopup, isExpired, presentTopup, getTopupAccount } = require('../services/topupService');
 const ERROR_CODES = require('../lib/errorCodes');
 const { assert } = require('../lib/errors');
 
@@ -52,14 +52,15 @@ async function baseFilterFor(scope, req) {
   return scope === 'admin' ? { kind: 'TOPUP' } : { userId: req.userId };
 }
 
-function presentPayment(payment, scope, now) {
+function presentPayment(payment, scope, now, account) {
   if (payment.kind !== 'TOPUP') {
     return payment;
   }
   if (scope === 'admin') {
     return { ...payment, expired: isExpired(payment, now) };
   }
-  return { ...payment, transfer: presentTopup(payment, now) };
+  const { bankSnapshot, ...publicPayment } = payment;
+  return { ...publicPayment, transfer: presentTopup(payment, now, account) };
 }
 
 async function listPayments(req, res, next) {
@@ -82,7 +83,10 @@ async function listPayments(req, res, next) {
     }
     const payments = await query.sort({ createdAt: -1 }).limit(LIST_LIMIT).lean();
     const now = new Date();
-    res.json({ payments: payments.map((payment) => presentPayment(payment, scope, now)) });
+    const account = scope === 'owner' ? await getTopupAccount() : undefined;
+    // Receiving-account snapshots remain available to reviewers, not as stale payment instructions.
+    if (scope === 'owner') for (const payment of payments) if (payment.bookingId) delete payment.bookingId.bankSnapshot;
+    res.json({ payments: payments.map((payment) => presentPayment(payment, scope, now, account)) });
   } catch (error) {
     next(error);
   }

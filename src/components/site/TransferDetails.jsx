@@ -74,12 +74,17 @@ export default function TransferDetails({
   orderCode,
   qrUrl,
   expired = false,
+  blocked = false,
   preview = false,
   variant = 'ticket',
   expiresAt,
 }) {
   const [message, setMessage] = useState('');
   const copy = COPY[variant] ?? COPY.ticket;
+
+  if (blocked && !preview && amount > 0) {
+    return <p role="status" className="notice">Chuyển khoản đang tắt hoặc tài khoản nhận đã thay đổi. Không chuyển tiền theo thông tin cũ. Nếu đã chuyển tiền, giữ mã {orderCode} và liên hệ {variant === 'topup' ? 'hỗ trợ' : 'chủ giải'} để đối soát.</p>;
+  }
 
   if (expired) {
     return (

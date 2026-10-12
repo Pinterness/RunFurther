@@ -6,7 +6,7 @@ const PlatformSetting = require('../models/PlatformSetting');
 const Wallet = require('../models/Wallet');
 const ERROR_CODES = require('../lib/errorCodes');
 const { assert, httpError } = require('../lib/errors');
-const { normalizeBank, paymentInstructions } = require('./bankService');
+const { activeBankAccount, sameBankAccount, paymentInstructions } = require('./bankService');
 const { changeBalance } = require('./walletService');
 
 /**
@@ -25,6 +25,7 @@ const { changeBalance } = require('./walletService');
  * @property {number} amount Amount to transfer, in VND.
  * @property {Date | null} expiresAt When the code stops being offered for payment.
  * @property {boolean} expired Whether expiresAt has passed.
+ * @property {boolean} blocked Whether the current account is disabled or differs from the snapshot.
  */
 
 const SETTING_KEY = 'WALLET_TOPUP';
@@ -63,11 +64,7 @@ function generateTransferCode(randomInt = crypto.randomInt) {
  */
 async function getTopupAccount() {
   const setting = await PlatformSetting.findOne({ key: SETTING_KEY }).lean();
-  try {
-    return normalizeBank(setting?.bankAccountInfo ?? {}, { optional: false });
-  } catch {
-    return null;
-  }
+  return activeBankAccount(setting);
 }
 
 /**
@@ -107,14 +104,17 @@ function bankDetailsOf(payment) {
  * Builds the transfer instructions shown to the payer of one top-up request.
  * @param {object} payment Top-up request (Mongoose document or plain object).
  * @param {Date} [now] Current time; injectable for tests.
+ * @param {BankAccount | null} [currentAccount] Active account; null closes transfer instructions.
  * @returns {TransferInstructions} Instructions; the QR is withheld once the request is not payable.
  */
-function presentTopup(payment, now = new Date()) {
+function presentTopup(payment, now = new Date(), currentAccount) {
   const expired = isExpired(payment, now);
   const { bankInfo, vietQrUrl } = bankDetailsOf(payment);
-  const payable = payment.status === 'PENDING' && !expired;
+  const blocked = currentAccount !== undefined && (!currentAccount || Boolean(bankInfo && !sameBankAccount(bankInfo, currentAccount)));
+  const payable = payment.status === 'PENDING' && !expired && !blocked;
   return {
-    bankInfo,
+    bankInfo: blocked ? null : bankInfo,
+    blocked,
     vietQrUrl: payable ? vietQrUrl : null,
     transferCode: payment.transferCode ?? null,
     amount: payment.amount,
@@ -136,7 +136,7 @@ async function findSameRequest(requestKey, amount) {
   return existing;
 }
 
-async function assertCanOpenTopup(userId, now) {
+async function assertCanOpenTopup(userId, now, account) {
   const wallet = await Wallet.findOne({ userId }).select('status').lean();
   assert(
     !wallet || wallet.status === 'ACTIVE',
@@ -149,6 +149,9 @@ async function assertCanOpenTopup(userId, now) {
     kind: 'TOPUP',
     status: 'PENDING',
     expiresAt: { $gt: now },
+    'bankSnapshot.bankBin': account.bankBin,
+    'bankSnapshot.accountNo': account.accountNo,
+    'bankSnapshot.accountName': account.accountName,
   });
   assert(
     live < TOPUP_LIMITS.maxActive,
@@ -203,7 +206,6 @@ async function createTopupRequest({
   if (existing) {
     return { payment: existing, created: false };
   }
-  await assertCanOpenTopup(userId, now);
   const bankSnapshot = await getTopupAccount();
   assert(
     bankSnapshot,
@@ -211,6 +213,7 @@ async function createTopupRequest({
     'Nạp ví tạm đóng. Vui lòng thử lại sau hoặc liên hệ hỗ trợ.',
     ERROR_CODES.TOPUP_CLOSED,
   );
+  await assertCanOpenTopup(userId, now, bankSnapshot);
   const expiresAt = new Date(now.getTime() + TOPUP_LIMITS.ttlMs);
   const fields = { userId, kind: 'TOPUP', amount, requestKey, bankSnapshot, expiresAt };
   try {

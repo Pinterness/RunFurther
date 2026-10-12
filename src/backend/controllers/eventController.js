@@ -86,6 +86,8 @@ async function getEventBySlug(req, res, next) {
     }
 
     const categories = await EventCategory.find({ eventId: event._id }).sort({ distance: 1 }).lean();
+    // Only the owner can inspect the saved account while transfers are disabled.
+    if (event.bankTransferEnabled === false) delete event.bankAccountInfo;
     return res.status(200).json({ event: { ...event, categories } });
   } catch (error) {
     return next(error);

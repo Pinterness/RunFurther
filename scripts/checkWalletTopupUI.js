@@ -33,6 +33,7 @@ function createState() {
     topupPosts: [],
     reviews: [],
     account: { ...BANK },
+    bankTransferEnabled: true,
     accountSaves: 0,
     payments: [],
   };
@@ -71,11 +72,12 @@ function walletSummary(state) {
 function accountSetting(state) {
   const admin = { fullName: 'Quản trị viên', email: 'admin@example.com' };
   const history = state.accountSaves
-    ? [{ bankAccountInfo: state.account, changedBy: admin, changedAt: isoFromNow(0) }]
+    ? [{ bankAccountInfo: state.account, bankTransferEnabled: state.bankTransferEnabled, changedBy: admin, changedAt: isoFromNow(0) }]
     : [];
   return {
     account: state.account,
-    configured: Boolean(state.account.accountNo),
+    configured: state.bankTransferEnabled && Boolean(state.account.accountNo),
+    bankTransferEnabled: state.bankTransferEnabled,
     updatedBy: admin,
     updatedAt: isoFromNow(-state.accountSaves),
     history,
@@ -176,7 +178,9 @@ function apiAnswer(state, request) {
         ? [500, { message: 'Internal server error' }]
         : [200, accountSetting(state)],
     'PUT /admin/platform/topup-account': () => {
-      state.account = { ...request.postDataJSON().bankAccountInfo };
+      const body = request.postDataJSON();
+      if (body.bankAccountInfo) state.account = { ...body.bankAccountInfo };
+      state.bankTransferEnabled = body.bankTransferEnabled ?? state.bankTransferEnabled;
       state.accountSaves += 1;
       return [200, accountSetting(state)];
     },
@@ -256,6 +260,15 @@ async function walletScenario(page, state) {
   await card.getByRole('button', { name: 'Xem hướng dẫn chuyển khoản' }).click();
   await expect(card.locator('.transfer-details')).toContainText(BANK.accountNo);
 
+  // Closing top-ups also hides existing instructions, even if a stale response still has a QR.
+  state.topupAvailable = false;
+  await page.reload();
+  await card.getByRole('button', { name: 'Xem hướng dẫn chuyển khoản' }).click();
+  await expect(card).toContainText('Chuyển khoản đang tắt');
+  await expect(card.locator('.transfer-details')).toHaveCount(0);
+  await expect(card).not.toContainText(BANK.accountNo);
+  state.topupAvailable = true;
+
   // Expired and legacy requests never offer a QR code.
   state.payments.push(
     {
@@ -316,20 +329,38 @@ async function adminAccountScenario(page, state) {
   await expect(form.getByLabel('Số tài khoản')).toHaveValue(BANK.accountNo);
   await expect(form).toContainText('Quản trị viên');
 
-  // Changing the account saves it and says it only applies to new top-ups.
+  // Changing the account saves the replacement; disabling preserves it across reloads.
   await form.getByLabel('Số tài khoản').fill('0987654321');
   await form.getByRole('button', { name: 'Lưu tài khoản nhận' }).click();
-  await expect(form).toContainText('Chỉ áp dụng cho lệnh nạp mới');
+  await expect(form).toContainText('Đã lưu và bật tài khoản nhận');
   assert.deepEqual(
     { bankBin: state.account.bankBin, accountNo: state.account.accountNo },
     { bankBin: BANK.bankBin, accountNo: '0987654321' },
   );
 
-  // Clearing every field closes top-ups.
   await form.getByRole('button', { name: 'Tắt nạp ví' }).click();
-  await form.getByRole('button', { name: 'Lưu tài khoản nhận' }).click();
   await expect(form).toContainText('Đã tắt nạp ví');
+  assert.equal(state.account.accountNo, '0987654321');
+  assert.equal(state.bankTransferEnabled, false);
+  await expect(form.getByLabel('Số tài khoản')).toHaveCount(0);
+  await expect(form.locator('.transfer-details')).toHaveCount(0);
+  await openTopupTab(page, state);
+  await expect(form.getByLabel('Số tài khoản')).toHaveCount(0);
+  await form.getByRole('button', { name: 'Bật chuyển khoản', exact: true }).click();
+  await expect(form.getByLabel('Số tài khoản')).toHaveValue('0987654321');
+  await form.getByRole('button', { name: 'Xóa tài khoản nhận', exact: true }).click();
+  await expect(form).toContainText('Đã xóa tài khoản nhận');
   assert.equal(state.account.accountNo, '');
+  await openTopupTab(page, state);
+  await expect(form.getByLabel('Số tài khoản')).toHaveValue('');
+  await expect(form.getByRole('button', { name: 'Bật chuyển khoản', exact: true })).toBeDisabled();
+  await form.getByLabel('Ngân hàng', { exact: true }).selectOption('970422');
+  await form.getByLabel('Số tài khoản').fill(BANK.accountNo);
+  await form.getByLabel('Tên chủ tài khoản').fill(BANK.accountName);
+  await form.getByRole('button', { name: 'Bật chuyển khoản', exact: true }).click();
+  await expect(form).toContainText('Chuyển khoản đang bật');
+  assert.equal(state.bankTransferEnabled, true);
+  assert.equal(state.account.accountNo, BANK.accountNo);
   await checkViewports(page, 'admin-topup-account');
 }
 

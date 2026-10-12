@@ -9,7 +9,18 @@ const PaymentRequest = require('../models/PaymentRequest');
 const transaction = require('../services/transaction');
 const { expireBookings, completeBooking } = require('../services/bookingService');
 const { assert } = require('../lib/errors');
-const { paymentInstructions } = require('../services/bankService');
+const { paymentInstructions, activeBankAccount, sameBankAccount } = require('../services/bankService');
+
+function bookingTransfer(booking, event) {
+  const instructions = paymentInstructions(booking.bankSnapshot, booking.finalAmount, booking.orderCode);
+  const transferBlocked = !sameBankAccount(instructions.bankInfo, activeBankAccount(event));
+  return transferBlocked ? { bankInfo: null, vietQrUrl: null, transferBlocked: true } : { ...instructions, transferBlocked: false };
+}
+function publicBooking(booking) {
+  const { bankSnapshot, ...value } = booking.toObject?.() ?? booking;
+  if (value.eventId?.bankAccountInfo) { value.eventId = { ...value.eventId }; delete value.eventId.bankAccountInfo; }
+  return value;
+}
 
 async function createBookingHold(req, res, next) {
   try {
@@ -43,10 +54,9 @@ async function createBookingHold(req, res, next) {
         addons: { photoPackage: addons.photoPackage === true, pastaParty: addons.pastaParty === true },
         price: category.price, totalAmount, pointsDiscount, finalAmount: totalAmount - pointsDiscount,
         paymentMethod, status: 'HOLD', expiresAt: new Date(Date.now() + 10 * 60 * 1000),
-        bankSnapshot: paymentInstructions(event.bankAccountInfo, totalAmount - pointsDiscount, '').bankInfo,
+        bankSnapshot: activeBankAccount(event),
       }], { session });
-      const { bankInfo, vietQrUrl } = paymentInstructions(booking.bankSnapshot, booking.finalAmount, booking.orderCode);
-      return { booking, bankInfo, vietQrUrl, holdSecondsRemaining: 600 };
+      return { booking: publicBooking(booking), ...bookingTransfer(booking, event), holdSecondsRemaining: 600 };
     });
     res.status(201).json(result);
   } catch (error) { next(error); }
@@ -64,14 +74,16 @@ async function confirmBooking(req, res, next) {
         return completeBooking(booking._id, req.userId, 'WALLET', session);
       }
       assert(booking.status === 'HOLD' && booking.expiresAt > new Date(), 409, 'Booking has expired.');
-      await lockOperationalEvent(booking.eventId, session);
+      const event = await lockOperationalEvent(booking.eventId, session);
+      assert(!bookingTransfer(booking, event).transferBlocked, 409, 'Chuyển khoản đã tắt hoặc tài khoản nhận đã thay đổi. Không chuyển theo mã cũ; dùng ví hoặc liên hệ chủ giải nếu đã chuyển tiền.');
       assert(paymentInstructions(booking.bankSnapshot, booking.finalAmount, booking.orderCode).vietQrUrl, 409, 'Đơn chưa có thông tin chuyển khoản hợp lệ. Thanh toán bằng ví hoặc tạo đơn mới sau khi chủ giải cấu hình ngân hàng.');
       const paymentRequest = await PaymentRequest.findOneAndUpdate({ requestKey: 'BOOKING-' + booking._id }, {
         $setOnInsert: { userId: req.userId, bookingId: booking._id, kind: 'BOOKING', amount: booking.finalAmount, status: 'PENDING' },
       }, { session, upsert: true, new: true });
       assert(paymentRequest.status !== 'REJECTED', 409, 'Payment was rejected. Contact the organizer.');
-      return { pending: true, booking, paymentRequest, message: 'Đã gửi yêu cầu đối soát. Vé chỉ được cấp sau khi xác nhận tiền đã nhận.' };
+      return { pending: true, booking: publicBooking(booking), paymentRequest, message: 'Đã gửi yêu cầu đối soát. Vé chỉ được cấp sau khi xác nhận tiền đã nhận.' };
     });
+    if (result.booking) result.booking = publicBooking(result.booking);
     res.status(result.pending ? 202 : 200).json(result);
   } catch (error) { next(error); }
 }
@@ -79,19 +91,19 @@ async function listMyBookings(req, res, next) {
   try {
     await expireBookings();
     const bookings = await Booking.find({ userId: req.userId }).populate('eventId', 'name slug dateInfo location').populate('categoryId', 'name code distance price').sort({ createdAt: -1 }).limit(100).lean();
-    res.json({ bookings });
+    res.json({ bookings: bookings.map(publicBooking) });
   } catch (error) { next(error); }
 }
 async function getBookingById(req, res, next) {
   try {
     await expireBookings();
-    const booking = await Booking.findOne({ _id: req.params.bookingId, userId: req.userId }).populate('eventId', 'name slug dateInfo location moderation').populate('categoryId', 'name code distance price').lean();
+    const booking = await Booking.findOne({ _id: req.params.bookingId, userId: req.userId }).populate('eventId', 'name slug dateInfo location moderation bankAccountInfo bankTransferEnabled').populate('categoryId', 'name code distance price').lean();
     assert(booking, 404, 'Booking not found.');
     const registration = booking.status === 'PAID' ? await Registration.findOne({ 'payment.bookingId': booking._id, userId: req.userId }).lean() : null;
     const paymentBlocked = !booking.eventId || ['HIDDEN', 'SUSPENDED'].includes(booking.eventId.moderation?.state);
-    const instructions = paymentInstructions(booking.bankSnapshot, booking.finalAmount, booking.orderCode);
+    const instructions = bookingTransfer(booking, booking.eventId);
     if (paymentBlocked || booking.status !== 'HOLD' || new Date(booking.expiresAt) <= new Date()) instructions.vietQrUrl = null;
-    res.json({ booking, registration, ...instructions, paymentBlocked, holdSecondsRemaining: Math.max(0, Math.floor((new Date(booking.expiresAt) - Date.now()) / 1000)) });
+    res.json({ booking: publicBooking(booking), registration, ...instructions, paymentBlocked, holdSecondsRemaining: Math.max(0, Math.floor((new Date(booking.expiresAt) - Date.now()) / 1000)) });
   } catch (error) { next(error); }
 }
 module.exports = { createBookingHold, confirmBooking, listMyBookings, getBookingById };

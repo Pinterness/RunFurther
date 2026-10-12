@@ -110,6 +110,8 @@ NEXT_PUBLIC_API_URL=https://TEN-API-THAT.onrender.com/api
 
 Deploy xong sao chép **Production Domain** chính xác (không đoán theo project name), cập nhật CLIENT_ORIGIN trên Render. Ví dụ nếu URL thật là `https://runfurther-abc.vercel.app`, đây chính là giá trị CLIENT_ORIGIN, không có `/api` hay đường dẫn trang.
 
+Domain đã đối chiếu cho lần triển khai này: frontend **`https://run-further.vercel.app`** (có dấu gạch ngang), API **`https://runfurther.onrender.com/api`** (không có dấu gạch ngang). Trên Render đặt `CLIENT_ORIGIN=https://run-further.vercel.app` rồi lưu/redeploy; trên Vercel đặt `NEXT_PUBLIC_API_URL=https://runfurther.onrender.com/api`. Sai khác `runfurther.vercel.app` và `run-further.vercel.app` là hai origin riêng: đã xác nhận backend khỏe nhưng trả `403 ORIGIN_NOT_ALLOWED` cho domain thật khi allowlist dùng tên thiếu dấu gạch. Sửa file `.env.render.local` trên máy không tự cập nhật Environment của service Render đang chạy.
+
 Biến NEXT_PUBLIC được gắn vào JavaScript lúc build. Sau mỗi lần đổi NEXT_PUBLIC_API_URL phải **Redeploy Vercel**, không chỉ Save. [Next environment variables](https://nextjs.org/docs/app/guides/environment-variables).
 
 Preview deployment có hostname khác production: mặc định không cho phép truy cập database thật qua CORS. Khi thật sự cần, dùng backend/DB thử nghiệm và env Preview riêng. Hoặc thêm đúng hostname được tin cậy vào CLIENT_ORIGIN, phân cách bằng dấu phẩy; không dùng `*` hoặc `*.vercel.app`. Preview dùng production API vẫn có khả năng ghi dữ liệu thật khi có xác thực; CORS không thay thế quyền truy cập.

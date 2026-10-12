@@ -1,9 +1,21 @@
 # Công nghệ và thuật toán / logic đã dùng trong cuộc trao đổi
 
-Cập nhật: 08/10/2026. Tài liệu tổng hợp phần đã triển khai và kiểm chứng trong mã nguồn; không xem toàn bộ thư viện được cài là tính năng đã hoàn thành.
+Cập nhật: 12/10/2026. Tài liệu tổng hợp phần đã triển khai và kiểm chứng trong mã nguồn; không xem toàn bộ thư viện được cài là tính năng đã hoàn thành.
+
+## Tài khoản nhận tiền: tắt, bật lại và thay thế — 12/10/2026
+
+- `bankTransferEnabled` lưu riêng với `bankAccountInfo` trên `PlatformSetting` (nạp ví) và `Event` (tiền vé). Tắt chỉ đổi trạng thái: số tài khoản vẫn lưu nhưng phần nhập/xem trước QR được thu lại và API thanh toán không trả tài khoản/QR cho người mua. Dữ liệu cũ chưa có cờ vẫn hoạt động nếu tài khoản hợp lệ; giải mới chưa có tài khoản mặc định tắt, không cần migration.
+- Nút **Tắt nạp ví / Tắt chuyển khoản**, **Bật chuyển khoản** và **Xóa tài khoản nhận** lưu ngay đối với cấu hình đang tồn tại. Xóa làm trống tài khoản hiện tại và tắt chuyển khoản; có thể nhập tài khoản khác rồi bật. Khi tạo giải mới, thao tác ngân hàng vẫn là bản nháp đến khi bấm tạo giải. Không bật được khi chưa có tài khoản hợp lệ.
+- Dùng chung `BankFields` và `bankSettingsPatch` để hai vai trò có cùng hành vi. Người mua không nhận `bankSnapshot` thô. Tài khoản trong đơn cũ được so sánh BIN/số tài khoản/tên với tài khoản đang bật; khác nhau hoặc đang tắt thì ẩn hướng dẫn cũ, không tự đổi nơi nhận của đơn đã tạo. Bật lại cùng tài khoản sẽ khôi phục hướng dẫn cho đơn còn hiệu lực; tài khoản mới chỉ dùng cho đơn mới.
+- Snapshot trong DB, lệnh thanh toán, vé, số dư và ledger được giữ nguyên. Chủ giải vẫn đối soát yêu cầu tiền vé đã gửi; Super Admin vẫn đối soát lệnh nạp cũ khi đã nhận tiền, kể cả sau khi xóa tài khoản hiện tại. Lịch sử đổi tài khoản nạp ví ghi cả trạng thái bật/tắt. Super Admin không được sửa ngân hàng của giải; chủ giải chỉ sửa giải của mình.
+- Checkout kiểm tra lại mỗi 5 giây; trang ví mỗi 15 giây khi có lệnh đang chờ chưa hết hạn. Giao diện đang mở cập nhật theo lần polling tiếp theo hoặc tải lại trang, chưa dùng đẩy realtime. Nút gửi đối soát tiền vé bị khóa khi QR không còn khả dụng; ví vẫn dùng được.
+- Giới hạn 3 lệnh nạp chờ tính cho tài khoản đang nhận tiền, tránh để ba lệnh không còn thanh toán được chặn tạo lệnh mới sau khi thay tài khoản.
+- Kiểm thử: `npm test` dùng DB MongoMemoryReplSet riêng; `test:wallet-ui` và `test:event-media-ui` dùng API fixtures để kiểm tra tắt/bật/xóa/thêm, tải lại, ẩn QR và bố cục 1440/768/390/360px. Không thay đổi ngân hàng hay giao dịch production trong lúc kiểm thử.
+- Kết quả 12/10: 76/76 test đạt; build production Next 16.3.8 đạt; hai kịch bản Chrome đạt, gồm ẩn QR trên checkout đang mở khi trạng thái thay đổi. Build được chạy trong thư mục kiểm chứng riêng để không ảnh hưởng dev server đang dùng.
 
 ## Cấu hình Vercel / Render — 08/10/2026
 
+- Chẩn đoán `Failed to fetch` sau deploy: API Render `/health` và danh sách giải trả 200; request/preflight từ `https://run-further.vercel.app` bị 403 `ORIGIN_NOT_ALLOWED` vì allowlist đang dùng `https://runfurther.vercel.app`. Đây là sai domain cấu hình CORS, không phải API mất dữ liệu. Đã sửa CLIENT_ORIGIN trong file private `.env.render.local`; Environment trên Render cần đổi cùng giá trị rồi lưu/redeploy. API đúng là `https://runfurther.onrender.com/api`. Giữ so khớp origin chính xác, không mở wildcard Vercel.
 - Xử lý log Render `Missing script: "build"`: service API chỉ cần cài dependency (`npm ci --omit=dev`) và chạy `npm start`. Build Command trong dashboard phải được sửa trực tiếp nếu tạo service thủ công; biến môi trường và `render.yaml` chưa gắn Blueprint không ghi đè setting đó.
 - Vá dependency cho lần deploy: Next từ 16.3.4 lên 16.3.6, sau đó lên bản vá 16.3.8 khi audit cập nhật cảnh báo; sharp từ 0.35.4 lên 0.35.5; overrides đặt proxy-addr ≥2.0.8, source-map-js ≥1.2.2 và brace-expansion ≥5.0.12. Các cảnh báo thuộc nodemon/chokidar/braces chỉ dùng khi phát triển được ghi riêng; không chạy audit fix --force để hạ nodemon về bản cũ.
 - Sửa lỗi cài đặt cloud `EUSAGE / Missing @emnapi/runtime, @emnapi/core from lock file`: đã tái hiện bằng npm 11.21.0 trong thư mục sạch, trong khi npm 11.6.2 bỏ sót lỗi này. Tái tạo lockfile bằng npm 11.21.0 để ghi đủ runtime 1.11.3 của sharp và core/runtime 1.11.1 được bundle trong Tailwind oxide; không thêm dependency giả vào package.json và không bỏ kiểm tra npm ci. NEXT_PUBLIC_API_URL không gây ra lỗi ở bước cài dependency.
@@ -233,7 +245,7 @@ Mục này ghi lại bản cũ; HeroRunners hiện không được gắn vào la
 - Chọn ngân hàng bằng BIN, server tra danh sách và chuẩn hóa bankName. Số tài khoản giữ dạng string để không mất số 0 đầu, chỉ chữ/số 1–19 ký tự; tên chủ tài khoản 2–100 ký tự. Có thể để trống toàn bộ để không bật chuyển khoản. Chưa tra cứu xác minh tên chủ tài khoản qua ngân hàng.
 - QR xem trước dùng số tiền mẫu 10.000đ, nội dung XEMTRUOC; chỉ để chủ giải kiểm tra cấu hình, không dùng mua vé.
 - Khi giữ chỗ, backend tự chụp bankSnapshot từ tài khoản nhận tiền của giải vào Booking trong cùng transaction. Client không được tự chọn tài khoản nhận, số tiền hoặc nội dung chuyển khoản.
-- bankSnapshot bất biến; đổi tài khoản nhận tiền trên giải không đổi QR của booking cũ. QR dùng bankBin/accountNo trong snapshot, finalAmount do server tính và orderCode của đơn.
+- bankSnapshot bất biến để đối soát. Khi tắt hoặc thay tài khoản nhận trên giải, booking cũ ẩn QR và thông tin nhận tiền thay vì chuyển sang tài khoản mới. Khi khả dụng, QR dùng bankBin/accountNo trong snapshot, finalAmount do server tính và orderCode của đơn.
 - GET booking trả lại cùng hướng dẫn chuyển khoản; không trả QR khi đơn hết hạn/đã trả tiền hoặc giải bị ẩn/ngừng. Màn thanh toán thăm dò 5 giây và khóa thao tác khi bị chặn.
 - Đơn cũ chưa có snapshot không tự lấy tài khoản mới để tạo QR. Muốn gửi yêu cầu chuyển khoản mới, người dùng cần tạo đơn mới sau khi cấu hình hợp lệ hoặc thanh toán ví. Yêu cầu đối soát cũ đã tồn tại vẫn giữ để chủ giải xử lý.
 - TransferDetails có nút sao chép số tài khoản/số tiền/nội dung bằng Clipboard API, trạng thái thành công hoặc hướng dẫn sao chép thủ công; lỗi tải ảnh QR vẫn hiển thị thông tin ngân hàng, có nút thử lại.
@@ -429,7 +441,7 @@ Nguồn model: [Quaternius](https://quaternius.com/packs/ultimatemodularcharacte
 
 - Người dùng nhập số tiền ở /account/wallet. `POST /api/wallet/topup` tạo `PaymentRequest` loại TOPUP, trạng thái PENDING, kèm `transferCode` (`NAP` + 8 ký tự từ bảng 32 ký tự không có 0/O/1/I, sinh bằng `crypto.randomInt`), `bankSnapshot` (tài khoản nhận tại lúc tạo, bất biến) và `expiresAt` (24 giờ).
 - Hướng dẫn chuyển khoản dùng lại `paymentInstructions` (VietQR Quick Link, `addInfo` = mã) và `TransferDetails` biến thể `topup`. Danh sách lệnh của người dùng trả kèm `transfer`, nên tải lại trang vẫn mở lại được hướng dẫn. Trang ví tự cập nhật mỗi 15 giây khi còn lệnh chờ có mã chưa hết hạn và tab đang hiển thị.
-- Super Admin cấu hình tài khoản nhận ở /admin → Nạp ví (`PlatformSetting` key `WALLET_TOPUP`, lưu người đổi và 50 thay đổi gần nhất). Để trống toàn bộ là tắt nạp ví. Form không hiện khi tải cấu hình lỗi, để tránh lưu nhầm form trống.
+- Super Admin cấu hình tài khoản nhận ở /admin → Nạp ví (`PlatformSetting` key `WALLET_TOPUP`, lưu người đổi và 50 thay đổi gần nhất). Tắt nạp ví giữ tài khoản; nút xóa riêng làm trống tài khoản và tắt. Form không hiện khi tải cấu hình lỗi, để tránh lưu nhầm form trống.
 - Super Admin tìm mã trong sao kê (ô tìm chuẩn hóa chữ hoa, bỏ khoảng trắng và dấu gạch), nhập mã giao dịch ngân hàng và số tiền thực nhận. Số tiền phải bằng số tiền của lệnh; lệch thì từ chối và hoàn tiền thủ công.
 
 **Bất biến**
@@ -437,7 +449,7 @@ Nguồn model: [Quaternius](https://quaternius.com/packs/ultimatemodularcharacte
 - Cộng ví qua `changeBalance` trong `transaction()`, khóa idempotency `TOPUP-<paymentId>`; duyệt đồng thời hoặc gửi lại chỉ cộng một lần.
 - `transferCode` và `bankReference` có unique index một phần; một giao dịch ngân hàng không thể cấp tiền cho hai lệnh.
 - Không thêm trạng thái mới: hết hạn là cờ tính từ `expiresAt`; lệnh quá hạn vẫn duyệt được vì tiền có thể về muộn.
-- Mỗi người tối đa 3 lệnh chờ chưa hết hạn (giới hạn mềm); ví không ACTIVE không tạo được lệnh; Super Admin không tự duyệt lệnh của mình.
+- Mỗi người tối đa 3 lệnh chờ chưa hết hạn với tài khoản nhận hiện tại (giới hạn mềm); ví không ACTIVE không tạo được lệnh; Super Admin không tự duyệt lệnh của mình.
 - Lệnh tạo trước tính năng này (không mã/snapshot/hạn) vẫn hiển thị và duyệt như cũ, không cần migration.
 - Lỗi nghiệp vụ trả `{ message, code }` với mã ổn định trong `src/backend/lib/errorCodes.js`; error handler tách ra `src/backend/middlewares/errorHandler.js`.
 

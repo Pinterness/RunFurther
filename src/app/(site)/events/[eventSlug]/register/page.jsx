@@ -77,7 +77,7 @@ export default function RegistrationPage({ params }) {
         if (disposed) return;
         if (!response.ok) throw new Error(data.message);
         setSecondsLeft(data.holdSecondsRemaining);
-        setBookingData(previous => ({ ...previous, ...(data.bankInfo !== undefined ? { bankInfo: data.bankInfo, vietQrUrl: data.vietQrUrl } : {}), paymentBlocked: data.paymentBlocked }));
+        setBookingData(previous => ({ ...previous, ...(data.bankInfo !== undefined ? { bankInfo: data.bankInfo, vietQrUrl: data.vietQrUrl } : {}), paymentBlocked: data.paymentBlocked, transferBlocked: data.transferBlocked }));
         if (data.booking.status === 'PAID' && data.registration) {
           setConfirmData({ ...data, bibNumber: data.registration.bibNumber });
           setErrorMessage('');
@@ -538,7 +538,7 @@ export default function RegistrationPage({ params }) {
             </div>
           </div>
 
-          {bookingData.paymentBlocked ? <p className="notice notice-error">Giải đang bị ẩn hoặc tạm ngừng. Không chuyển tiền; liên hệ chủ giải nếu bạn đã thanh toán.</p> : <TransferDetails bankInfo={bookingData.bankInfo} amount={bookingData.booking.finalAmount} orderCode={bookingData.booking.orderCode} qrUrl={bookingData.vietQrUrl} expired={secondsLeft <= 0} />}
+          {bookingData.paymentBlocked ? <p className="notice notice-error">Giải đang bị ẩn hoặc tạm ngừng. Không chuyển tiền; liên hệ chủ giải nếu bạn đã thanh toán.</p> : <TransferDetails blocked={bookingData.transferBlocked} bankInfo={bookingData.bankInfo} amount={bookingData.booking.finalAmount} orderCode={bookingData.booking.orderCode} qrUrl={bookingData.vietQrUrl} expired={secondsLeft <= 0} />}
           {transferPending && <p role="status" className="notice">Đã gửi yêu cầu đối soát. Vui lòng không chuyển tiền lần nữa; vé sẽ xuất hiện sau khi chủ giải xác nhận.</p>}
               <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <button className="button-dark"

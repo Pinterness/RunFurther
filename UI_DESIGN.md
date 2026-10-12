@@ -180,6 +180,10 @@ Kiểm tra 1440, 1024, 768, 390, 360px; không tràn ngang; đăng nhập/đăng
 
 ## Ví và nạp tiền
 
+- Cấu hình nhận tiền của Super Admin và chủ giải dùng chung trạng thái **Chuyển khoản đang bật / Chuyển khoản đã tắt · Tài khoản được giữ lại / Chưa có tài khoản nhận**. Tắt thu lại phần số tài khoản và QR; muốn sửa khi đang tắt bấm **Đổi tài khoản**. Nút **Xóa tài khoản nhận** tách riêng, xóa cấu hình đang dùng và cho nhập tài khoản khác.
+- Các nút bật/tắt/xóa lưu ngay ở trang quản trị đang tồn tại; trạng thái chỉ đổi sau khi API thành công. Lỗi giữ nguyên dữ liệu và có thông báo. Nhóm nút có khoảng cách, xuống dòng trên mobile; đang gửi thì khóa để tránh bấm lặp.
+- Trang thanh toán không hiện tài khoản hay QR cũ khi chủ tài khoản tắt hoặc thay ngân hàng. Hiện thông báo không chuyển theo thông tin cũ và giữ mã để liên hệ đối soát nếu đã chuyển. Lịch sử/chứng từ vẫn dành cho người quản trị đúng phạm vi; không dùng tài khoản hiện tại để sửa hướng dẫn của đơn cũ.
+
 - /account/wallet: thẻ số dư xanh rừng chiếm 1/3 bên trái, giữ chiều cao tự nhiên; khối "Nạp tiền vào ví" chiếm 2/3 bên phải để QR và bảng chuyển khoản đủ chỗ. Dưới 800px xếp một cột.
 - Ô số tiền và nút "Tạo lệnh nạp" trên một hàng; chip gợi ý 50.000đ–1.000.000đ dùng viền, chip đang chọn đổi viền và chữ sang cam đậm. Giới hạn số tiền và thời hạn mã hiển thị ngay dưới chip.
 - Sau khi tạo lệnh, khối chuyển khoản (QR, tài khoản nhận, nội dung = mã, nút sao chép) mở ngay. Lệnh đang chờ là danh sách: mã in đơn cách, nhãn "Chờ đối soát" hoặc "Quá hạn", nút mở lại hướng dẫn.

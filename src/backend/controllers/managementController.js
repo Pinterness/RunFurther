@@ -6,7 +6,7 @@ const Registration = require('../models/Registration');
 const EventAccount = require('../models/EventAccount');
 const transaction = require('../services/transaction');
 const { assert } = require('../lib/errors');
-const { normalizeBank, listBanks } = require('../services/bankService');
+const { bankSettingsPatch, listBanks } = require('../services/bankService');
 const { validateImages } = require('./imageController');
 function pick(body, keys) { return Object.fromEntries(keys.filter(key => body[key] !== undefined).map(key => [key, body[key]])); }
 function validateDates(dates) {
@@ -18,7 +18,8 @@ async function createEvent(req, res, next) {
     const data = pick(req.body, ['slug', 'name', 'dateInfo', 'location', 'organizerId', 'bankAccountInfo', 'bannerUrl', 'logoUrl']);
     assert(data.dateInfo, 400, 'Event dates are required.');
     validateDates(data.dateInfo);
-    if (data.bankAccountInfo !== undefined) { await listBanks(); data.bankAccountInfo = normalizeBank(data.bankAccountInfo); }
+    if (data.bankAccountInfo !== undefined) await listBanks();
+    Object.assign(data, bankSettingsPatch(req.body));
     await validateImages(data, req.userId);
     const event = await transaction(async session => {
       {
@@ -36,10 +37,12 @@ async function createEvent(req, res, next) {
 async function updateEvent(req, res, next) {
   try {
     const data = pick(req.body, ['name', 'dateInfo', 'location', 'bankAccountInfo', 'bannerUrl', 'logoUrl', 'status']);
-    if (data.bankAccountInfo !== undefined) { await listBanks(); data.bankAccountInfo = normalizeBank(data.bankAccountInfo); }
+    const changesBank = data.bankAccountInfo !== undefined || req.body.bankTransferEnabled !== undefined;
+    if (changesBank) await listBanks();
     const event = await transaction(async session => {
     const event = await lockOperationalEvent(req.params.eventId, session);
     assert(event, 404, 'Event not found.');
+    if (changesBank) Object.assign(data, bankSettingsPatch(req.body, event));
     if (req.body.status === 'REGISTRATION_OPEN' && event.status !== 'REGISTRATION_OPEN') {
       assert(await require('../models/EventCategory').exists({ eventId: event._id, quotaTotal: { $gt: 0 } }), 409, 'Thêm ít nhất một cự ly có số suất trước khi mở đăng ký.');
     }

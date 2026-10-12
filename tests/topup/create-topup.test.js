@@ -103,7 +103,10 @@ describe('POST /api/wallet/topup', () => {
     const oldRequest = await openTopup(user, 50_000, 'create-key-1');
     const newRequest = await openTopup(user, 50_000, 'create-key-2');
 
-    assert.equal(oldRequest.body.transfer.bankInfo.accountNo, ACCOUNT.accountNo);
+    assert.equal(oldRequest.body.transfer.bankInfo, null);
+    assert.equal(oldRequest.body.transfer.vietQrUrl, null);
+    assert.equal(oldRequest.body.transfer.blocked, true);
+    assert.equal((await Payment.findById(payment._id)).bankSnapshot.accountNo, ACCOUNT.accountNo);
     assert.equal(newRequest.body.transfer.bankInfo.accountNo, OTHER_ACCOUNT.accountNo);
     assert.notEqual(newRequest.body.paymentRequest.transferCode, payment.transferCode);
     assert.equal(await Payment.countDocuments({ userId: user.id }), 2);

@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { api } from '../../lib/clientApi';
 import { formatDateTime } from '../../lib/format';
 import { useApiQuery } from '../../lib/useApiQuery';
-import BankFields from './BankFields';
+import BankFields, { accountFields } from './BankFields';
 import './topup.css';
 
 const SETTINGS_PATH = '/admin/platform/topup-account';
@@ -12,39 +12,43 @@ const EMPTY_ACCOUNT = { bankBin: '', bankName: '', accountNo: '', accountName: '
 const describeAccount = (account) =>
   account?.accountNo
     ? `${account.bankName} · ${account.accountNo} · ${account.accountName}`
-    : 'Đã tắt nạp ví';
+    : 'Đã xóa tài khoản nhận';
 
-function AccountEditor({ initialAccount, onSaved }) {
-  const [account, setAccount] = useState({ ...EMPTY_ACCOUNT, ...initialAccount });
+function AccountEditor({ initialAccount, enabled, onSaved }) {
+  const [account, setAccount] = useState({ ...EMPTY_ACCOUNT, ...initialAccount, bankTransferEnabled: enabled });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  async function save(event) {
-    event.preventDefault();
+  async function saveAccount(body) {
     setBusy(true);
     setError('');
     try {
       const saved = await api(SETTINGS_PATH, {
         method: 'PUT',
-        body: JSON.stringify({ bankAccountInfo: account }),
+        body: JSON.stringify(body),
       });
+      setAccount({ ...saved.account, bankTransferEnabled: saved.bankTransferEnabled });
       onSaved(saved);
+      return saved;
     } catch (requestError) {
       setError(requestError.message);
+      return null;
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <form onSubmit={save}>
+    <form onSubmit={event => { event.preventDefault(); saveAccount({ bankAccountInfo: accountFields(account), bankTransferEnabled: account.bankTransferEnabled }); }}>
+      <fieldset disabled={busy} style={{ border: 0, padding: 0, minWidth: 0 }}>
       <BankFields
         value={account}
         onChange={(patch) => setAccount((current) => ({ ...current, ...patch }))}
         title="Ngân hàng và số tài khoản"
-        hint="Chọn ngân hàng, nhập số tài khoản và tên chủ tài khoản đúng như trong ứng dụng ngân hàng. Để trống toàn bộ để tắt nạp ví."
+        hint="Tắt nạp ví để ẩn tài khoản và QR với người dùng, giữ thông tin để bật lại. Xóa tài khoản nhận để thay bằng tài khoản khác."
         disableLabel="Tắt nạp ví"
         variant="topup"
+        onAction={saveAccount}
       />
       {error && (
         <p role="alert" className="notice notice-error">
@@ -56,6 +60,7 @@ function AccountEditor({ initialAccount, onSaved }) {
           Lưu tài khoản nhận
         </button>
       </div>
+      </fieldset>
     </form>
   );
 }
@@ -75,7 +80,7 @@ function AccountHistory({ setting }) {
           <ul>
             {setting.history.map((entry) => (
               <li key={`${entry.changedAt}-${entry.bankAccountInfo.accountNo}`}>
-                {describeAccount(entry.bankAccountInfo)} · {entry.changedBy?.fullName ?? 'Không rõ'}{' '}
+                {describeAccount(entry.bankAccountInfo)} · {entry.bankTransferEnabled === false ? 'Đã tắt' : 'Đã bật'} · {entry.changedBy?.fullName ?? 'Không rõ'}{' '}
                 · {formatDateTime(entry.changedAt)}
               </li>
             ))}
@@ -97,8 +102,8 @@ export default function TopupAccountForm() {
   function handleSaved(saved) {
     setNotice(
       saved.configured
-        ? 'Đã lưu tài khoản nhận. Chỉ áp dụng cho lệnh nạp mới.'
-        : 'Đã tắt nạp ví. Người dùng sẽ thấy thông báo nạp ví tạm đóng.',
+        ? 'Đã lưu và bật tài khoản nhận. Lệnh mới dùng tài khoản này.'
+        : saved.account?.accountNo ? 'Đã tắt nạp ví và ẩn QR. Tài khoản được giữ để bật lại.' : 'Đã xóa tài khoản nhận. Bạn có thể thêm tài khoản khác.',
     );
     reload();
   }
@@ -108,7 +113,7 @@ export default function TopupAccountForm() {
       <h2 id="topup-account-title">Tài khoản nhận nạp ví</h2>
       <p className="organizer-hint">
         Người dùng chuyển tiền nạp ví vào tài khoản này. Mỗi lệnh nạp giữ tài khoản tại thời điểm
-        tạo, nên thay đổi chỉ áp dụng cho lệnh nạp mới.
+        tạo để đối soát. Khi tắt hoặc thay tài khoản, hướng dẫn chuyển tiền cũ được ẩn.
       </p>
       {notice && (
         <p role="status" className="notice">
@@ -130,6 +135,7 @@ export default function TopupAccountForm() {
           <AccountEditor
             key={setting.updatedAt ?? 'unsaved'}
             initialAccount={setting.account}
+            enabled={setting.bankTransferEnabled ?? setting.configured}
             onSaved={handleSaved}
           />
           <AccountHistory setting={setting} />
