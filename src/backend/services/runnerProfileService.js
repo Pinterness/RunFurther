@@ -1,26 +1,28 @@
 const { assert } = require('../lib/errors');
-const { birthdayError } = require('../../lib/runnerValidation.cjs');
+const { birthdayError, needsBirthdayConfirmation } = require('../../lib/runnerValidation.cjs');
+const { normalizeNationality } = require('../../lib/nationalities.cjs');
 const genders = { Nam: 'MALE', 'Nữ': 'FEMALE', Khác: 'OTHER', 'Không chia sẻ': 'PREFER_NOT_TO_SAY' };
 function runnerDetails(input, options) {
   assert(input && typeof input === 'object' && !Array.isArray(input), 400, 'Hồ sơ người chạy không hợp lệ.');
   const error = birthdayError(input.birthday, options);
   assert(!error, 400, error);
+  assert(!needsBirthdayConfirmation(input.birthday, options?.now) || input.confirmedBirthday === input.birthday, 400, 'Bạn trên 50 tuổi. Vui lòng xác nhận ngày sinh này chính xác.');
   const details = {};
   if (input.birthday !== undefined) details.birthday = input.birthday || '';
   if (input.nationality !== undefined) {
-    assert(typeof input.nationality === 'string' && input.nationality.trim().length <= 80, 400, 'Quốc tịch phải là văn bản, tối đa 80 ký tự.');
-    details.nationality = input.nationality.trim();
+    details.nationality = normalizeNationality(input.nationality);
+    assert(details.nationality, 400, 'Vui lòng chọn quốc tịch trong danh sách.');
   }
   return details;
 }
-function profileData(input = {}) {
+function profileData(input = {}, options) {
   assert(input && typeof input === 'object' && !Array.isArray(input), 400, 'Hồ sơ người chạy không hợp lệ.');
   const data = {};
   if (input.gender !== undefined) {
     assert(genders[input.gender], 400, 'Giới tính không hợp lệ.');
     data.gender = genders[input.gender];
   }
-  const details = runnerDetails(input);
+  const details = runnerDetails(input, options);
   if (details.birthday !== undefined) data.dob = details.birthday ? new Date(details.birthday) : null;
   if (details.nationality !== undefined) data.nationality = details.nationality;
   for (const key of ['club']) if (input[key] !== undefined) {

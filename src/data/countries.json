@@ -1,0 +1,1997 @@
+[
+  {
+    "code": "AF",
+    "name": "Afghanistan",
+    "aliases": [
+      "AF",
+      "AFG"
+    ]
+  },
+  {
+    "code": "AL",
+    "name": "Albania",
+    "aliases": [
+      "AL",
+      "ALB"
+    ]
+  },
+  {
+    "code": "DZ",
+    "name": "Algeria",
+    "aliases": [
+      "DZ",
+      "DZA"
+    ]
+  },
+  {
+    "code": "AS",
+    "name": "American Samoa",
+    "aliases": [
+      "AS",
+      "ASM"
+    ]
+  },
+  {
+    "code": "AD",
+    "name": "Andorra",
+    "aliases": [
+      "AD",
+      "AND"
+    ]
+  },
+  {
+    "code": "AO",
+    "name": "Angola",
+    "aliases": [
+      "AO",
+      "AGO"
+    ]
+  },
+  {
+    "code": "AI",
+    "name": "Anguilla",
+    "aliases": [
+      "AI",
+      "AIA"
+    ]
+  },
+  {
+    "code": "AQ",
+    "name": "Antarctica",
+    "aliases": [
+      "AQ",
+      "ATA"
+    ]
+  },
+  {
+    "code": "AG",
+    "name": "Antigua và Barbuda",
+    "aliases": [
+      "AG",
+      "ATG"
+    ]
+  },
+  {
+    "code": "AR",
+    "name": "Argentina",
+    "aliases": [
+      "AR",
+      "ARG"
+    ]
+  },
+  {
+    "code": "AM",
+    "name": "Armenia",
+    "aliases": [
+      "AM",
+      "ARM"
+    ]
+  },
+  {
+    "code": "AW",
+    "name": "Aruba",
+    "aliases": [
+      "AW",
+      "ABW"
+    ]
+  },
+  {
+    "code": "AU",
+    "name": "Úc",
+    "aliases": [
+      "AU",
+      "AUS"
+    ]
+  },
+  {
+    "code": "AT",
+    "name": "Austria",
+    "aliases": [
+      "AT",
+      "AUT"
+    ]
+  },
+  {
+    "code": "AZ",
+    "name": "Azerbaijan",
+    "aliases": [
+      "AZ",
+      "AZE"
+    ]
+  },
+  {
+    "code": "BS",
+    "name": "Bahamas",
+    "aliases": [
+      "BS",
+      "BHS"
+    ]
+  },
+  {
+    "code": "BH",
+    "name": "Bahrain",
+    "aliases": [
+      "BH",
+      "BHR"
+    ]
+  },
+  {
+    "code": "BD",
+    "name": "Bangladesh",
+    "aliases": [
+      "BD",
+      "BGD"
+    ]
+  },
+  {
+    "code": "BB",
+    "name": "Barbados",
+    "aliases": [
+      "BB",
+      "BRB"
+    ]
+  },
+  {
+    "code": "BY",
+    "name": "Belarus",
+    "aliases": [
+      "BY",
+      "BLR"
+    ]
+  },
+  {
+    "code": "BE",
+    "name": "Bỉ",
+    "aliases": [
+      "BE",
+      "BEL"
+    ]
+  },
+  {
+    "code": "BZ",
+    "name": "Belize",
+    "aliases": [
+      "BZ",
+      "BLZ"
+    ]
+  },
+  {
+    "code": "BJ",
+    "name": "Benin",
+    "aliases": [
+      "BJ",
+      "BEN"
+    ]
+  },
+  {
+    "code": "BM",
+    "name": "Bermuda",
+    "aliases": [
+      "BM",
+      "BMU"
+    ]
+  },
+  {
+    "code": "BT",
+    "name": "Bhutan",
+    "aliases": [
+      "BT",
+      "BTN"
+    ]
+  },
+  {
+    "code": "BO",
+    "name": "Bolivia",
+    "aliases": [
+      "BO",
+      "BOL"
+    ]
+  },
+  {
+    "code": "BA",
+    "name": "Bosnia và Herzegovina",
+    "aliases": [
+      "BA",
+      "BIH"
+    ]
+  },
+  {
+    "code": "BW",
+    "name": "Botswana",
+    "aliases": [
+      "BW",
+      "BWA"
+    ]
+  },
+  {
+    "code": "BV",
+    "name": "Đảo Bouvet",
+    "aliases": [
+      "BV",
+      "BVT"
+    ]
+  },
+  {
+    "code": "BR",
+    "name": "Brazil",
+    "aliases": [
+      "BR",
+      "BRA"
+    ]
+  },
+  {
+    "code": "IO",
+    "name": "Lãnh thổ Ấn Độ Dương thuộc Anh",
+    "aliases": [
+      "IO",
+      "IOT"
+    ]
+  },
+  {
+    "code": "BN",
+    "name": "Brunei Darussalam",
+    "aliases": [
+      "BN",
+      "BRN"
+    ]
+  },
+  {
+    "code": "BG",
+    "name": "Bulgaria",
+    "aliases": [
+      "BG",
+      "BGR"
+    ]
+  },
+  {
+    "code": "BF",
+    "name": "Burkina Faso",
+    "aliases": [
+      "BF",
+      "BFA"
+    ]
+  },
+  {
+    "code": "BI",
+    "name": "Burundi",
+    "aliases": [
+      "BI",
+      "BDI"
+    ]
+  },
+  {
+    "code": "KH",
+    "name": "Campuchia",
+    "aliases": [
+      "KH",
+      "KHM"
+    ]
+  },
+  {
+    "code": "CM",
+    "name": "Cameroon",
+    "aliases": [
+      "CM",
+      "CMR"
+    ]
+  },
+  {
+    "code": "CA",
+    "name": "Canada",
+    "aliases": [
+      "CA",
+      "CAN"
+    ]
+  },
+  {
+    "code": "CV",
+    "name": "Cape Verde",
+    "aliases": [
+      "CV",
+      "CPV"
+    ]
+  },
+  {
+    "code": "KY",
+    "name": "Quần đảo Cayman",
+    "aliases": [
+      "KY",
+      "CYM"
+    ]
+  },
+  {
+    "code": "CF",
+    "name": "Cộng hòa Trung Phi",
+    "aliases": [
+      "CF",
+      "CAF"
+    ]
+  },
+  {
+    "code": "TD",
+    "name": "Chad",
+    "aliases": [
+      "TD",
+      "TCD"
+    ]
+  },
+  {
+    "code": "CL",
+    "name": "Chile",
+    "aliases": [
+      "CL",
+      "CHL"
+    ]
+  },
+  {
+    "code": "CN",
+    "name": "Trung Quốc",
+    "aliases": [
+      "CN",
+      "CHN"
+    ]
+  },
+  {
+    "code": "CX",
+    "name": "Đảo Giáng sinh",
+    "aliases": [
+      "CX",
+      "CXR"
+    ]
+  },
+  {
+    "code": "CC",
+    "name": "Quần đảo Cocos (Keeling)",
+    "aliases": [
+      "CC",
+      "CCK"
+    ]
+  },
+  {
+    "code": "CO",
+    "name": "Colombia",
+    "aliases": [
+      "CO",
+      "COL"
+    ]
+  },
+  {
+    "code": "KM",
+    "name": "Comoros",
+    "aliases": [
+      "KM",
+      "COM"
+    ]
+  },
+  {
+    "code": "CG",
+    "name": "Công-gô",
+    "aliases": [
+      "CG",
+      "COG"
+    ]
+  },
+  {
+    "code": "CD",
+    "name": "Cộng hòa Dân chủ Công-gô",
+    "aliases": [
+      "CD",
+      "COD"
+    ]
+  },
+  {
+    "code": "CK",
+    "name": "Quần đảo Cook",
+    "aliases": [
+      "CK",
+      "COK"
+    ]
+  },
+  {
+    "code": "CR",
+    "name": "Costa Rica",
+    "aliases": [
+      "CR",
+      "CRI"
+    ]
+  },
+  {
+    "code": "CI",
+    "name": "Cote d'Ivoire",
+    "aliases": [
+      "Côte d'Ivoire",
+      "CI",
+      "CIV"
+    ]
+  },
+  {
+    "code": "HR",
+    "name": "Croatia",
+    "aliases": [
+      "HR",
+      "HRV"
+    ]
+  },
+  {
+    "code": "CU",
+    "name": "Cuba",
+    "aliases": [
+      "CU",
+      "CUB"
+    ]
+  },
+  {
+    "code": "CY",
+    "name": "Cyprus",
+    "aliases": [
+      "CY",
+      "CYP"
+    ]
+  },
+  {
+    "code": "CZ",
+    "name": "Cộng hòa Séc",
+    "aliases": [
+      "CZ",
+      "CZE"
+    ]
+  },
+  {
+    "code": "DK",
+    "name": "Đan Mạch",
+    "aliases": [
+      "DK",
+      "DNK"
+    ]
+  },
+  {
+    "code": "DJ",
+    "name": "Djibouti",
+    "aliases": [
+      "DJ",
+      "DJI"
+    ]
+  },
+  {
+    "code": "DM",
+    "name": "Dominica",
+    "aliases": [
+      "DM",
+      "DMA"
+    ]
+  },
+  {
+    "code": "DO",
+    "name": "Cộng hòa Dominica",
+    "aliases": [
+      "DO",
+      "DOM"
+    ]
+  },
+  {
+    "code": "EC",
+    "name": "Ecuador",
+    "aliases": [
+      "EC",
+      "ECU"
+    ]
+  },
+  {
+    "code": "EG",
+    "name": "Ai Cập",
+    "aliases": [
+      "EG",
+      "EGY"
+    ]
+  },
+  {
+    "code": "SV",
+    "name": "El Salvador",
+    "aliases": [
+      "SV",
+      "SLV"
+    ]
+  },
+  {
+    "code": "GQ",
+    "name": "Equatorial Guinea",
+    "aliases": [
+      "GQ",
+      "GNQ"
+    ]
+  },
+  {
+    "code": "ER",
+    "name": "Eritrea",
+    "aliases": [
+      "ER",
+      "ERI"
+    ]
+  },
+  {
+    "code": "EE",
+    "name": "Estonia",
+    "aliases": [
+      "EE",
+      "EST"
+    ]
+  },
+  {
+    "code": "ET",
+    "name": "Ethiopia",
+    "aliases": [
+      "ET",
+      "ETH"
+    ]
+  },
+  {
+    "code": "FK",
+    "name": "Quần đảo Falkland (Malvinas)",
+    "aliases": [
+      "FK",
+      "FLK"
+    ]
+  },
+  {
+    "code": "FO",
+    "name": "Quần đảo Faroe",
+    "aliases": [
+      "FO",
+      "FRO"
+    ]
+  },
+  {
+    "code": "FJ",
+    "name": "Fiji",
+    "aliases": [
+      "FJ",
+      "FJI"
+    ]
+  },
+  {
+    "code": "FI",
+    "name": "Phần Lan",
+    "aliases": [
+      "FI",
+      "FIN"
+    ]
+  },
+  {
+    "code": "FR",
+    "name": "Pháp",
+    "aliases": [
+      "FR",
+      "FRA"
+    ]
+  },
+  {
+    "code": "GF",
+    "name": "Guyane thuộc Pháp",
+    "aliases": [
+      "GF",
+      "GUF"
+    ]
+  },
+  {
+    "code": "PF",
+    "name": "Polynésie thuộc Pháp",
+    "aliases": [
+      "PF",
+      "PYF"
+    ]
+  },
+  {
+    "code": "TF",
+    "name": "Vùng đất phía Nam và châu Nam Cực thuộc Pháp",
+    "aliases": [
+      "TF",
+      "ATF"
+    ]
+  },
+  {
+    "code": "GA",
+    "name": "Gabon",
+    "aliases": [
+      "GA",
+      "GAB"
+    ]
+  },
+  {
+    "code": "GM",
+    "name": "Gambia",
+    "aliases": [
+      "GM",
+      "GMB"
+    ]
+  },
+  {
+    "code": "GE",
+    "name": "Georgia",
+    "aliases": [
+      "GE",
+      "GEO"
+    ]
+  },
+  {
+    "code": "DE",
+    "name": "Đức",
+    "aliases": [
+      "DE",
+      "DEU"
+    ]
+  },
+  {
+    "code": "GH",
+    "name": "Ghana",
+    "aliases": [
+      "GH",
+      "GHA"
+    ]
+  },
+  {
+    "code": "GI",
+    "name": "Gibraltar",
+    "aliases": [
+      "GI",
+      "GIB"
+    ]
+  },
+  {
+    "code": "GR",
+    "name": "Hy Lạp",
+    "aliases": [
+      "GR",
+      "GRC"
+    ]
+  },
+  {
+    "code": "GL",
+    "name": "Greenland",
+    "aliases": [
+      "GL",
+      "GRL"
+    ]
+  },
+  {
+    "code": "GD",
+    "name": "Grenada",
+    "aliases": [
+      "GD",
+      "GRD"
+    ]
+  },
+  {
+    "code": "GP",
+    "name": "Guadeloupe",
+    "aliases": [
+      "GP",
+      "GLP"
+    ]
+  },
+  {
+    "code": "GU",
+    "name": "Guam",
+    "aliases": [
+      "GU",
+      "GUM"
+    ]
+  },
+  {
+    "code": "GT",
+    "name": "Guatemala",
+    "aliases": [
+      "GT",
+      "GTM"
+    ]
+  },
+  {
+    "code": "GN",
+    "name": "Guinea",
+    "aliases": [
+      "GN",
+      "GIN"
+    ]
+  },
+  {
+    "code": "GW",
+    "name": "Guinea-Bissau",
+    "aliases": [
+      "GW",
+      "GNB"
+    ]
+  },
+  {
+    "code": "GY",
+    "name": "Guyana",
+    "aliases": [
+      "GY",
+      "GUY"
+    ]
+  },
+  {
+    "code": "HT",
+    "name": "Haiti",
+    "aliases": [
+      "HT",
+      "HTI"
+    ]
+  },
+  {
+    "code": "HM",
+    "name": "Đảo Heard và Quần đảo Mcdonald",
+    "aliases": [
+      "HM",
+      "HMD"
+    ]
+  },
+  {
+    "code": "VA",
+    "name": "Tòa Thánh (Thành phố Vatican)",
+    "aliases": [
+      "VA",
+      "VAT"
+    ]
+  },
+  {
+    "code": "HN",
+    "name": "Honduras",
+    "aliases": [
+      "HN",
+      "HND"
+    ]
+  },
+  {
+    "code": "HK",
+    "name": "Hồng Kông",
+    "aliases": [
+      "HK",
+      "HKG"
+    ]
+  },
+  {
+    "code": "HU",
+    "name": "Hungary",
+    "aliases": [
+      "HU",
+      "HUN"
+    ]
+  },
+  {
+    "code": "IS",
+    "name": "Iceland",
+    "aliases": [
+      "IS",
+      "ISL"
+    ]
+  },
+  {
+    "code": "IN",
+    "name": "Ấn Độ",
+    "aliases": [
+      "IN",
+      "IND"
+    ]
+  },
+  {
+    "code": "ID",
+    "name": "Indonesia",
+    "aliases": [
+      "ID",
+      "IDN"
+    ]
+  },
+  {
+    "code": "IR",
+    "name": "Cộng hòa Hồi giáo Iran",
+    "aliases": [
+      "IR",
+      "IRN"
+    ]
+  },
+  {
+    "code": "IQ",
+    "name": "Iraq",
+    "aliases": [
+      "IQ",
+      "IRQ"
+    ]
+  },
+  {
+    "code": "IE",
+    "name": "Ireland",
+    "aliases": [
+      "IE",
+      "IRL"
+    ]
+  },
+  {
+    "code": "IL",
+    "name": "Israel",
+    "aliases": [
+      "IL",
+      "ISR"
+    ]
+  },
+  {
+    "code": "IT",
+    "name": "Ý",
+    "aliases": [
+      "IT",
+      "ITA"
+    ]
+  },
+  {
+    "code": "JM",
+    "name": "Jamaica",
+    "aliases": [
+      "JM",
+      "JAM"
+    ]
+  },
+  {
+    "code": "JP",
+    "name": "Nhật Bản",
+    "aliases": [
+      "JP",
+      "JPN"
+    ]
+  },
+  {
+    "code": "JO",
+    "name": "Jordan",
+    "aliases": [
+      "JO",
+      "JOR"
+    ]
+  },
+  {
+    "code": "KZ",
+    "name": "Kazakhstan",
+    "aliases": [
+      "KZ",
+      "KAZ"
+    ]
+  },
+  {
+    "code": "KE",
+    "name": "Kenya",
+    "aliases": [
+      "KE",
+      "KEN"
+    ]
+  },
+  {
+    "code": "KI",
+    "name": "Kiribati",
+    "aliases": [
+      "KI",
+      "KIR"
+    ]
+  },
+  {
+    "code": "KP",
+    "name": "Triều Tiên",
+    "aliases": [
+      "KP",
+      "PRK"
+    ]
+  },
+  {
+    "code": "KR",
+    "name": "Hàn Quốc",
+    "aliases": [
+      "KR",
+      "KOR"
+    ]
+  },
+  {
+    "code": "KW",
+    "name": "Cô-oét",
+    "aliases": [
+      "KW",
+      "KWT"
+    ]
+  },
+  {
+    "code": "KG",
+    "name": "Kyrgyzstan",
+    "aliases": [
+      "KG",
+      "KGZ"
+    ]
+  },
+  {
+    "code": "LA",
+    "name": "Cộng hòa Dân chủ nhân dân Lào",
+    "aliases": [
+      "LA",
+      "LAO"
+    ]
+  },
+  {
+    "code": "LV",
+    "name": "Latvia",
+    "aliases": [
+      "LV",
+      "LVA"
+    ]
+  },
+  {
+    "code": "LB",
+    "name": "Lebanon",
+    "aliases": [
+      "LB",
+      "LBN"
+    ]
+  },
+  {
+    "code": "LS",
+    "name": "Lesotho",
+    "aliases": [
+      "LS",
+      "LSO"
+    ]
+  },
+  {
+    "code": "LR",
+    "name": "Liberia",
+    "aliases": [
+      "LR",
+      "LBR"
+    ]
+  },
+  {
+    "code": "LY",
+    "name": "Libya",
+    "aliases": [
+      "LY",
+      "LBY"
+    ]
+  },
+  {
+    "code": "LI",
+    "name": "Liechtenstein",
+    "aliases": [
+      "LI",
+      "LIE"
+    ]
+  },
+  {
+    "code": "LT",
+    "name": "Lithuania",
+    "aliases": [
+      "LT",
+      "LTU"
+    ]
+  },
+  {
+    "code": "LU",
+    "name": "Luxembourg",
+    "aliases": [
+      "LU",
+      "LUX"
+    ]
+  },
+  {
+    "code": "MO",
+    "name": "Ma Cao",
+    "aliases": [
+      "MO",
+      "MAC"
+    ]
+  },
+  {
+    "code": "MG",
+    "name": "Madagascar",
+    "aliases": [
+      "MG",
+      "MDG"
+    ]
+  },
+  {
+    "code": "MW",
+    "name": "Malawi",
+    "aliases": [
+      "MW",
+      "MWI"
+    ]
+  },
+  {
+    "code": "MY",
+    "name": "Bán đảo Mã Lai",
+    "aliases": [
+      "MY",
+      "MYS"
+    ]
+  },
+  {
+    "code": "MV",
+    "name": "Maldives",
+    "aliases": [
+      "MV",
+      "MDV"
+    ]
+  },
+  {
+    "code": "ML",
+    "name": "Mali",
+    "aliases": [
+      "ML",
+      "MLI"
+    ]
+  },
+  {
+    "code": "MT",
+    "name": "Malta",
+    "aliases": [
+      "MT",
+      "MLT"
+    ]
+  },
+  {
+    "code": "MH",
+    "name": "Quần đảo Marshall",
+    "aliases": [
+      "MH",
+      "MHL"
+    ]
+  },
+  {
+    "code": "MQ",
+    "name": "Martinique",
+    "aliases": [
+      "MQ",
+      "MTQ"
+    ]
+  },
+  {
+    "code": "MR",
+    "name": "Mauritania",
+    "aliases": [
+      "MR",
+      "MRT"
+    ]
+  },
+  {
+    "code": "MU",
+    "name": "Mauritius",
+    "aliases": [
+      "MU",
+      "MUS"
+    ]
+  },
+  {
+    "code": "YT",
+    "name": "Mayotte",
+    "aliases": [
+      "YT",
+      "MYT"
+    ]
+  },
+  {
+    "code": "MX",
+    "name": "Mexico",
+    "aliases": [
+      "MX",
+      "MEX"
+    ]
+  },
+  {
+    "code": "FM",
+    "name": "Liên bang Micronesia",
+    "aliases": [
+      "FM",
+      "FSM"
+    ]
+  },
+  {
+    "code": "MD",
+    "name": "Cộng hoà Moldova",
+    "aliases": [
+      "MD",
+      "MDA"
+    ]
+  },
+  {
+    "code": "MC",
+    "name": "Monaco",
+    "aliases": [
+      "MC",
+      "MCO"
+    ]
+  },
+  {
+    "code": "MN",
+    "name": "Mông Cổ",
+    "aliases": [
+      "MN",
+      "MNG"
+    ]
+  },
+  {
+    "code": "MS",
+    "name": "Montserrat",
+    "aliases": [
+      "MS",
+      "MSR"
+    ]
+  },
+  {
+    "code": "MA",
+    "name": "Ma-rốc",
+    "aliases": [
+      "MA",
+      "MAR"
+    ]
+  },
+  {
+    "code": "MZ",
+    "name": "Mozambique",
+    "aliases": [
+      "MZ",
+      "MOZ"
+    ]
+  },
+  {
+    "code": "MM",
+    "name": "Myanmar",
+    "aliases": [
+      "MM",
+      "MMR"
+    ]
+  },
+  {
+    "code": "NA",
+    "name": "Namibia",
+    "aliases": [
+      "NA",
+      "NAM"
+    ]
+  },
+  {
+    "code": "NR",
+    "name": "Nauru",
+    "aliases": [
+      "NR",
+      "NRU"
+    ]
+  },
+  {
+    "code": "NP",
+    "name": "Nepal",
+    "aliases": [
+      "NP",
+      "NPL"
+    ]
+  },
+  {
+    "code": "NL",
+    "name": "Hà Lan",
+    "aliases": [
+      "NL",
+      "NLD"
+    ]
+  },
+  {
+    "code": "NC",
+    "name": "New Caledonia",
+    "aliases": [
+      "NC",
+      "NCL"
+    ]
+  },
+  {
+    "code": "NZ",
+    "name": "New Zealand",
+    "aliases": [
+      "NZ",
+      "NZL"
+    ]
+  },
+  {
+    "code": "NI",
+    "name": "Nicaragua",
+    "aliases": [
+      "NI",
+      "NIC"
+    ]
+  },
+  {
+    "code": "NE",
+    "name": "Niger",
+    "aliases": [
+      "NE",
+      "NER"
+    ]
+  },
+  {
+    "code": "NG",
+    "name": "Nigeria",
+    "aliases": [
+      "NG",
+      "NGA"
+    ]
+  },
+  {
+    "code": "NU",
+    "name": "Niue",
+    "aliases": [
+      "NU",
+      "NIU"
+    ]
+  },
+  {
+    "code": "NF",
+    "name": "Đảo Norfolk",
+    "aliases": [
+      "NF",
+      "NFK"
+    ]
+  },
+  {
+    "code": "MP",
+    "name": "Quần đảo Bắc Mariana",
+    "aliases": [
+      "MP",
+      "MNP"
+    ]
+  },
+  {
+    "code": "MK",
+    "name": "Bắc Macedonia",
+    "aliases": [
+      "MK",
+      "MKD"
+    ]
+  },
+  {
+    "code": "NO",
+    "name": "Na Uy",
+    "aliases": [
+      "NO",
+      "NOR"
+    ]
+  },
+  {
+    "code": "OM",
+    "name": "Oman",
+    "aliases": [
+      "OM",
+      "OMN"
+    ]
+  },
+  {
+    "code": "PK",
+    "name": "Pakistan",
+    "aliases": [
+      "PK",
+      "PAK"
+    ]
+  },
+  {
+    "code": "PW",
+    "name": "Palau",
+    "aliases": [
+      "PW",
+      "PLW"
+    ]
+  },
+  {
+    "code": "PS",
+    "name": "Lãnh thổ Palestine, bị chiếm đóng",
+    "aliases": [
+      "PS",
+      "PSE"
+    ]
+  },
+  {
+    "code": "PA",
+    "name": "Panama",
+    "aliases": [
+      "PA",
+      "PAN"
+    ]
+  },
+  {
+    "code": "PG",
+    "name": "Papua New Guinea",
+    "aliases": [
+      "PG",
+      "PNG"
+    ]
+  },
+  {
+    "code": "PY",
+    "name": "Paraguay",
+    "aliases": [
+      "PY",
+      "PRY"
+    ]
+  },
+  {
+    "code": "PE",
+    "name": "Peru",
+    "aliases": [
+      "PE",
+      "PER"
+    ]
+  },
+  {
+    "code": "PH",
+    "name": "Philippines",
+    "aliases": [
+      "PH",
+      "PHL"
+    ]
+  },
+  {
+    "code": "PN",
+    "name": "Pitcairn",
+    "aliases": [
+      "PN",
+      "PCN"
+    ]
+  },
+  {
+    "code": "PL",
+    "name": "Ba Lan",
+    "aliases": [
+      "PL",
+      "POL"
+    ]
+  },
+  {
+    "code": "PT",
+    "name": "Bồ Đào Nha",
+    "aliases": [
+      "PT",
+      "PRT"
+    ]
+  },
+  {
+    "code": "PR",
+    "name": "Puerto Rico",
+    "aliases": [
+      "PR",
+      "PRI"
+    ]
+  },
+  {
+    "code": "QA",
+    "name": "Qatar",
+    "aliases": [
+      "QA",
+      "QAT"
+    ]
+  },
+  {
+    "code": "RE",
+    "name": "Reunion",
+    "aliases": [
+      "RE",
+      "REU"
+    ]
+  },
+  {
+    "code": "RO",
+    "name": "Rumani",
+    "aliases": [
+      "RO",
+      "ROU"
+    ]
+  },
+  {
+    "code": "RU",
+    "name": "Liên bang Nga",
+    "aliases": [
+      "Nga",
+      "RU",
+      "RUS"
+    ]
+  },
+  {
+    "code": "RW",
+    "name": "Rwanda",
+    "aliases": [
+      "RW",
+      "RWA"
+    ]
+  },
+  {
+    "code": "SH",
+    "name": "Saint Helena",
+    "aliases": [
+      "SH",
+      "SHN"
+    ]
+  },
+  {
+    "code": "KN",
+    "name": "Saint Kitts và Nevis",
+    "aliases": [
+      "KN",
+      "KNA"
+    ]
+  },
+  {
+    "code": "LC",
+    "name": "Saint Lucia",
+    "aliases": [
+      "LC",
+      "LCA"
+    ]
+  },
+  {
+    "code": "PM",
+    "name": "Saint Pierre và Miquelon",
+    "aliases": [
+      "PM",
+      "SPM"
+    ]
+  },
+  {
+    "code": "VC",
+    "name": "Saint Vincent và Grenadines",
+    "aliases": [
+      "VC",
+      "VCT"
+    ]
+  },
+  {
+    "code": "WS",
+    "name": "Samoa",
+    "aliases": [
+      "WS",
+      "WSM"
+    ]
+  },
+  {
+    "code": "SM",
+    "name": "San Marino",
+    "aliases": [
+      "SM",
+      "SMR"
+    ]
+  },
+  {
+    "code": "ST",
+    "name": "Sao Tome và Principe",
+    "aliases": [
+      "ST",
+      "STP"
+    ]
+  },
+  {
+    "code": "SA",
+    "name": "Saudi Arabia",
+    "aliases": [
+      "SA",
+      "SAU"
+    ]
+  },
+  {
+    "code": "SN",
+    "name": "Senegal",
+    "aliases": [
+      "SN",
+      "SEN"
+    ]
+  },
+  {
+    "code": "SC",
+    "name": "Seychelles",
+    "aliases": [
+      "SC",
+      "SYC"
+    ]
+  },
+  {
+    "code": "SL",
+    "name": "Sierra Leone",
+    "aliases": [
+      "SL",
+      "SLE"
+    ]
+  },
+  {
+    "code": "SG",
+    "name": "Singapore",
+    "aliases": [
+      "SG",
+      "SGP"
+    ]
+  },
+  {
+    "code": "SK",
+    "name": "Slovakia",
+    "aliases": [
+      "SK",
+      "SVK"
+    ]
+  },
+  {
+    "code": "SI",
+    "name": "Slovenia",
+    "aliases": [
+      "SI",
+      "SVN"
+    ]
+  },
+  {
+    "code": "SB",
+    "name": "Quần đảo Solomon",
+    "aliases": [
+      "SB",
+      "SLB"
+    ]
+  },
+  {
+    "code": "SO",
+    "name": "Somalia",
+    "aliases": [
+      "SO",
+      "SOM"
+    ]
+  },
+  {
+    "code": "ZA",
+    "name": "Nam Phi",
+    "aliases": [
+      "ZA",
+      "ZAF"
+    ]
+  },
+  {
+    "code": "GS",
+    "name": "Nam Georgia và Quần đảo Nam Sandwich",
+    "aliases": [
+      "GS",
+      "SGS"
+    ]
+  },
+  {
+    "code": "ES",
+    "name": "Tây Ban Nha",
+    "aliases": [
+      "ES",
+      "ESP"
+    ]
+  },
+  {
+    "code": "LK",
+    "name": "Sri Lanka",
+    "aliases": [
+      "LK",
+      "LKA"
+    ]
+  },
+  {
+    "code": "SD",
+    "name": "Sudan",
+    "aliases": [
+      "SD",
+      "SDN"
+    ]
+  },
+  {
+    "code": "SR",
+    "name": "Suriname",
+    "aliases": [
+      "SR",
+      "SUR"
+    ]
+  },
+  {
+    "code": "SJ",
+    "name": "Svalbard và Jan Mayen",
+    "aliases": [
+      "SJ",
+      "SJM"
+    ]
+  },
+  {
+    "code": "SZ",
+    "name": "Eswatini",
+    "aliases": [
+      "SZ",
+      "SWZ"
+    ]
+  },
+  {
+    "code": "SE",
+    "name": "Thụy Điển",
+    "aliases": [
+      "SE",
+      "SWE"
+    ]
+  },
+  {
+    "code": "CH",
+    "name": "Thụy Sĩ",
+    "aliases": [
+      "CH",
+      "CHE"
+    ]
+  },
+  {
+    "code": "SY",
+    "name": "Cộng Hòa Arab Syrian",
+    "aliases": [
+      "SY",
+      "SYR"
+    ]
+  },
+  {
+    "code": "TW",
+    "name": "Đài Loan",
+    "aliases": [
+      "TW",
+      "TWN"
+    ]
+  },
+  {
+    "code": "TJ",
+    "name": "Tajikistan",
+    "aliases": [
+      "TJ",
+      "TJK"
+    ]
+  },
+  {
+    "code": "TZ",
+    "name": "Cộng hòa Thống nhất Tanzania",
+    "aliases": [
+      "TZ",
+      "TZA"
+    ]
+  },
+  {
+    "code": "TH",
+    "name": "Thái Lan",
+    "aliases": [
+      "TH",
+      "THA"
+    ]
+  },
+  {
+    "code": "TL",
+    "name": "Timor-Leste",
+    "aliases": [
+      "TL",
+      "TLS"
+    ]
+  },
+  {
+    "code": "TG",
+    "name": "Togo",
+    "aliases": [
+      "TG",
+      "TGO"
+    ]
+  },
+  {
+    "code": "TK",
+    "name": "Tokelau",
+    "aliases": [
+      "TK",
+      "TKL"
+    ]
+  },
+  {
+    "code": "TO",
+    "name": "Tonga",
+    "aliases": [
+      "TO",
+      "TON"
+    ]
+  },
+  {
+    "code": "TT",
+    "name": "Trinidad và Tobago",
+    "aliases": [
+      "TT",
+      "TTO"
+    ]
+  },
+  {
+    "code": "TN",
+    "name": "Tunisia",
+    "aliases": [
+      "TN",
+      "TUN"
+    ]
+  },
+  {
+    "code": "TR",
+    "name": "Thổ Nhĩ Kỳ",
+    "aliases": [
+      "TR",
+      "TUR"
+    ]
+  },
+  {
+    "code": "TM",
+    "name": "Turkmenistan",
+    "aliases": [
+      "TM",
+      "TKM"
+    ]
+  },
+  {
+    "code": "TC",
+    "name": "Quần đảo Turks và Caicos",
+    "aliases": [
+      "TC",
+      "TCA"
+    ]
+  },
+  {
+    "code": "TV",
+    "name": "Tuvalu",
+    "aliases": [
+      "TV",
+      "TUV"
+    ]
+  },
+  {
+    "code": "UG",
+    "name": "Uganda",
+    "aliases": [
+      "UG",
+      "UGA"
+    ]
+  },
+  {
+    "code": "UA",
+    "name": "Ukraine",
+    "aliases": [
+      "UA",
+      "UKR"
+    ]
+  },
+  {
+    "code": "AE",
+    "name": "Các Tiểu Vương Quốc Ả Rập Thống Nhất",
+    "aliases": [
+      "AE",
+      "ARE"
+    ]
+  },
+  {
+    "code": "GB",
+    "name": "Vương quốc Anh",
+    "aliases": [
+      "GB",
+      "GBR"
+    ]
+  },
+  {
+    "code": "US",
+    "name": "Hợp chủng quốc Hoa Kỳ",
+    "aliases": [
+      "Mỹ",
+      "US",
+      "USA"
+    ]
+  },
+  {
+    "code": "UM",
+    "name": "Quần đảo nhỏ hẻo lánh của Hoa Kỳ",
+    "aliases": [
+      "UM",
+      "UMI"
+    ]
+  },
+  {
+    "code": "UY",
+    "name": "Uruguay",
+    "aliases": [
+      "UY",
+      "URY"
+    ]
+  },
+  {
+    "code": "UZ",
+    "name": "Uzbekistan",
+    "aliases": [
+      "UZ",
+      "UZB"
+    ]
+  },
+  {
+    "code": "VU",
+    "name": "Vanuatu",
+    "aliases": [
+      "VU",
+      "VUT"
+    ]
+  },
+  {
+    "code": "VE",
+    "name": "Venezuela",
+    "aliases": [
+      "VE",
+      "VEN"
+    ]
+  },
+  {
+    "code": "VN",
+    "name": "Việt Nam",
+    "aliases": [
+      "VN",
+      "VNM"
+    ]
+  },
+  {
+    "code": "VG",
+    "name": "Quần đảo Virgin, Anh",
+    "aliases": [
+      "VG",
+      "VGB"
+    ]
+  },
+  {
+    "code": "VI",
+    "name": "Quần đảo Virgin, Hoa Kỳ",
+    "aliases": [
+      "VI",
+      "VIR"
+    ]
+  },
+  {
+    "code": "WF",
+    "name": "Lãnh thổ quần đảo Wallis và Futuna",
+    "aliases": [
+      "WF",
+      "WLF"
+    ]
+  },
+  {
+    "code": "EH",
+    "name": "Tây Sahara",
+    "aliases": [
+      "EH",
+      "ESH"
+    ]
+  },
+  {
+    "code": "YE",
+    "name": "Yemen",
+    "aliases": [
+      "YE",
+      "YEM"
+    ]
+  },
+  {
+    "code": "ZM",
+    "name": "Zambia",
+    "aliases": [
+      "ZM",
+      "ZMB"
+    ]
+  },
+  {
+    "code": "ZW",
+    "name": "Zimbabwe",
+    "aliases": [
+      "ZW",
+      "ZWE"
+    ]
+  },
+  {
+    "code": "AX",
+    "name": "Quần đảo Aland",
+    "aliases": [
+      "AX",
+      "ALA"
+    ]
+  },
+  {
+    "code": "BQ",
+    "name": "Bonaire, Sint Eustatius và Saba",
+    "aliases": [
+      "BQ",
+      "BES"
+    ]
+  },
+  {
+    "code": "CW",
+    "name": "Curaçao",
+    "aliases": [
+      "CW",
+      "CUW"
+    ]
+  },
+  {
+    "code": "GG",
+    "name": "Guernsey",
+    "aliases": [
+      "GG",
+      "GGY"
+    ]
+  },
+  {
+    "code": "IM",
+    "name": "Đảo Man",
+    "aliases": [
+      "IM",
+      "IMN"
+    ]
+  },
+  {
+    "code": "JE",
+    "name": "Jersey",
+    "aliases": [
+      "JE",
+      "JEY"
+    ]
+  },
+  {
+    "code": "ME",
+    "name": "Montenegro",
+    "aliases": [
+      "ME",
+      "MNE"
+    ]
+  },
+  {
+    "code": "BL",
+    "name": "Saint Barthélemy",
+    "aliases": [
+      "BL",
+      "BLM"
+    ]
+  },
+  {
+    "code": "MF",
+    "name": "Saint Martin (phần Pháp)",
+    "aliases": [
+      "MF",
+      "MAF"
+    ]
+  },
+  {
+    "code": "RS",
+    "name": "Serbia",
+    "aliases": [
+      "RS",
+      "SRB"
+    ]
+  },
+  {
+    "code": "SX",
+    "name": "Sint Maarten (phần Hà Lan)",
+    "aliases": [
+      "SX",
+      "SXM"
+    ]
+  },
+  {
+    "code": "SS",
+    "name": "Nam Sudan",
+    "aliases": [
+      "SS",
+      "SSD"
+    ]
+  }
+]

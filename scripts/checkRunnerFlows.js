@@ -1,7 +1,7 @@
 const { chromium, expect } = require('@playwright/test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const { calendarDate } = require('../src/lib/runnerValidation.cjs');
+const { birthdayBounds } = require('../src/lib/runnerValidation.cjs');
 const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
 (async () => {
   fs.mkdirSync('artifacts', { recursive: true });
@@ -19,7 +19,7 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
       { _id: 'listing-2', listingType: 'BIB_TRANSFER', title: 'Suất chạy 10km dành cho người bắt đầu', description: 'Một đường chạy đẹp và nhiều năng lượng. Mình nhượng lại đúng giá gốc.', price: 350000, originalPrice: 350000, bibNumber: '10K-0314', categoryInfo: '10 km', eventId: { ...race, name: 'Saigon Riverside Run' }, sellerId: { _id: 'seller-2', fullName: 'Lê Thảo My' } },
       { _id: 'listing-3', listingType: 'BIB_TRANSFER', title: 'Chuyển nhượng BIB full marathon', description: 'Sẵn sàng cho cự ly mới cùng cộng đồng.', price: 850000, originalPrice: 950000, bibNumber: '42K-0046', categoryInfo: 'Full Marathon · 42 km', eventId: { ...race, name: 'Hanoi Autumn Marathon' }, sellerId: { _id: 'seller-3', fullName: 'Phạm Quốc Huy' } }
     ];
-    let expired = false, registrationRequests = 0, signupBody, createBody, buyBody, savedBody, holdBody, holdPosts = 0, profileUnavailable = false, marketUnavailable = false;
+    let expired = false, registrationRequests = 0, signupBody, createBody, buyBody, savedBody, profileSaves = 0, holdBody, holdPosts = 0, profileUnavailable = false, marketUnavailable = false;
     await page.route('**/api/**', async route => {
       const url = new URL(route.request().url()), path = url.pathname.replace(/^\/api/, ''), method = route.request().method();
       const reply = (data, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) });
@@ -27,10 +27,12 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
       if (path === '/auth/me') {
         if (expired) return reply({ message: 'Phiên đăng nhập đã hết hạn.' }, 401);
         if (profileUnavailable) return reply({ message: 'Không tải được hồ sơ.' }, 503);
-        if (method === 'PATCH') { savedBody = route.request().postDataJSON(); account = { user: { ...account.user, ...savedBody, profile: undefined }, profile: savedBody.profile }; }
+        if (method === 'PATCH') { savedBody = route.request().postDataJSON(); profileSaves++; const { confirmedBirthday, ...profile } = savedBody.profile; account = { user: { ...account.user, ...savedBody, profile: undefined }, profile }; }
         return reply(account);
       }
       if (path === '/auth/register') { signupBody = route.request().postDataJSON(); account = { user: { ...account.user, fullName: signupBody.fullName, phone: signupBody.phone, email: signupBody.email }, profile: signupBody.profile }; return reply({ user: account.user, token: 'isolated-ui-token' }, 201); }
+      if (path === '/admin/organizer-access') return reply({ application: null });
+      if (path === '/notifications') return reply({ notifications: [] });
       if (path === '/registrations/me') { registrationRequests++; return reply({ registrations: [ticket] }); }
       if (path === '/bookings/me') return reply({ bookings: [{ _id: 'hold-1', status: 'HOLD', eventId: race, orderCode: 'RF-HOLD-TEST', finalAmount: 650000 }] });
       if (path === '/registrations/achievements/me') return reply({ achievements: { completedRaces: 2, totalKm: 31 } });
@@ -102,8 +104,22 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await page.screenshot({ path: 'artifacts/account-desktop.png', fullPage: true });
     await page.getByRole('button', { name: 'Hồ sơ người chạy', exact: true }).click();
     await expect(page.getByLabel('Ngày sinh', { exact: true })).toHaveAttribute('min', '1900-01-01');
-    await expect(page.getByLabel('Ngày sinh', { exact: true })).toHaveAttribute('max', calendarDate());
-    await page.getByLabel('Quốc tịch', { exact: true }).fill('Nhật Bản');
+    await expect(page.getByLabel('Ngày sinh', { exact: true })).toHaveAttribute('max', birthdayBounds().max);
+    await expect(page.getByLabel('Quốc tịch', { exact: true })).toHaveJSProperty('tagName', 'SELECT');
+    await expect(page.getByLabel('Quốc tịch', { exact: true }).locator('option')).toHaveCount(250);
+    await page.getByLabel('Quốc tịch', { exact: true }).selectOption('Nhật Bản');
+    await page.getByLabel('Ngày sinh', { exact: true }).fill('1960-01-15');
+    await expect(page.getByText(/Ngày sinh này đã chính xác chưa/)).toBeVisible();
+    await page.getByRole('button', { name: 'Lưu hồ sơ', exact: true }).click();
+    assert.equal(profileSaves, 0, 'Senior date needs explicit confirmation');
+    await page.getByRole('checkbox', { name: 'Tôi xác nhận ngày sinh này chính xác.' }).check();
+    await page.getByLabel('Ngày sinh', { exact: true }).fill('1961-01-15');
+    await expect(page.getByRole('checkbox', { name: 'Tôi xác nhận ngày sinh này chính xác.' })).not.toBeChecked();
+    await page.getByRole('checkbox', { name: 'Tôi xác nhận ngày sinh này chính xác.' }).check();
+    await page.getByRole('button', { name: 'Lưu hồ sơ', exact: true }).click();
+    await expect.poll(() => profileSaves).toBe(1);
+    assert.equal(savedBody.profile.confirmedBirthday, '1961-01-15');
+    await page.getByLabel('Ngày sinh', { exact: true }).fill('1996-07-14');
     await page.getByLabel('Họ và tên', { exact: true }).fill('Nguyễn Minh An');
     await page.getByRole('button', { name: 'Đại dương', exact: true }).click();
     await page.getByRole('button', { name: 'Lưu hồ sơ', exact: true }).click();
@@ -111,6 +127,21 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     assert.equal(savedBody.avatarTheme, 'ocean');
     assert.equal(savedBody.profile.nationality, 'Nhật Bản');
     await expect(page.locator('.account-trigger .avatar-ocean')).toHaveCount(1);
+    const trigger = page.locator('.account-trigger'), arrow = trigger.locator('.account-chevron');
+    const center = locator => locator.evaluate(node => { const box = node.getBoundingClientRect(); return { x: box.x + box.width / 2, y: box.y + box.height / 2 }; });
+    const beforeArrow = await center(arrow), beforeTrigger = await center(trigger);
+    assert.ok(Math.abs(beforeArrow.y - beforeTrigger.y) < .5, 'Avatar chevron must be vertically centered');
+    await trigger.hover(); await page.mouse.down();
+    const pressedArrow = await center(arrow);
+    assert.ok(Math.hypot(pressedArrow.x - beforeArrow.x, pressedArrow.y - beforeArrow.y) < .5, 'Pointer press must not move the chevron');
+    await page.mouse.up();
+    await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    await expect.poll(() => arrow.evaluate(node => Math.round(new DOMMatrix(getComputedStyle(node).transform).a))).toBe(-1);
+    const openedArrow = await center(arrow);
+    assert.ok(Math.hypot(openedArrow.x - beforeArrow.x, openedArrow.y - beforeArrow.y) < .5, 'Opening must rotate around the same center');
+    await page.locator('.app-user').screenshot({ path: 'artifacts/avatar-menu-chevron.png' });
+    await page.keyboard.press('Escape');
+    await expect.poll(() => arrow.evaluate(node => Math.round(new DOMMatrix(getComputedStyle(node).transform).a))).toBe(1);
     await page.evaluate(() => { document.activeElement.blur(); scrollTo({ top: 0, behavior: 'instant' }); });
     await page.screenshot({ path: 'artifacts/profile-desktop.png', fullPage: true });
     profileUnavailable = true;
@@ -132,13 +163,17 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
       assert.equal(holdPosts, 0, 'Invalid date must not submit a booking');
     }
     await page.getByRole('button', { name: /5K/ }).click();
-    await expect(page.locator('#runner-birthday')).toHaveAttribute('max', calendarDate());
+    await expect(page.locator('#runner-birthday')).toHaveAttribute('max', birthdayBounds().max);
     await page.locator('#runner-birthday').fill('2999-01-01');
     await page.getByRole('button', { name: 'Giữ Chỗ & Thanh Toán (10p)', exact: true }).click();
     assert.equal(holdPosts, 0, 'Even a category without a minimum age rejects future birth dates');
+    await page.locator('#runner-birthday').fill('1960-01-15');
+    await page.getByRole('button', { name: 'Giữ Chỗ & Thanh Toán (10p)', exact: true }).click();
+    assert.equal(holdPosts, 0, 'Checkout requires the senior confirmation too');
+    await page.getByRole('checkbox', { name: 'Tôi xác nhận ngày sinh này chính xác.' }).check();
     await page.getByRole('button', { name: /21K/ }).click();
     await page.locator('#runner-birthday').fill('2014-10-20');
-    await page.getByLabel('Quốc tịch', { exact: true }).fill('Hàn Quốc');
+    await page.getByLabel('Quốc tịch', { exact: true }).selectOption('Hàn Quốc');
     await page.getByRole('button', { name: 'Giữ Chỗ & Thanh Toán (10p)', exact: true }).click();
     await expect.poll(() => holdPosts).toBe(1);
     assert.equal(holdBody.runnerInfo.birthday, '2014-10-20');
@@ -171,8 +206,12 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await page.getByLabel('Số điện thoại', { exact: true }).fill('0900999888');
     await page.getByLabel('Mật khẩu', { exact: true }).fill('test-password-123');
     await page.getByRole('button', { name: 'Tiếp tục' }).click();
-    await expect(page.getByLabel('Ngày sinh', { exact: true })).toHaveAttribute('max', calendarDate());
-    await page.getByLabel('Quốc tịch', { exact: true }).fill('Singapore');
+    await expect(page.getByLabel('Ngày sinh', { exact: true })).toHaveAttribute('max', birthdayBounds().max);
+    await page.getByLabel('Quốc tịch', { exact: true }).selectOption('Singapore');
+    await page.getByLabel('Ngày sinh', { exact: true }).fill('1960-01-15');
+    await page.getByRole('button', { name: 'Tạo tài khoản & lưu hồ sơ' }).click();
+    assert.equal(signupBody, undefined, 'Signup requires a confirmed senior date');
+    await page.getByRole('checkbox', { name: 'Tôi xác nhận ngày sinh này chính xác.' }).check();
     await page.getByLabel('Ngày sinh', { exact: true }).fill('1998-06-12');
     await page.locator('#signup-runner-gender').selectOption('Nữ');
     await page.getByLabel('Size áo mặc định').selectOption('L');

@@ -39,7 +39,7 @@ async function createBookingHold(req, res, next) {
         $expr: { $lt: [{ $add: ['$quotaSold', '$quotaHold'] }, '$quotaTotal'] },
       }, { $inc: { quotaHold: 1 } }, { session, new: true });
       assert(category, 409, 'Category is unavailable or sold out.');
-      const details = runnerDetails(runnerInfo, { minAge: category.rules?.minAge, raceDate: event.dateInfo.raceDate, now });
+      const details = runnerDetails(runnerInfo, { required: true, minAge: category.rules?.minAge, raceDate: event.dateInfo.raceDate, now });
       const totalAmount = category.price + (addons.photoPackage === true ? 150000 : 0) + (addons.pastaParty === true ? 100000 : 0);
       assert(Number.isSafeInteger(totalAmount), 400, 'Invalid category price.');
       const points = usePoints === true ? await RunPoints.findOne({ userId: req.userId }).session(session) : null;

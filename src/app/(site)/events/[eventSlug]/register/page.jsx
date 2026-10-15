@@ -6,7 +6,9 @@ import Link from 'next/link';
 import { api } from '../../../../../lib/clientApi';
 import EventPhoto from '../../../../../components/site/EventPhoto';
 import TransferDetails from '../../../../../components/site/TransferDetails';
-import { birthdayBounds, birthdayError } from '../../../../../lib/runnerValidation.cjs';
+import { birthdayError } from '../../../../../lib/runnerValidation.cjs';
+import BirthdayField from '../../../../../components/site/BirthdayField';
+import NationalitySelect from '../../../../../components/site/NationalitySelect';
 
 export default function RegistrationPage({ params }) {
   const unwrappedParams = use(params);
@@ -23,6 +25,7 @@ export default function RegistrationPage({ params }) {
   const [phone, setPhone] = useState('');
   const [gender, setGender] = useState('Nam');
   const [birthday, setBirthday] = useState('');
+  const [confirmedBirthday, setConfirmedBirthday] = useState('');
   const [nationality, setNationality] = useState('Việt Nam');
   const [emergencyContact, setEmergencyContact] = useState('');
   const [emergencyPhone, setEmergencyPhone] = useState('');
@@ -162,7 +165,7 @@ export default function RegistrationPage({ params }) {
       const token = typeof window !== 'undefined' ? localStorage.getItem('rf_token') : null;
       if (!token) throw new Error('Vui lòng đăng nhập trước khi đăng ký giải.');
       if (!event?._id || !selectedCat?._id) throw new Error('Vui lòng chọn cự ly hợp lệ.');
-      const dateError = birthdayError(birthday, { minAge: selectedCat.rules?.minAge, raceDate: event.dateInfo?.raceDate });
+      const dateError = birthdayError(birthday, { required: true, minAge: selectedCat.rules?.minAge, raceDate: event.dateInfo?.raceDate });
       if (dateError) throw new Error(dateError);
       const apiUrl = API_BASE_URL;
 
@@ -181,6 +184,7 @@ export default function RegistrationPage({ params }) {
             phone,
             gender,
             birthday,
+            confirmedBirthday,
             nationality,
             emergencyContact,
             emergencyPhone,
@@ -322,8 +326,8 @@ export default function RegistrationPage({ params }) {
             {/* Runner Profile Form */}
             <article style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-panel)', padding: 24, marginBottom: 20 }}>
               <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16 }}>2. Thông Tin Cá Nhân</h2>
-              <div className="field"><label htmlFor="runner-birthday">Ngày sinh {selectedCat?.rules?.minAge ? `(Tối thiểu ${selectedCat.rules.minAge} tuổi)` : ''}</label><input id="runner-birthday" name="birthday" type="date" autoComplete="bday" {...birthdayBounds({ minAge: selectedCat?.rules?.minAge, raceDate: event?.dateInfo?.raceDate })} aria-describedby="runner-birthday-hint" required={Boolean(selectedCat?.rules?.minAge)} value={birthday} onChange={event => setBirthday(event.target.value)} /><small id="runner-birthday-hint">Từ 01/01/1900 đến hôm nay.{selectedCat?.rules?.minAge ? ` Cự ly này yêu cầu đủ ${selectedCat.rules.minAge} tuổi vào ngày thi đấu.` : ''}</small></div>
-              <div className="field"><label htmlFor="runner-nationality">Quốc tịch</label><input id="runner-nationality" name="nationality" maxLength={80} placeholder="Ví dụ: Việt Nam" value={nationality || ''} onChange={event => setNationality(event.target.value)} /></div>
+              <BirthdayField id="runner-birthday" value={birthday} confirmedBirthday={confirmedBirthday} onChange={value => { setBirthday(value); setConfirmedBirthday(''); }} onConfirm={setConfirmedBirthday} minAge={selectedCat?.rules?.minAge} raceDate={event?.dateInfo?.raceDate} />
+              <div className="field"><label htmlFor="runner-nationality">Quốc tịch</label><NationalitySelect id="runner-nationality" value={nationality} onChange={event => setNationality(event.target.value)} /></div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div>
                   <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
@@ -368,7 +372,7 @@ export default function RegistrationPage({ params }) {
                   <select
                     value={gender}
                     onChange={(e) => setGender(e.target.value)}
-                    style={{ width: '100%', padding: '10px 12px', borderRadius: 'var(--radius-control)', border: '1px solid var(--border)' }}
+                    style={{ width: '100%' }}
                   >
                     <option value="Nam">Nam</option>
                     <option value="Nữ">Nữ</option>

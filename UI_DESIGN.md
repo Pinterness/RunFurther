@@ -75,8 +75,10 @@ Kiểm tra 1440, 1024, 768, 390, 360px; không tràn ngang; đăng nhập/đăng
 
 ## Hồ sơ và marketplace
 
-- Form mua vé phải có ô **Quốc tịch** hiển thị rõ, tự điền từ hồ sơ và cho sửa cho lượt đăng ký hiện tại. Giữ nhãn/input liên kết để dùng được bằng bàn phím và trình đọc màn hình; không tự thay giá trị người dùng đang nhập.
-- Ngày sinh dùng date picker, từ 01/01/1900 đến hôm nay. Form mua vé ghi tuổi tối thiểu theo cự ly và tính vào ngày thi đấu; đổi cự ly cập nhật giới hạn ngày ngay. Giao diện và API dùng chung quy tắc, không chỉ dựa vào thuộc tính HTML.
+- **Quốc tịch** dùng select chung ở đăng ký, hồ sơ, mua vé và nhận BIB. Việt Nam ở đầu, các lựa chọn còn lại xếp theo tên tiếng Việt. Tên cũ không khớp danh sách phải chọn lại; không dùng lựa chọn “Khác” cho nhập tùy ý.
+- Date picker chặn dưới 7 tuổi. Tuổi 7–50 tiếp tục bình thường; trên 50 hiện khối nhắc màu cát ngay dưới ngày sinh và checkbox xác nhận bắt buộc. Đổi ngày sinh xóa dấu tích; xác nhận không tự chọn sẵn khi mở lại hồ sơ. Cự ly có tuổi tối thiểu vẫn kiểm tra riêng vào ngày thi đấu.
+- Select dùng nền giấy, bo góc 8px, cao ít nhất 46px, chừa 44px bên phải cho mũi tên; hover đổi viền, focus có vòng rõ ràng. Giữ bộ chọn native để hỗ trợ bàn phím/mobile và cuộn danh sách dài. Không chuyển động vị trí control khi tương tác.
+- Mũi tên menu avatar dùng SVG căn giữa theo chiều dọc và xoay 180° quanh tâm. Nhấn avatar không dịch hoặc thu nhỏ cả nút; mở/đóng menu không làm mũi tên nhảy vị trí.
 
 - `runner.css` quản lý account, đăng ký, marketplace và modal. Thành phần chung: RunnerAvatar, RunnerFields, TicketCard, Modal.
 - Avatar dùng chữ viết tắt từ tên, có bốn bảng màu và đường vòng trang trí; không hiển thị ảnh người dùng giả.

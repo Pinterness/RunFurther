@@ -104,7 +104,7 @@ export default function SiteHeader() {
         {user ? <div className="account-control" ref={accountRef}>
           <button ref={accountButtonRef} className="account-trigger" onClick={() => setAccountOpen(!accountOpen)} aria-expanded={accountOpen} aria-controls="account-dropdown">
             <RunnerAvatar name={user.fullName} theme={user.avatarTheme} />
-            <span className="account-name">{user.fullName}</span><span className={`account-chevron ${accountOpen ? 'is-open' : ''}`} aria-hidden="true">⌄</span>
+            <span className="account-name">{user.fullName}</span><svg className={`account-chevron ${accountOpen ? 'is-open' : ''}`} aria-hidden="true" viewBox="0 0 20 20" width="20" height="20" fill="none"><path d="m5 7.5 5 5 5-5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </button>
           {accountOpen && <div className="account-dropdown" id="account-dropdown">
             <p>TÀI KHOẢN CỦA BẠN</p>

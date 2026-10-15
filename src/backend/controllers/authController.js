@@ -63,7 +63,7 @@ async function register(req, res, next) {
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
-    const profile = profileData(req.body.profile);
+    const profile = profileData(req.body.profile, { required: true });
     const user = await transaction(async session => {
       const [user] = await User.create([{ email, passwordHash, fullName, phone }], { session });
       await RunnerProfile.create([{ userId: user._id, ...profile }], { session });
@@ -134,7 +134,7 @@ async function updateCurrentUser(req, res, next) {
       await user.save({ session });
       let profile = await RunnerProfile.findOne({ userId: user._id }).session(session);
       if (!profile) profile = new RunnerProfile({ userId: user._id });
-      Object.assign(profile, profileData(req.body.profile));
+      Object.assign(profile, profileData(req.body.profile, { required: req.body.profile?.birthday !== undefined }));
       await profile.save({ session });
       return { user: serializeUser(user), profile: serializeProfile(profile) };
     });

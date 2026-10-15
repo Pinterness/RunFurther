@@ -1,11 +1,21 @@
 # Công nghệ và thuật toán / logic đã dùng trong cuộc trao đổi
 
-Cập nhật: 13/10/2026. Tài liệu tổng hợp phần đã triển khai và kiểm chứng trong mã nguồn; không xem toàn bộ thư viện được cài là tính năng đã hoàn thành.
+Cập nhật: 15/10/2026. Tài liệu tổng hợp phần đã triển khai và kiểm chứng trong mã nguồn; không xem toàn bộ thư viện được cài là tính năng đã hoàn thành.
 
-## Quốc tịch và giới hạn ngày sinh — 13/10/2026
+## Độ tuổi, quốc tịch và select — 15/10/2026
 
-- Form đăng ký giải có ô **Quốc tịch** hiển thị và chỉnh sửa được, điền từ hồ sơ; giá trị người chạy nhập được lưu vào booking và vé. Đây là ô văn bản tối đa 80 ký tự, không áp đặt danh sách quốc tịch cố định.
-- `src/lib/runnerValidation.cjs` dùng chung giữa React và Express: ngày sinh dạng YYYY-MM-DD, phải là ngày có thật, từ 01/01/1900 đến ngày hiện tại theo lịch Việt Nam (`Asia/Ho_Chi_Minh`). Cùng quy tắc cho đăng ký tài khoản, hồ sơ, đặt vé và hồ sơ người nhận BIB. Ngày sinh vẫn tùy chọn trừ cự ly có tuổi tối thiểu.
+- Tuổi tính tròn theo lịch Việt Nam: dưới 7 tuổi bị chặn; từ 7 đến hết 50 tuổi dùng luồng thông thường; từ 51 tuổi trở lên cần tích **Tôi xác nhận ngày sinh này chính xác**. Đây là xác nhận dữ liệu do người dùng nhập. Quy tắc áp dụng ở đăng ký tài khoản, sửa ngày sinh trong hồ sơ, đặt vé và nhận BIB.
+- `BirthdayField` dùng chung cho form hồ sơ và checkout. Date picker giới hạn ngày muộn nhất là ngày đủ 7 tuổi hiện tại, kết hợp giới hạn tuổi cự ly vào ngày thi đấu. Ngày sinh bắt buộc trên form; API đăng ký tài khoản/đặt vé/nhận BIB chặn thiếu ngày sinh. PATCH hồ sơ chỉ cập nhật trường khác vẫn tương thích dữ liệu cũ; khi gửi trường ngày sinh thì không được xóa rỗng.
+- Xác nhận truyền qua `confirmedBirthday` phải khớp chính xác với ngày sinh trong cùng request. Đổi ngày sinh xóa xác nhận trên giao diện; API kiểm tra lại. Cờ xác nhận không lưu vào hồ sơ/vé và không được tái sử dụng để tự xác nhận lần sau.
+- Quốc tịch chuyển sang `NationalitySelect`: 249 quốc gia/vùng lãnh thổ, Việt Nam ở đầu, phần còn lại xếp theo tên tiếng Việt. Danh sách tĩnh nằm tại `src/data/countries.json`; frontend và API dùng chung `nationalities.cjs`. API chỉ nhận tên/mã/alias có trong danh sách và lưu tên chuẩn. Tên cũ hợp lệ được nhận diện; giá trị cũ không khớp hiện yêu cầu chọn lại, không âm thầm đổi thành Việt Nam.
+- Dữ liệu lấy từ [i18n-iso-countries](https://github.com/michaelwittig/node-i18n-iso-countries), snapshot tiếng Việt và ISO codes ngày 15/10/2026; bỏ mã XK không thuộc ISO 3166-1. Giấy phép MIT được giữ tại `src/data/countries.LICENSE`. Không tải danh sách qua mạng lúc người dùng mở form, không thêm dependency runtime.
+- Select giữ phần tử HTML gốc để hỗ trợ bàn phím và bộ chọn trên điện thoại; CSS thống nhất viền bo nhẹ, khoảng trống mũi tên, hover/focus/disabled và chế độ giảm chuyển động. Mũi tên avatar là SVG 20×20, xoay quanh tâm; nút avatar không áp dụng hiệu ứng dịch/thu nhỏ khi nhấn.
+- Kiểm chứng: 84/84 test backend đạt; build production Next 16.3.8 đạt; Chrome `test:runner-ui`, `test:wallet-ui`, `test:event-media-ui` đạt ở 1440/768/390/360px. Kiểm tra tọa độ tâm SVG khi nhấn/mở/đóng sai lệch dưới 0,5px; kiểm tra xác nhận tuổi và tự bỏ dấu tích khi đổi ngày sinh. Test dùng DB riêng/API fixtures.
+
+## Quốc tịch và giới hạn ngày sinh — 13/10/2026 (quy tắc mới ở mục 15/10 phía trên)
+
+- Form đăng ký giải có trường **Quốc tịch** hiển thị, điền từ hồ sơ; giá trị người chạy chọn được lưu vào booking và vé. Từ 15/10 dùng danh sách chọn cố định thay cho ô nhập tự do.
+- `src/lib/runnerValidation.cjs` dùng chung giữa React và Express: ngày sinh dạng YYYY-MM-DD, phải là ngày có thật, không trước 01/01/1900, theo lịch Việt Nam (`Asia/Ho_Chi_Minh`). Từ 15/10 bắt buộc nhập trên form và áp dụng tuổi 7–50/xác nhận trên 50 như mục mới.
 - Khi đăng ký giải, tuổi tối thiểu tính vào ngày thi đấu của cự ly; ngày vừa đủ tuổi hợp lệ, nhỏ hơn một ngày bị chặn. Giới hạn trong date picker đổi theo cự ly; cutoff ngày nhuận được kẹp về ngày cuối tháng tương ứng. API danh sách cự ly trả thêm `event.dateInfo.raceDate` để giao diện tính cùng mốc với server.
 - API đặt vé kiểm tra ngày sinh ngay cả khi cự ly không có `minAge`; ngày tương lai, trước 1900, ngày không tồn tại và quốc tịch sai kiểu/quá dài trả 400. Giao dịch thất bại không giữ suất, không cấp vé; dữ liệu người dùng hiện có không bị sửa hàng loạt.
 - Kiểm thử bổ sung tại `tests/runner-validation.test.js`, `tests/backend.test.js` và `scripts/checkRunnerFlows.js`: ngày nhuận, đổi ngày ở UTC+7, tuổi biên, quota rollback, lưu quốc tịch lên vé, chặn submit ngày sai và giữ hành vi hồ sơ/đăng ký tài khoản.

@@ -40,6 +40,33 @@ input:not([type=checkbox]):not([type=radio]), select, textarea {
   max-width: 100%; border: 1px solid var(--border); border-radius: var(--radius-control); padding: 10px 12px; background: var(--surface); color: var(--foreground);
 }
 input::placeholder, textarea::placeholder { color: #69715f; }
+/* Native selects keep keyboard/mobile pickers; one visual treatment across the site. */
+body select:where(:not([multiple]):not([size])), body .runner-fields select:where(:not([multiple]):not([size])) {
+  appearance: none; -webkit-appearance: none;
+  min-height: 46px; min-width: 0; max-width: 100%;
+  padding: 11px 44px 11px 14px;
+  border: 1px solid #cbd3c4; border-radius: 8px;
+  background-color: var(--surface); color: var(--foreground);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='m5 7.5 5 5 5-5' stroke='%23596850' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 14px center; background-size: 18px;
+  text-overflow: ellipsis; box-shadow: 0 1px 2px #14281f06;
+  transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+}
+body select:not(:disabled):hover { border-color: #829278; background-color: #fafbf5; }
+body select:focus-visible, body .runner-fields select:focus-visible { outline: 2px solid var(--forest); outline-offset: 2px; border-color: var(--forest); box-shadow: 0 0 0 4px #26342614; }
+body select:disabled { cursor: not-allowed; opacity: .6; background-color: var(--surface-muted); }
+body select option { background: var(--surface); color: var(--foreground); }
+body select[aria-invalid="true"] { border-color: var(--accent-strong); }
+.birthday-field { display: flex; flex-direction: column; gap: 7px; min-width: 0; margin-bottom: 16px; }
+.runner-fields .birthday-field { margin: 0; }
+.birthday-field > label { font-size: 12px; font-weight: 550; }
+.birthday-field > small { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.birthday-confirmation { padding: 12px 14px; border: 1px solid #d9c9a5; border-left: 3px solid #b78336; border-radius: 6px; background: #faf5e8; color: #56472e; font-size: 12px; }
+.birthday-confirmation p { margin: 0 0 10px; }
+body .birthday-confirmation label { display: flex; flex-direction: row; gap: 10px; align-items: flex-start; cursor: pointer; font-size: 12px; line-height: 1.6; }
+body .birthday-confirmation input[type="checkbox"] { appearance: auto; width: 18px; height: 18px; min-height: 18px; flex: 0 0 18px; margin: 1px 0 0; padding: 0; accent-color: var(--forest); box-shadow: none; }
+@media (prefers-reduced-motion: reduce) { body select { transition: none; } }
+@media (forced-colors: active) { body select:not([multiple]):not([size]) { appearance: auto; background-image: none; padding-right: 12px; } }
 .app-shell { min-height: 100vh; display: flex; flex-direction: column; }
 .app-shell > main { flex: 1; min-width: 0; }
 .app-header { display: flex; align-items: center; gap: 28px; min-height: 76px; padding: 16px max(24px, calc((100vw - 1280px) / 2)); background: var(--surface); border-bottom: 1px solid var(--border); }

@@ -39,7 +39,8 @@ button:disabled { transform: none; box-shadow: none; opacity: .5; }
 .account-trigger:hover { background: #fff8e910; border-color: #fff8e938; }
 .account-initial { display: grid; place-items: center; width: 31px; height: 31px; background: #293b2a; color: white; font-size: 13px; font-weight: 600; border-radius: 3px; }
 .account-name { max-width: 115px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
-.account-chevron { transition: transform .25s var(--ease-out); font-size: 17px; }
+.account-trigger:active:not(:disabled) { transform: none; }
+.account-chevron { display: block; width: 20px; height: 20px; flex: 0 0 20px; align-self: center; transform-origin: 50% 50%; transition: transform .2s var(--ease-out); }
 .account-chevron.is-open { transform: rotate(180deg); }
 .account-dropdown { position: absolute; right: 0; top: calc(100% + 12px); min-width: 225px; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-panel); background: var(--surface); color: var(--foreground); box-shadow: 0 16px 40px #20241e18; animation: menu-enter .2s var(--ease-out) both; }
 .account-dropdown p { font-size: 9px; letter-spacing: 1.2px; color: #6b7166; padding: 10px; }

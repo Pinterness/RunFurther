@@ -66,7 +66,7 @@ async function api(path, method = 'GET', body, u, extra = {}) {
   const response = await fetch(base + path, { method, headers: { 'Content-Type': 'application/json', ...(u ? { Authorization: 'Bearer ' + u.token } : {}), ...extra }, ...(body ? { body: JSON.stringify(body) } : {}) });
   return { status: response.status, ...(await response.json()) };
 }
-function holdBody(f) { return { eventId: f.event._id, categoryId: f.category._id, runnerInfo: { fullName: 'Runner', email: 'runner@test.local', phone: '0900000000' } }; }
+function holdBody(f) { return { eventId: f.event._id, categoryId: f.category._id, runnerInfo: { fullName: 'Runner', email: 'runner@test.local', phone: '0900000000', birthday: '1995-04-12', nationality: 'Việt Nam' } }; }
 test('Signup persists runner details; profile edits are private and cannot elevate roles', async () => {
   const profile = { gender: 'Nữ', birthday: '1997-08-12', nationality: 'Việt Nam', club: 'Morning runners', shirtSize: 'XXL', emergencyContact: 'Người thân', emergencyPhone: '0900000001' };
   const created = await api('/auth/register', 'POST', { email: 'profile@test.local', password: 'long-test-password', fullName: 'Runner Profile', phone: '0900000000', profile, systemRole: 'SUPER_ADMIN' });
@@ -158,6 +158,34 @@ test('Checkout enforces the age cutoff at the race date, including the exact bir
   assert.equal((await Category.findById(f.category._id)).quotaHold, 0);
   assert.equal((await api('/events/' + f.event.slug + '/categories')).event.dateInfo.raceDate, f.event.dateInfo.raceDate.toISOString());
   assert.equal((await hold(f, { runnerInfo: { ...holdBody(f).runnerInfo, birthday: cutoff } })).runnerInfo.birthday, cutoff);
+});
+
+test('Age limits and country choices apply to signup, profile editing and checkout; older runners must confirm the exact date', async () => {
+  const f = await fixture();
+  const { birthdayBounds } = require('../src/lib/runnerValidation.cjs');
+  const underSeven = new Date(birthdayBounds().max + 'T00:00:00Z'); underSeven.setUTCDate(underSeven.getUTCDate() + 1);
+  const older = '1960-01-15';
+  for (const details of [{ birthday: underSeven.toISOString().slice(0, 10) }, { birthday: '' }, { birthday: older }, { birthday: older, confirmedBirthday: true }, { birthday: older, confirmedBirthday: '1961-01-15' }, { birthday: '1995-04-12', nationality: 'Atlantis' }]) {
+    const profile = { ...holdBody(f).runnerInfo, ...details };
+    const held = await api('/bookings/hold', 'POST', { ...holdBody(f), runnerInfo: profile }, f.u);
+    assert.equal(held.status, 400, JSON.stringify(held));
+    const edited = await api('/auth/me', 'PATCH', { fullName: 'Must roll back', profile }, f.u);
+    assert.equal(edited.status, 400, JSON.stringify(edited));
+    assert.equal((await User.findById(f.u._id)).fullName, 'Test runner');
+  }
+  assert.equal((await Category.findById(f.category._id)).quotaHold, 0);
+  const profile = { birthday: older, confirmedBirthday: older, nationality: 'JPN' };
+  const saved = await api('/auth/me', 'PATCH', { profile }, f.u);
+  assert.equal(saved.status, 200, JSON.stringify(saved));
+  assert.equal(saved.profile.nationality, 'Nhật Bản');
+  assert.equal(saved.profile.confirmedBirthday, undefined);
+  const held = await hold(f, { runnerInfo: { ...holdBody(f).runnerInfo, ...profile } });
+  assert.equal(held.runnerInfo.birthday, older);
+  assert.equal(held.runnerInfo.confirmedBirthday, undefined);
+  const signup = { email: 'senior-registration@test.local', fullName: 'Senior Runner', password: 'test-password-long', profile: { birthday: older, nationality: 'Việt Nam' } };
+  assert.equal((await api('/auth/register', 'POST', signup)).status, 400);
+  const created = await api('/auth/register', 'POST', { ...signup, profile: { ...signup.profile, confirmedBirthday: older } });
+  assert.equal(created.status, 201, JSON.stringify(created));
 });
 
 test('Invalid birth dates on BIB transfers cannot change ownership or debit the buyer', async () => {
@@ -254,7 +282,7 @@ test('Marketplace sale pays seller, rotates QR, and has exactly one concurrent b
   const f = await fixture(), p = await paid(f), a = await user(), b = await user();
   const listing = await api('/marketplace', 'POST', { listingType: 'BIB_TRANSFER', registrationId: p.registration._id, title: 'Transfer', price: 100000 }, f.u);
   assert.equal(listing.status, 201);
-  const buy = u => api('/marketplace/' + listing.listing._id + '/buy', 'POST', { newRunnerProfile: { fullName: 'Buyer', email: u.email, phone: '0900000000' } }, u);
+  const buy = u => api('/marketplace/' + listing.listing._id + '/buy', 'POST', { newRunnerProfile: { fullName: 'Buyer', email: u.email, phone: '0900000000', birthday: '1995-04-12' } }, u);
   const results = await Promise.all([buy(a), buy(b)]);
   assert.equal(results.filter(r => r.status === 200).length, 1);
   const reg = await Registration.findById(p.registration._id);
@@ -266,7 +294,7 @@ test('Marketplace sale pays seller, rotates QR, and has exactly one concurrent b
 test('Unfunded marketplace purchase leaves ownership, QR and listing unchanged', async () => {
   const f = await fixture(), p = await paid(f), buyer = await user('RUNNER', 0);
   const l = await api('/marketplace', 'POST', { listingType: 'BIB_TRANSFER', registrationId: p.registration._id, title: 'Transfer', price: 100000 }, f.u);
-  const r = await api('/marketplace/' + l.listing._id + '/buy', 'POST', { newRunnerProfile: { fullName: 'Buyer', email: buyer.email, phone: '0900000000' } }, buyer);
+  const r = await api('/marketplace/' + l.listing._id + '/buy', 'POST', { newRunnerProfile: { fullName: 'Buyer', email: buyer.email, phone: '0900000000', birthday: '1995-04-12' } }, buyer);
   assert.equal(r.status, 409);
   const reg = await Registration.findById(p.registration._id);
   assert.equal(String(reg.userId), String(f.u._id)); assert.equal(reg.qrToken, p.registration.qrToken);
