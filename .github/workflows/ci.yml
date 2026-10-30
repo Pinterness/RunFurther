@@ -46,10 +46,12 @@ jobs:
 
       - run: npm ci
 
-      # node --test runs test files in parallel; without this step each of them downloads
-      # mongod at the same time and they fail on its lock file (UnableToUnlockLockfileError).
+      # npm ci normally downloads mongod through mongodb-memory-server's postinstall, but that script
+      # exits 0 even when the download fails, and npm can skip install scripts. node --test runs test
+      # files in parallel, so a missing mongod makes them all download it at once and fail on its lock
+      # file (UnableToUnlockLockfileError). Fetch it here, once, and stop with the real error if it fails.
       - name: Download mongod for tests
-        run: node node_modules/mongodb-memory-server/postinstall.js
+        run: node -e "require('mongodb-memory-server').MongoBinary.getPath().then((path) => console.log('mongod:', path))"
 
       - name: Backend tests
         run: npm test
