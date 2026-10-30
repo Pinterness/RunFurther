@@ -50,7 +50,7 @@
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^1.47.0",
     "mongoose": "^8.9.5",
-    "next": "16.3.8",
+    "next": "16.4.3",
     "postcss": "^8.5.28",
     "qrcode": "^1.5.4",
     "react": "^19.2.8",
