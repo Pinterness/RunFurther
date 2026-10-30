@@ -1,0 +1,65 @@
+# Test and build every pull request and every push to main. Vercel and Render deploy main
+# automatically, so this is the check a change gets before it reaches production.
+# Browser checks (npm run test:*-ui) need a running web app and stay a local step.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# A new push to a pull request cancels its outdated run; each commit on main keeps its own run.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    name: Test and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # The tests download mongod here: outside node_modules, so npm ci keeps it and the cache can restore it.
+      MONGOMS_DOWNLOAD_DIR: ${{ github.workspace }}/.cache/mongodb-binaries
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # package-lock.json is written with npm 11.21.0; older npm installs lockfiles
+      # that the deploy build rejects with "Missing @emnapi/runtime" (DEPLOYMENT.md).
+      - name: Use npm 11.21.0
+        run: npm install --global npm@11.21.0
+
+      - name: Cache mongod for tests
+        uses: actions/cache@v6
+        with:
+          path: .cache/mongodb-binaries
+          key: mongod-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: mongod-${{ runner.os }}-
+
+      - run: npm ci
+
+      # node --test runs test files in parallel; without this step each of them downloads
+      # mongod at the same time and they fail on its lock file (UnableToUnlockLockfileError).
+      - name: Download mongod for tests
+        run: node node_modules/mongodb-memory-server/postinstall.js
+
+      - name: Backend tests
+        run: npm test
+
+      - name: Support assistant tests
+        run: npm run test:support
+
+      - name: Build web
+        run: npm run build:web
+
+      - name: Dependency audit (report only)
+        run: npm audit --omit=dev --audit-level=high
+        continue-on-error: true
