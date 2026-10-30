@@ -57,8 +57,12 @@ jobs:
       - name: Support assistant tests
         run: npm run test:support
 
+      # src/lib/apiUrl.js refuses a production build without an API URL. CI never deploys this
+      # build, so it uses the reserved .example host from DEPLOYMENT.md, not the real API.
       - name: Build web
         run: npm run build:web
+        env:
+          NEXT_PUBLIC_API_URL: https://runfurther-deployment-check.example/api
 
       - name: Dependency audit (report only)
         run: npm audit --omit=dev --audit-level=high
