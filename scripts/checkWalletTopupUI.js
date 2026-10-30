@@ -387,7 +387,7 @@ async function walletScenario(page, state) {
   state.failNextTopup = true;
   await page.getByLabel("Số tiền nạp (VND)").fill("50000");
   await page.getByRole("button", { name: "Tạo lệnh nạp" }).click();
-  await expect(page.locator(".topup-error")).toContainText("3 lệnh nạp");
+  await expect(page.locator(".topup-error")).toContainText("lệnh nạp chờ");
 
   await checkViewports(page, "wallet-topup");
 }
