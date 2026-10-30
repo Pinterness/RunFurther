@@ -37,13 +37,13 @@ Loại thường dùng: `feat`, `fix`, `docs`, `test`, `refactor`, `ci`, `chore`
 
 - Node 24, ghi trong `.nvmrc`.
 - `.env` không bao giờ được commit. Mẫu nằm ở `.env.example`.
-- `MONGODB_URI` trong `.env` trỏ MongoDB chạy trên máy ở dạng replica set `rs0`, vì nghiệp vụ tiền dùng transaction. Không chạy thử trên database của web thật.
+- `MONGODB_URI` trong `.env` trỏ MongoDB chạy trên máy ở dạng replica set `rs0`, vì nghiệp vụ tiền dùng transaction. Không chạy thử trên database của web thật. Cách dựng database dev và sao lưu: `DEPLOYMENT.md` mục 9.
 - Chỉ sửa `package-lock.json` bằng npm 11.21.0, ví dụ `npx --yes npm@11.21.0 install <gói>`. Lockfile tạo bằng npm cũ hơn làm deploy báo `Missing @emnapi/runtime`.
 
 ## Lệnh kiểm tra
 
 | Lệnh | Kiểm gì | CI chạy |
-|---|---|---|
+| --- | --- | --- |
 | `npm test` | API, cấu hình deploy, nạp ví | Có |
 | `npm run test:support` | Trợ lý hỗ trợ khách | Có |
 | `npm run build:web` | Build web Next.js | Có |
