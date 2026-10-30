@@ -6,7 +6,7 @@ Cấu hình được chuẩn bị ngày 08/10/2026. Frontend Next.js chạy trê
 
 - **Vercel Hobby** chỉ dành cho cá nhân/phi thương mại. RunFurther thử nghiệm có thể dùng cấu hình này; hoạt động bán vé thương mại cần gói phù hợp, không mặc định được phép chạy Hobby chỉ vì ít người truy cập. [Quy định Hobby](https://vercel.com/docs/plans/hobby).
 - **Render Free** ngủ sau 15 phút không có truy cập; lần mở tiếp theo mất khoảng một phút khởi động. Render không khuyến nghị Free cho production. Hạn mức theo workspace gồm 750 giờ Free/tháng và giới hạn tài nguyên/băng thông; có thể bị tạm ngừng khi vượt hạn mức. Không dùng dịch vụ ping liên tục để né cơ chế ngủ. [Giới hạn Free](https://render.com/docs/free).
-- Atlas đang dùng là database cloud: dùng **đúng URI và tên database hiện tại** để giữ tài khoản, vé và Cantho Heritage. Không chạy seed khi deploy. Ảnh giải đã lưu MongoDB, không cần persistent disk Render. Atlas Free không có backup tự động tích hợp; cần sao lưu bằng mongodump/mongorestore và theo dõi dung lượng cả ảnh. [Atlas Free](https://www.mongodb.com/docs/atlas/reference/free-shared-limitations/).
+- Atlas đang dùng là database cloud: dùng **đúng URI và tên database hiện tại** để giữ tài khoản, vé và Cantho Heritage. Không chạy seed khi deploy. Ảnh giải đã lưu MongoDB, không cần persistent disk Render. Atlas Free không có backup tự động tích hợp; cần sao lưu bằng mongodump/mongorestore (mục 9) và theo dõi dung lượng cả ảnh. [Atlas Free](https://www.mongodb.com/docs/atlas/reference/free-shared-limitations/).
 
 ## 2. Các file môi trường đã chuẩn bị
 
@@ -151,3 +151,79 @@ Không có công việc nền chạy khi Render Free đang ngủ. Đơn giữ ch
 ## 8. Kiểm chứng cấu hình trong repo
 
 `npm test` có các kiểm tra CORS/preflight, phạm vi origin, IP qua proxy, tách bí mật ENV, URL production và phản hồi HTML khi máy chủ khởi động. `npm run build:web` kiểm tra build frontend. Để kiểm tra browser với hostname HTTPS giả lập (không deploy), build với NEXT_PUBLIC_API_URL=`https://runfurther-deployment-check.example/api`, rồi chạy `node scripts/checkDeploymentUI.js`; script tự mở/tắt preview tại port 3101, mọi request API được mock, không ghi DB thật. Sau đó build lại bình thường để dùng production preview local.
+
+## 9. Sao lưu, khôi phục và database dev
+
+Atlas Free không tự sao lưu. Nhóm sao lưu bằng MongoDB Database Tools (`mongodump`, `mongorestore`), miễn phí, không dùng gói sao lưu trả phí của Atlas. Bản dump và database dev là bản sao dữ liệu thật, có dữ liệu cá nhân (CCCD, tiền sử bệnh trong `runnerprofiles`), nên chỉ để trên máy, ngoài repo; không commit, không gửi qua chat.
+
+### 9.1 Chuẩn bị một lần
+
+1. Cài MongoDB Community Server (msi, để mặc định chạy thành dịch vụ `MongoDB`) và MongoDB Database Tools (msi). Thêm `C:\Program Files\MongoDB\Tools\100\bin` vào Path của tài khoản Windows.
+2. Bật replica set, vì app dùng transaction và `src/backend/server.js` từ chối khởi động nếu MongoDB không phải replica set. Mở Notepad bằng quyền admin, sửa `C:\Program Files\MongoDB\Server\8.2\bin\mongod.cfg` (đổi `8.2` theo bản đã cài), thay dòng `#replication:` bằng:
+
+   ```yaml
+   replication:
+     replSetName: rs0
+   ```
+
+   Rồi trong cmd mở bằng quyền admin:
+
+   ```bat
+   net stop MongoDB
+   net start MongoDB
+   ```
+
+3. Khởi tạo replica set một lần bằng mongosh. Compass có sẵn mongosh: kết nối `mongodb://127.0.0.1:27017/?directConnection=true`, mở MongoDB shell rồi chạy:
+
+   ```js
+   rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: '127.0.0.1:27017' }] })
+   ```
+
+   Ghi `127.0.0.1` chứ không dùng tên máy, vì `mongod` chỉ nghe ở `127.0.0.1`. Các database khác trên máy vẫn giữ nguyên và vẫn kết nối được bằng chuỗi cũ.
+
+4. Hai file môi trường, đều bị `.gitignore` loại trừ:
+
+   - `.env`: `MONGODB_URI=mongodb://127.0.0.1:27017/runfurther_dev?replicaSet=rs0`. App và mọi script chạy ở máy dùng database dev.
+   - `.env.atlas.local`: một dòng `MONGODB_URI=<chuỗi Atlas>`. Chỉ dùng khi sao lưu hoặc migration.
+
+### 9.2 Sao lưu Atlas
+
+Chạy trong cmd tại thư mục repo, đổi ngày ở cuối lệnh. Lệnh chỉ đọc Atlas:
+
+```bat
+for /f "tokens=1,* delims==" %a in ('findstr /b /c:"MONGODB_URI=" .env.atlas.local') do @mongodump --uri="%b" --db=test --out=D:\backup\runfurther\2026-10-31
+```
+
+`for /f` lấy phần sau dấu `=` đầu tiên của dòng `MONGODB_URI=` làm `%b`. Dấu `@` để cmd không in lại lệnh, vì lệnh chứa chuỗi kết nối. Trong file `.bat` thì viết `%%a`, `%%b`. Dữ liệu app nằm trong database `test`: chuỗi Atlas không ghi tên database nên driver dùng tên mặc định. Log in dòng `done dumping test.<collection> (N documents)` cho từng collection; ghi lại tổng số document để so ở bước khôi phục.
+
+Sao lưu trước mỗi lần chạy migration hoặc script ghi trên Atlas.
+
+### 9.3 Khôi phục thử và làm mới database dev
+
+Lệnh ghi vào MongoDB trên máy, không đụng Atlas:
+
+```bat
+mongorestore --uri="mongodb://127.0.0.1:27017/?replicaSet=rs0" --nsInclude="test.*" --nsFrom="test.*" --nsTo="runfurther_dev.*" --drop D:\backup\runfurther\2026-10-31
+```
+
+Database `test` trong bản dump được khôi phục thành `runfurther_dev`. `--drop` xóa rồi ghi lại những collection có trong bản dump, nên dữ liệu thử trong các collection đó sẽ mất. Collection chỉ có ở database dev vẫn còn; muốn bản dev giống hệt Atlas thì xóa database `runfurther_dev` trong Compass trước khi khôi phục. Kết quả đúng là `N document(s) restored successfully. 0 document(s) failed to restore.`, với N bằng tổng số document lúc sao lưu. Lần kiểm chứng ngày 31/10/2026: 20 collection, 83 document; số document và số index của từng collection trong bản khôi phục khớp Atlas.
+
+### 9.4 Chạy script trên Atlas khi thật sự cần
+
+Script dùng `dotenv` không ghi đè biến đã có, nên nạp `.env.atlas.local` trước bằng `--env-file`:
+
+```bat
+node --env-file=.env.atlas.local scripts/checkData.js
+```
+
+Thiếu `--env-file=.env.atlas.local` thì lệnh chạy trên database dev. Sao lưu (mục 9.2) trước mọi lệnh ghi trên Atlas. `npm run deploy:env` đọc thẳng `.env`, nên giờ báo `A local MongoDB URI cannot be reached from Render`: đây là rào chắn đúng; chuỗi cho Render lấy trong `.env.atlas.local`.
+
+### 9.5 Khôi phục Atlas khi mất dữ liệu
+
+Chỉ làm khi dữ liệu Atlas bị mất hoặc hỏng và cả nhóm đã thống nhất. Sao lưu tình trạng hiện tại ra một thư mục khác trước (mục 9.2), rồi chạy:
+
+```bat
+for /f "tokens=1,* delims==" %a in ('findstr /b /c:"MONGODB_URI=" .env.atlas.local') do @mongorestore --uri="%b" --nsInclude="test.*" --drop D:\backup\runfurther\2026-10-31
+```
+
+Lệnh này ghi đè dữ liệu của web thật bằng bản sao lưu; mọi thay đổi sau ngày sao lưu sẽ mất. Quy trình khôi phục mới được chạy thử trên database dev, chưa chạy trên Atlas.

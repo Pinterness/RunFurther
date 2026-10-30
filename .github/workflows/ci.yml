@@ -1,0 +1,71 @@
+# Test and build every pull request and every push to main. Vercel and Render deploy main
+# automatically, so this is the check a change gets before it reaches production.
+# Browser checks (npm run test:*-ui) need a running web app and stay a local step.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# A new push to a pull request cancels its outdated run; each commit on main keeps its own run.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    name: Test and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # The tests download mongod here: outside node_modules, so npm ci keeps it and the cache can restore it.
+      MONGOMS_DOWNLOAD_DIR: ${{ github.workspace }}/.cache/mongodb-binaries
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # package-lock.json is written with npm 11.21.0; older npm installs lockfiles
+      # that the deploy build rejects with "Missing @emnapi/runtime" (DEPLOYMENT.md).
+      - name: Use npm 11.21.0
+        run: npm install --global npm@11.21.0
+
+      - name: Cache mongod for tests
+        uses: actions/cache@v6
+        with:
+          path: .cache/mongodb-binaries
+          key: mongod-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: mongod-${{ runner.os }}-
+
+      - run: npm ci
+
+      # npm ci normally downloads mongod through mongodb-memory-server's postinstall, but that script
+      # exits 0 even when the download fails, and npm can skip install scripts. node --test runs test
+      # files in parallel, so a missing mongod makes them all download it at once and fail on its lock
+      # file (UnableToUnlockLockfileError). Fetch it here, once, and stop with the real error if it fails.
+      - name: Download mongod for tests
+        run: node -e "require('mongodb-memory-server').MongoBinary.getPath().then((path) => console.log('mongod:', path))"
+
+      - name: Backend tests
+        run: npm test
+
+      - name: Support assistant tests
+        run: npm run test:support
+
+      # src/lib/apiUrl.js refuses a production build without an API URL. CI never deploys this
+      # build, so it uses the reserved .example host from DEPLOYMENT.md, not the real API.
+      - name: Build web
+        run: npm run build:web
+        env:
+          NEXT_PUBLIC_API_URL: https://runfurther-deployment-check.example/api
+
+      - name: Dependency audit (report only)
+        run: npm audit --omit=dev --audit-level=high
+        continue-on-error: true
