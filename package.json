@@ -14,7 +14,6 @@
     "test:runner-ui": "node scripts/checkRunnerFlows.js",
     "test:organizer-ui": "node scripts/checkOrganizerFlows.js",
     "db:check": "node scripts/checkData.js",
-    "seed": "node scripts/seedData.js",
     "start": "node src/backend/server.js",
     "dev": "nodemon src/backend/server.js",
     "dev:api": "nodemon src/backend/server.js",

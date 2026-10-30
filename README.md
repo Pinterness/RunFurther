@@ -38,8 +38,6 @@ Trước khi chạy bản mới trên database đã có dữ liệu:
 
 Script không tự sửa quota, xóa vé hay chuyển đơn thanh toán. Các đơn cũ từng được xác nhận khi chưa đối soát cần được rà soát riêng.
 
-Seed chỉ chạy với `SEED_MONGODB_URI`, tên database kết thúc bằng `_dev` hoặc `_test`, database rỗng và không ở NODE_ENV=production. Không còn `dropDatabase()` hay fallback database. Ngày đăng ký/thi đấu mẫu được tính từ thời điểm seed, quota đã bán bắt đầu từ 0. Tài khoản và thông tin ngân hàng trong seed chỉ phục vụ phát triển.
-
 ## Thanh toán và đối soát
 
 Chưa tích hợp SePay/Casso hoặc webhook ngân hàng. Hiện đối soát thủ công: EVENT_ADMIN chủ giải duyệt tiền vé của giải; SUPER_ADMIN chỉ duyệt nạp ví.
