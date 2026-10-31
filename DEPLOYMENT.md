@@ -227,3 +227,34 @@ for /f "tokens=1,* delims==" %a in ('findstr /b /c:"MONGODB_URI=" .env.atlas.loc
 ```
 
 Lệnh này ghi đè dữ liệu của web thật bằng bản sao lưu; mọi thay đổi sau ngày sao lưu sẽ mất. Quy trình khôi phục mới được chạy thử trên database dev, chưa chạy trên Atlas.
+
+## 10. Nạp tri thức trợ lý
+
+Trợ lý trả lời từ các bài `PUBLISHED` trong collection `supportarticles`. Nếu kho trống, bot trả câu "chưa có thông tin đã xác thực" cho mọi câu hỏi, nên 11 chủ đề gốc phải được nạp **trước khi** gộp code đọc tri thức từ database. Việc nạp làm tay bằng `scripts/seedSupportKnowledge.js`, không chạy khi deploy.
+
+- Mặc định script chỉ chạy thử. Nó in `mode: "DRY_RUN"`, tên `database`, các `hosts` (không kèm user hay mật khẩu), các bài sẽ được tạo (`created`) và các bài đã có (`skipped`). Lần chạy thử không ghi gì, kể cả collection hay index.
+- Có `--apply` thì script mới ghi, và chỉ tạo bài có `key` chưa tồn tại. Bài đã có không bao giờ bị ghi đè, kể cả `updatedAt`, nên bài admin đã sửa vẫn giữ nguyên. Chạy lại bao nhiêu lần cũng an toàn.
+
+Thứ tự lần nạp đầu tiên:
+
+1. Nạp trên database dev. Lần `--apply` đầu tạo 11 bài; chạy lại thì cả 11 bài nằm trong `skipped`.
+
+   ```bat
+   node scripts/seedSupportKnowledge.js
+   node scripts/seedSupportKnowledge.js --apply
+   ```
+
+2. Sao lưu Atlas theo mục 9.2.
+3. Chạy thử trên Atlas. Kiểm `database` là `test` và có 11 bài trong `created`:
+
+   ```bat
+   node --env-file=.env.atlas.local scripts/seedSupportKnowledge.js
+   ```
+
+4. Đúng database thì chạy thật:
+
+   ```bat
+   node --env-file=.env.atlas.local scripts/seedSupportKnowledge.js --apply
+   ```
+
+5. Gộp pull request. Khi Render deploy xong, hỏi bot "giữ chỗ bao lâu" trên web thật; câu trả lời phải là nội dung của bài `hold` (giữ chỗ 10 phút).
