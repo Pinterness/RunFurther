@@ -5,7 +5,8 @@ const Registration = require('../models/Registration');
 const Booking = require('../models/Booking');
 const { availableEvent } = require('./eventPolicy');
 const { escapeRegex, httpError } = require('../lib/errors');
-const { SUPPORT_MESSAGE_LIMIT, findSupportKnowledge, normalizeSupportText } = require('./supportKnowledge');
+const { SUPPORT_MESSAGE_LIMIT, rankArticles, normalizeSupportText } = require('./supportKnowledge');
+const { loadPublishedArticles } = require('./supportKnowledgeStore');
 
 const PUBLIC_STATUSES = ['PUBLISHED', 'REGISTRATION_OPEN', 'REGISTRATION_CLOSED', 'COMPLETED'];
 const LIMITS = { events: 5, categories: 40, privateRows: 20, queryMs: 1500, replyCharacters: 4000 };
@@ -118,7 +119,7 @@ function createOpenAIAdapter({ env = process.env, fetchImpl = (...args) => fetch
   };
 }
 
-function createSupportResponder({ findEvents = retrievePublicEvents, findAccountStatus = retrieveAccountStatus, generateReply = createOpenAIAdapter() } = {}) {
+function createSupportResponder({ findArticles = loadPublishedArticles, findEvents = retrievePublicEvents, findAccountStatus = retrieveAccountStatus, generateReply = createOpenAIAdapter() } = {}) {
   return async function answerSupport({ message, history = [], userId = null, page = '/' } = {}) {
     if (typeof message !== 'string' || !message.trim() || message.length > SUPPORT_MESSAGE_LIMIT) {
       throw httpError(400, `Tin nhắn phải có từ 1 đến ${SUPPORT_MESSAGE_LIMIT} ký tự.`);
@@ -138,13 +139,16 @@ function createSupportResponder({ findEvents = retrievePublicEvents, findAccount
       // Deliberately return before constructing any provider input.
       return result;
     }
-    const articles = findSupportKnowledge(question, history);
+    let published;
+    // A failed knowledge read is an outage, not a question the bot cannot answer: reply with FALLBACK.
+    try { published = await findArticles(); } catch { return result; }
+    const articles = rankArticles(published, question, history);
     if (!articles.length) return result;
     result.reply = articles.map(article => article.answer).join('\n\n');
     result.sources = [...new Map(articles.flatMap(article => article.sources).map(source => [source.url, { ...source }])).values()].slice(0, 5);
     result.suggestions = [...new Set(articles.flatMap(article => article.suggestions))].slice(0, 3);
     let events = [];
-    if (articles[0].id === 'events') {
+    if (articles[0].key === 'events') {
       try {
         events = (await findEvents({ message: question, page })).slice(0, LIMITS.events);
         if (events.length) {

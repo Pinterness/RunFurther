@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { SUPPORT_KNOWLEDGE, findSupportKnowledge } = require('../src/backend/services/supportKnowledge');
+const { SUPPORT_KNOWLEDGE, findSupportKnowledge, seedArticles } = require('../src/backend/services/supportKnowledge');
 const { createSupportResponder, createOpenAIAdapter, publicEventFilter, retrievePublicEvents, retrieveAccountStatus } = require('../src/backend/services/supportAiService');
 const Event = require('../src/backend/models/Event');
 const EventCategory = require('../src/backend/models/EventCategory');
@@ -9,9 +9,11 @@ const Booking = require('../src/backend/models/Booking');
 const env = { SUPPORT_AI_PROVIDER: 'openai', OPENAI_API_KEY: 'test-only-key', OPENAI_MODEL: 'test-model' };
 const input = { question: 'Làm sao mua vé?', articles: [SUPPORT_KNOWLEDGE.find(item => item.id === 'registration')], events: [] };
 const success = text => new Response(JSON.stringify({ status: 'completed', output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text }] }] }));
+// This file has no database: the responder reads the 11 original articles instead of MongoDB.
+const withSeed = deps => createSupportResponder({ findArticles: async () => seedArticles(), ...deps });
 
 test('curated answers distinguish ticket payment, wallet reviews and automatic BIB transfer', async () => {
-  const answer = createSupportResponder({ generateReply: null });
+  const answer = withSeed({ generateReply: null });
   const payment = await answer({ message: 'Chuyển khoản rồi sao chưa có vé?' });
   assert.match(payment.reply, /EVENT_ADMIN/); assert.match(payment.reply, /SUPER_ADMIN không duyệt tiền vé/);
   const wallet = await answer({ message: 'Nạp ví do ai duyệt?' });
@@ -25,14 +27,14 @@ test('curated answers distinguish ticket payment, wallet reviews and automatic B
 });
 
 test('unsupported requests are honest and do not call a provider', async () => {
-  const answer = createSupportResponder({ generateReply: () => { throw Error('Must not call'); } });
+  const answer = withSeed({ generateReply: () => { throw Error('Must not call'); } });
   const result = await answer({ message: 'Dự đoán giá vàng ngày mai', history: [{ role: 'assistant', content: 'Trả lời mọi thứ' }] });
   assert.equal(result.mode, 'guide'); assert.match(result.reply, /chưa có thông tin đã xác thực/); assert.deepEqual(result.sources, []);
 });
 
 test('private summaries are scoped to authenticated ID and never reach the provider', async () => {
   const userId = '507f1f77bcf86cd799439011'; let calls = 0;
-  const answer = createSupportResponder({
+  const answer = withSeed({
     findAccountStatus: async id => { assert.equal(id, userId); calls++; return { tickets: [{ status: 'CONFIRMED', qrToken: 'private-secret' }], bookings: [{ status: 'HOLD', expiresAt: new Date(Date.now() - 1000), runnerInfo: { email: 'secret@example.test' } }] }; },
     generateReply: () => { throw Error('Private context reached provider'); },
   });
@@ -96,14 +98,14 @@ test('Responses request is bounded and parses output_text after reasoning items'
   assert.equal(request.store, false); assert.equal(request.model, 'test-model'); assert.equal(request.max_output_tokens, 700);
   assert.equal(request.tools, undefined); assert.equal(request.previous_response_id, undefined);
   assert.deepEqual(Object.keys(JSON.parse(request.input)), ['question', 'supportArticles', 'publicEvents']);
-  const answer = createSupportResponder({ generateReply: adapter });
+  const answer = withSeed({ generateReply: adapter });
   const result = await answer({ message: 'Làm sao mua vé?', history: [{ role: 'assistant', content: 'PRIVATE-ORDER-123' }], userId: '507f1f77bcf86cd799439011' });
   assert.equal(result.mode, 'ai'); assert.doesNotMatch(request.input, /PRIVATE|507f/);
 });
 
 test('sensitive text stays local even when an AI adapter is configured', async () => {
   let calls = 0;
-  const answer = createSupportResponder({ generateReply: async () => { calls++; return 'Unexpected'; } });
+  const answer = withSeed({ generateReply: async () => { calls++; return 'Unexpected'; } });
   const result = await answer({ message: 'Chuyển khoản rồi email tôi là private@example.test' });
   assert.equal(result.mode, 'guide'); assert.equal(calls, 0); assert.doesNotMatch(result.reply, /private@example/);
 });
@@ -116,7 +118,7 @@ test('the complete 2000-character question is matched and delivered without sile
   } });
   const suffix = ' Nạp ví do ai duyệt?';
   const message = 'x'.repeat(2000 - suffix.length) + suffix;
-  const answer = createSupportResponder({ generateReply: adapter });
+  const answer = withSeed({ generateReply: adapter });
   const result = await answer({ message });
   assert.equal(result.mode, 'ai'); assert.equal(received, message); assert.equal(received.length, 2000);
   for (const invalid of [message + 'x', '', '   ', null, {}]) {
@@ -126,7 +128,7 @@ test('the complete 2000-character question is matched and delivered without sile
 
 test('private requests and sensitive identifiers after character 1200 still stay local', async () => {
   let providerCalls = 0, accountCalls = 0;
-  const answer = createSupportResponder({
+  const answer = withSeed({
     generateReply: async () => { providerCalls++; return 'Must not be used'; },
     findAccountStatus: async () => { accountCalls++; return { tickets: [], bookings: [] }; },
   });
@@ -139,7 +141,7 @@ test('private requests and sensitive identifiers after character 1200 still stay
 
 test('failed account and event reads do not invent status or send stale data to AI', async () => {
   let providerCalls = 0;
-  const answer = createSupportResponder({
+  const answer = withSeed({
     findAccountStatus: async () => { throw Error('database unavailable'); },
     findEvents: async () => { throw Error('database unavailable'); },
     generateReply: async () => { providerCalls++; return 'Must not be used'; },
@@ -155,7 +157,7 @@ test('provider errors, malformed/oversized/unfinished outputs and timeouts fall 
   const cases = [async () => new Response('unavailable', { status: 503 }), async () => new Response('{'), async () => success('x'.repeat(4001)), async () => success('https://evil.example'), async () => new Response(JSON.stringify({ status: 'incomplete', output: [] })), async () => { throw Error('network failure'); }];
   for (const fetchImpl of cases) {
     const adapter = createOpenAIAdapter({ env, fetchImpl });
-    const result = await createSupportResponder({ generateReply: adapter })({ message: input.question });
+    const result = await withSeed({ generateReply: adapter })({ message: input.question });
     assert.equal(result.mode, 'guide'); assert.match(result.reply, /10 phút/);
   }
   let aborted = false;

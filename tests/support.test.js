@@ -8,6 +8,9 @@ process.env.SUPPORT_AI_PROVIDER = 'guide';
 const { app } = require('../src/backend/server');
 const User = require('../src/backend/models/User');
 const Ticket = require('../src/backend/models/SupportTicket');
+const SupportArticle = require('../src/backend/models/SupportArticle');
+const { seedSupportKnowledge } = require('../scripts/seedSupportKnowledge');
+const { clearKnowledgeCache } = require('../src/backend/services/supportKnowledgeStore');
 let repl, server, base, customer, other, admin;
 async function user(name, systemRole = 'RUNNER') {
   const record = await User.create({ fullName: name, email: name + '@test.local', passwordHash: 'not-a-real-password', systemRole });
@@ -16,7 +19,9 @@ async function user(name, systemRole = 'RUNNER') {
 before(async () => {
   repl = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   await mongoose.connect(repl.getUri('isolated_support'));
-  await Promise.all([User.init(), Ticket.init()]);
+  await Promise.all([User.init(), Ticket.init(), SupportArticle.init()]);
+  await seedSupportKnowledge({ apply: true });
+  clearKnowledgeCache();
   customer = await user('customer'); other = await user('other'); admin = await user('moderator', 'SUPER_ADMIN');
   server = app.listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));

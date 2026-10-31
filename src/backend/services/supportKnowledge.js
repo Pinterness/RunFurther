@@ -100,12 +100,15 @@ function normalizeSupportText(value) {
     .replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-function findSupportKnowledge(message, history = []) {
+// Scores each article by the whole term phrases found in the question; longer phrases score more.
+// Equal scores fall back to `priority` (higher first), then keep the input order, which the store
+// fixes by creation time, so the same question always gets the same answer. At most two articles.
+function rankArticles(articles, message, history = []) {
   const query = normalizeSupportText(message);
-  const rank = text => SUPPORT_KNOWLEDGE.map(entry => ({ entry, score: entry.terms.reduce((total, term) => {
+  const rank = text => articles.map(entry => ({ entry, score: entry.terms.reduce((total, term) => {
     const normalized = normalizeSupportText(term);
     return total + ((' ' + text + ' ').includes(' ' + normalized + ' ') ? Math.min(5, Math.max(2.8, normalized.split(' ').length * 1.4)) : 0);
-  }, 0) })).filter(item => item.score >= 2.5).sort((a, b) => b.score - a.score || (SEED_PRIORITY[b.entry.id] || 0) - (SEED_PRIORITY[a.entry.id] || 0));
+  }, 0) })).filter(item => item.score >= 2.5).sort((a, b) => b.score - a.score || (b.entry.priority || 0) - (a.entry.priority || 0));
   let ranked = rank(query);
   // Only genuine short follow-ups borrow the last user question. Assistant
   // messages supplied by clients are never treated as trusted knowledge.
@@ -116,4 +119,9 @@ function findSupportKnowledge(message, history = []) {
   return ranked.slice(0, 2).map(item => item.entry);
 }
 
-module.exports = { SUPPORT_MESSAGE_LIMIT, SUPPORT_KNOWLEDGE, SEED_PRIORITY, seedArticles, normalizeSupportText, findSupportKnowledge };
+// The original 11 topics, ranked in code. The bot itself reads the database (supportKnowledgeStore.js).
+function findSupportKnowledge(message, history = []) {
+  return rankArticles(seedArticles(), message, history);
+}
+
+module.exports = { SUPPORT_MESSAGE_LIMIT, SUPPORT_KNOWLEDGE, SEED_PRIORITY, seedArticles, normalizeSupportText, rankArticles, findSupportKnowledge };
