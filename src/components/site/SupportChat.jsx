@@ -5,17 +5,11 @@ import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { MessageCircle, X } from 'lucide-react';
 import { api } from '../../lib/clientApi';
+import { internalPath } from '../../lib/internalPath.cjs';
 import './support-chat.css';
 
 const initialPrompts = ['Làm sao để đăng ký giải?', 'Tôi đã chuyển khoản nhưng chưa có vé.', 'Cách nhận race kit?'];
 const statuses = { OPEN: 'Chờ phản hồi', ANSWERED: 'Đã phản hồi', CLOSED: 'Đã đóng' };
-function internalSource(value) {
-  if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//') || /[\\\u0000-\u0020]/.test(value)) return null;
-  try {
-    const url = new URL(value, 'https://runfurther.invalid');
-    return url.origin === 'https://runfurther.invalid' ? url.pathname + url.search + url.hash : null;
-  } catch { return null; }
-}
 function dateLabel(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -109,7 +103,7 @@ export default function SupportChat() {
       if (!current(request) || request.controller.signal.aborted) return;
       if (typeof data.reply !== 'string' || !data.reply.trim()) throw new Error('Chưa nhận được câu trả lời. Bạn thử lại nhé.');
       const replyMode = data.mode === 'ai' ? 'ai' : 'guide';
-      const sources = (Array.isArray(data.sources) ? data.sources : []).slice(0, 5).map(source => ({ title: String(source?.title || 'Xem hướng dẫn'), url: internalSource(source?.url) })).filter(source => source.url);
+      const sources = (Array.isArray(data.sources) ? data.sources : []).slice(0, 5).map(source => ({ title: String(source?.title || 'Xem hướng dẫn'), url: internalPath(source?.url) })).filter(source => source.url);
       setMessages(items => [...items, { id: ++nextMessageId.current, role: 'assistant', content: data.reply, mode: replyMode, sources }]);
       setMode(replyMode);
       const next = (Array.isArray(data.suggestions) ? data.suggestions : []).filter(item => typeof item === 'string' && item.trim() && item.length <= 2000).slice(0, 3);

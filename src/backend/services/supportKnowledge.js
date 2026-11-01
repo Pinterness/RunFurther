@@ -81,21 +81,34 @@ const SUPPORT_KNOWLEDGE = [
   },
 ];
 
+// Prefer a specific transaction stage over the generic purchasing guide
+// when both score equally (for example: "chuyển khoản mua vé, ai duyệt?").
+// The seed script stores this order as each article's `priority`.
+const SEED_PRIORITY = { payment: 2, wallet: 2, marketplace: 2, hold: 2, tickets: 1 };
+
+// The 11 topics above in SupportArticle shape. `id` stays equal to `key` for older callers.
+function seedArticles() {
+  return SUPPORT_KNOWLEDGE.map(({ id, title, terms, answer, sources, suggestions }) => ({
+    key: id, id, title, terms: [...terms], answer, sources: sources.map(source => ({ ...source })),
+    suggestions: [...suggestions], priority: SEED_PRIORITY[id] || 0, status: 'PUBLISHED',
+  }));
+}
+
 function normalizeSupportText(value) {
   return (typeof value === 'string' ? value : '').slice(0, SUPPORT_MESSAGE_LIMIT).toLowerCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd')
     .replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-function findSupportKnowledge(message, history = []) {
+// Scores each article by the whole term phrases found in the question; longer phrases score more.
+// Equal scores fall back to `priority` (higher first), then keep the input order, which the store
+// fixes by creation time, so the same question always gets the same answer. At most two articles.
+function rankArticles(articles, message, history = []) {
   const query = normalizeSupportText(message);
-  // Prefer a specific transaction stage over the generic purchasing guide
-  // when both score equally (for example: "chuyển khoản mua vé, ai duyệt?").
-  const stagePriority = { payment: 2, wallet: 2, marketplace: 2, hold: 2, tickets: 1 };
-  const rank = text => SUPPORT_KNOWLEDGE.map(entry => ({ entry, score: entry.terms.reduce((total, term) => {
+  const rank = text => articles.map(entry => ({ entry, score: entry.terms.reduce((total, term) => {
     const normalized = normalizeSupportText(term);
     return total + ((' ' + text + ' ').includes(' ' + normalized + ' ') ? Math.min(5, Math.max(2.8, normalized.split(' ').length * 1.4)) : 0);
-  }, 0) })).filter(item => item.score >= 2.5).sort((a, b) => b.score - a.score || (stagePriority[b.entry.id] || 0) - (stagePriority[a.entry.id] || 0));
+  }, 0) })).filter(item => item.score >= 2.5).sort((a, b) => b.score - a.score || (b.entry.priority || 0) - (a.entry.priority || 0));
   let ranked = rank(query);
   // Only genuine short follow-ups borrow the last user question. Assistant
   // messages supplied by clients are never treated as trusted knowledge.
@@ -106,4 +119,9 @@ function findSupportKnowledge(message, history = []) {
   return ranked.slice(0, 2).map(item => item.entry);
 }
 
-module.exports = { SUPPORT_MESSAGE_LIMIT, SUPPORT_KNOWLEDGE, normalizeSupportText, findSupportKnowledge };
+// The original 11 topics, ranked in code. The bot itself reads the database (supportKnowledgeStore.js).
+function findSupportKnowledge(message, history = []) {
+  return rankArticles(seedArticles(), message, history);
+}
+
+module.exports = { SUPPORT_MESSAGE_LIMIT, SUPPORT_KNOWLEDGE, SEED_PRIORITY, seedArticles, normalizeSupportText, rankArticles, findSupportKnowledge };
