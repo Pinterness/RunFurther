@@ -1,0 +1,4 @@
+{
+  "luyen": { "top1": 10, "top2": 10, "nullCorrect": 4, "taskCorrect": 0, "wrongTotal": 5 },
+  "kiem": { "top1": 2, "top2": 2, "nullCorrect": 4, "taskCorrect": 0, "wrongTotal": 7 }
+}
