@@ -2,7 +2,7 @@
 // question is ranked against articles and how it is routed to a private-data task.
 // The kiem half returns totals only, so nobody tunes terms by looking at its questions.
 const SPLITS = ['luyen', 'kiem'];
-const LOWER_IS_BETTER = ['wrongTotal'];
+const LOWER_IS_BETTER = ['wrong', 'wrongTotal'];
 
 const emptyMetrics = () => ({
   total: 0, articleTotal: 0, top1: 0, top2: 0, miss: 0, wrong: 0,

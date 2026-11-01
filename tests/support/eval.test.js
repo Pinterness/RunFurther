@@ -1,12 +1,16 @@
-// The 60-question eval set for the support bot (spec 5.2) and the floor its scores may not drop below (spec 5.3).
+// The 60-question eval set for the support bot (spec 5.2) and the baseline its scores must match exactly (spec 5.3).
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { createHash } = require('node:crypto');
 const { rankArticles, seedArticles } = require('../../src/backend/services/supportKnowledge');
 const { evaluateSupport, meetsBaseline } = require('../../src/backend/services/supportEval');
 const items = require('../helpers/supportEvalSet.json');
 const baseline = require('../helpers/supportEvalBaseline.json');
 
 const TASKS = ['task:tickets', 'task:holds', 'task:wallet', 'task:supportTickets'];
+const STYLES = ['co-dau', 'khong-dau', 'teencode', 'than-phien', 'ngan', 'dai-ngu-canh', 'tron-tieng-anh', 'phuong-ngu', 'xa', 'gan'];
+// SHA-256 of the kiem half (spec 5.2): once approved it is frozen, so nobody tunes it after seeing scores.
+const KIEM_SHA256 = '82626d07118419d81b70c2035be123d7882252a99d131f5d7c96e3dd6a4f6a0d';
 const D2_PROBES = ['giữ chỗ được bao lâu', 'mình chuyển tiền rồi mà chưa thấy vé', 'bán lại vé cho bạn được không', 'cho mình hỏi số bib ở đâu',
   'khi nào có kết quả chạy', 'muốn mở giải chạy thì làm gì', 'nhận áo và bib ở đâu', 'cho mình hỏi chút', 'quên mật khẩu thì làm sao',
   'tôi không đăng nhập được', 'nạp tiền vào ví bao lâu được duyệt', 'hủy đăng ký có được hoàn tiền không'];
@@ -19,6 +23,7 @@ test('eval set: 60 unique items, 2+2 per article key, 4+4 null, 4+4 task, D2 pro
   assert.deepEqual(count(i => String(i.expected).startsWith('task:')), { luyen: 4, kiem: 4 });
   for (const probe of D2_PROBES) assert.equal(items.find(i => i.question === probe)?.split, 'luyen', probe);
   assert.ok(items.every(i => ['luyen', 'kiem'].includes(i.split)));
+  assert.ok(items.every(i => STYLES.includes(i.style)), 'every item has a known style');
   assert.ok(items.filter(i => String(i.expected).startsWith('task:')).every(i => TASKS.includes(i.expected)));
   assert.equal(items.find(i => i.question === 'đổi size áo được không'), undefined, 'P05 changes the right answer to this question');
 });
@@ -43,13 +48,23 @@ test('a question sent to the wrong task, or to a task when it is not one, counts
 });
 
 test('meetsBaseline reports only the numbers that got worse', () => {
-  const floor = { luyen: { top1: 5, top2: 6, nullCorrect: 2, taskCorrect: 0, wrongTotal: 4 }, kiem: { top1: 3, top2: 4, nullCorrect: 3, taskCorrect: 0, wrongTotal: 5 } };
+  const floor = { luyen: { top1: 5, top2: 6, wrong: 1, nullCorrect: 2, taskCorrect: 0, wrongTotal: 4 }, kiem: { top1: 3, top2: 4, wrong: 2, nullCorrect: 3, taskCorrect: 0, wrongTotal: 5 } };
   assert.deepEqual(meetsBaseline({ luyen: { ...floor.luyen }, kiem: { ...floor.kiem } }, floor), []);
-  assert.deepEqual(meetsBaseline({ luyen: { ...floor.luyen, top1: 9, wrongTotal: 1 }, kiem: { ...floor.kiem } }, floor), []);
-  assert.deepEqual(meetsBaseline({ luyen: { ...floor.luyen, top2: 5 }, kiem: { ...floor.kiem, wrongTotal: 6 } }, floor), ['luyen.top2: 5 < 6', 'kiem.wrongTotal: 6 > 5']);
+  assert.deepEqual(meetsBaseline({ luyen: { ...floor.luyen, top1: 9, wrong: 0, wrongTotal: 1 }, kiem: { ...floor.kiem } }, floor), []);
+  assert.deepEqual(meetsBaseline({ luyen: { ...floor.luyen, top2: 5 }, kiem: { ...floor.kiem, wrong: 3, wrongTotal: 6 } }, floor), ['luyen.top2: 5 < 6', 'kiem.wrong: 3 > 2', 'kiem.wrongTotal: 6 > 5']);
 });
 
-test('seed ranking is not worse than the recorded baseline', async () => {
+test('the kiem half is frozen', () => {
+  const kiem = items.filter(i => i.split === 'kiem').map(({ id, question, expected }) => [id, question, expected]);
+  assert.equal(createHash('sha256').update(JSON.stringify(kiem)).digest('hex'), KIEM_SHA256,
+    'kiem changed: only relabel it in its own commit that gives the reason and the numbers before and after');
+});
+
+test('seed ranking scores exactly the recorded baseline', async () => {
   const metrics = await evaluateSupport(items, { rank: q => rankArticles(seedArticles(), q) });
   assert.deepEqual(meetsBaseline(metrics, baseline), []);
+  // Exact: a better score raises the floor in the same commit, so later wrong picks cannot hide in the slack.
+  for (const split of ['luyen', 'kiem']) {
+    for (const [name, floor] of Object.entries(baseline[split])) assert.equal(metrics[split][name], floor, `${split}.${name} improved: raise the baseline`);
+  }
 });
