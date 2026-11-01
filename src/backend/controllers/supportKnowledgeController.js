@@ -9,3 +9,11 @@ exports.create = handle(async (req, res) => { res.status(201).json({ article: aw
 exports.update = handle(async (req, res) => {
   res.json({ article: await knowledge.updateArticle(req.params.id, req.body, req.body.version, req.userId) });
 });
+const setStatus = status => handle(async (req, res) => {
+  res.json({ article: await knowledge.setArticleStatus(req.params.id, status, req.body.version, req.userId) });
+});
+exports.publish = setStatus('PUBLISHED');
+exports.unpublish = setStatus('DRAFT');
+exports.restore = handle(async (req, res) => {
+  res.json({ article: await knowledge.restoreArticle(req.params.id, req.body.changedAt, req.body.version, req.userId) });
+});

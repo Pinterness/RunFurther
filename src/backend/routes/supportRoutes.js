@@ -24,4 +24,7 @@ router.get('/admin/knowledge', knowledge.list);
 router.post('/admin/knowledge', writes, knowledge.create);
 router.get('/admin/knowledge/:id', knowledge.detail);
 router.put('/admin/knowledge/:id', writes, knowledge.update);
+router.post('/admin/knowledge/:id/publish', writes, knowledge.publish);
+router.post('/admin/knowledge/:id/unpublish', writes, knowledge.unpublish);
+router.post('/admin/knowledge/:id/restore', writes, knowledge.restore);
 module.exports = router;

@@ -11,7 +11,7 @@ const SupportArticle = require('../../src/backend/models/SupportArticle');
 const { seedSupportKnowledge } = require('../../scripts/seedSupportKnowledge');
 const { loadPublishedArticles, clearKnowledgeCache } = require('../../src/backend/services/supportKnowledgeStore');
 const { createSupportResponder } = require('../../src/backend/services/supportAiService');
-const { createArticle, updateArticle } = require('../../src/backend/services/supportKnowledgeAdmin');
+const { createArticle, updateArticle, setArticleStatus, restoreArticle } = require('../../src/backend/services/supportKnowledgeAdmin');
 const { createBackendHarness } = require('../helpers/backendHarness');
 
 const harness = createBackendHarness({ app, dbName: 'runfurther_support_admin' });
@@ -32,7 +32,9 @@ after(harness.stop);
 // The two tests below count the 11 seed articles, so they run before any test creates one.
 test('RUNNER gets 403 on knowledge admin routes, and there is no delete route', async () => {
   const hold = await article('hold');
-  for (const [method, path] of [['GET', KNOWLEDGE], ['POST', KNOWLEDGE], ['GET', `${KNOWLEDGE}/${hold._id}`], ['PUT', `${KNOWLEDGE}/${hold._id}`]]) {
+  const routes = [['GET', KNOWLEDGE], ['POST', KNOWLEDGE], ['GET', `${KNOWLEDGE}/${hold._id}`], ['PUT', `${KNOWLEDGE}/${hold._id}`],
+    ...['publish', 'unpublish', 'restore'].map(action => ['POST', `${KNOWLEDGE}/${hold._id}/${action}`])];
+  for (const [method, path] of routes) {
     const body = method === 'GET' ? undefined : { key: 'cua-runner', title: 'Runner', terms: ['runner'], answer: 'Không được lưu.', version: hold.version };
     assert.equal((await request(path, { method, as: runner, body })).status, 403, `${method} ${path}`);
   }
@@ -144,4 +146,71 @@ test('an update that breaks an article rule is 400 KNOWLEDGE_INVALID and changes
     [{ suggestions: ['a', 'b', 'c', 'd'] }, 'Câu gợi ý tối đa 3 mục.'],
   ]) await assert.rejects(updateArticle(registration._id, { ...registration, ...patch }, registration.version, admin.id), { statusCode: 400, code: 'KNOWLEDGE_INVALID', message }, JSON.stringify(patch));
   assert.deepEqual(await article('registration'), registration);
+});
+
+test('publish makes the bot answer with the article at once; unpublish takes it away', async () => {
+  const ask = async () => (await createSupportResponder({ generateReply: null })({ message: 'mang thú cưng vào đường chạy được không' })).reply;
+  const draft = await createArticle({ key: 'thu-cung', title: 'Thú cưng', terms: ['thú cưng'], answer: 'Không mang thú cưng vào đường chạy.', sources: [], suggestions: [] }, admin.id);
+  await loadPublishedArticles(); // warm the chat cache before each change below
+  assert.doesNotMatch(await ask(), /Không mang thú cưng/);
+  const published = await setArticleStatus(draft._id, 'PUBLISHED', draft.version, admin.id);
+  assert.deepEqual([published.status, published.version, published.history[0].status], ['PUBLISHED', 1, 'DRAFT']);
+  assert.match(await ask(), /Không mang thú cưng/);
+  const hidden = await setArticleStatus(draft._id, 'DRAFT', published.version, admin.id);
+  assert.deepEqual([hidden.status, hidden.version, hidden.history[0].status], ['DRAFT', 2, 'PUBLISHED']);
+  assert.doesNotMatch(await ask(), /Không mang thú cưng/);
+});
+
+test('the "Đổi cỡ áo" article with "đổi size áo" and "đổi size" comes first for "đổi size áo được không"', async () => {
+  const draft = await createArticle({ key: 'doi-co-ao', title: 'Đổi cỡ áo', terms: ['đổi size áo', 'đổi size'], answer: 'Đổi cỡ áo tại quầy nhận kit.', sources: [], suggestions: [] }, admin.id);
+  await setArticleStatus(draft._id, 'PUBLISHED', draft.version, admin.id);
+  const result = await createSupportResponder({ generateReply: null })({ message: 'đổi size áo được không' });
+  assert.ok(result.reply.startsWith('Đổi cỡ áo tại quầy nhận kit.'), result.reply);
+});
+
+test('restore copies a snapshot back, keeps the status and pushes the current content to history', async () => {
+  const content = (name, extra) => ({ title: `Bản ${name}`, terms: ['khôi phục thử'], answer: `Câu trả lời bản ${name}.`, sources: [], suggestions: [], ...extra });
+  const zero = await createArticle({ key: 'khoi-phuc', ...content('không') }, admin.id);
+  const one = await updateArticle(zero._id, content('một', { sources: [{ title: 'Vé của tôi', url: '/account' }], suggestions: ['Gợi ý một'], priority: 3 }), zero.version, admin.id);
+  const two = await updateArticle(zero._id, content('hai', { terms: ['khôi phục thử', 'bản hai'], priority: 5 }), one.version, admin.id);
+  const live = await setArticleStatus(zero._id, 'PUBLISHED', two.version, admin.id);
+  // History, newest first: [Bản hai DRAFT, Bản một DRAFT, Bản không DRAFT]. The chosen one sits in the
+  // middle with content of its own, so picking the newest or the oldest snapshot instead cannot pass.
+  const chosen = live.history[1];
+  assert.deepEqual([chosen.title, chosen.status, live.status], ['Bản một', 'DRAFT', 'PUBLISHED']);
+  await loadPublishedArticles(); // the chat cache now holds "Bản hai"
+  const restored = await restoreArticle(zero._id, chosen.changedAt.toISOString(), live.version, admin.id);
+  assert.deepEqual(
+    [restored.title, restored.terms, restored.answer, restored.sources, restored.suggestions, restored.priority, restored.status, restored.version],
+    ['Bản một', ['khôi phục thử'], 'Câu trả lời bản một.', [{ title: 'Vé của tôi', url: '/account' }], ['Gợi ý một'], 3, 'PUBLISHED', live.version + 1],
+  );
+  assert.deepEqual([restored.history.length, restored.history[0].title, restored.history[0].status], [4, 'Bản hai', 'PUBLISHED']);
+  assert.match((await createSupportResponder({ generateReply: null })({ message: 'khôi phục thử' })).reply, /Câu trả lời bản một/);
+});
+
+test('restore with an unknown changedAt is 404; with a stale version is 409', async () => {
+  const first = await createArticle({ key: 'khoi-phuc-loi', title: 'Khôi phục lỗi', terms: ['khôi phục lỗi'], answer: 'Bản một.', sources: [], suggestions: [] }, admin.id);
+  const edited = await updateArticle(first._id, { ...first, answer: 'Bản hai.' }, first.version, admin.id);
+  const before = await article('khoi-phuc-loi');
+  for (const changedAt of ['2001-01-01T00:00:00.000Z', 'không phải ngày', undefined]) {
+    await assert.rejects(restoreArticle(first._id, changedAt, edited.version, admin.id), { statusCode: 404, code: 'KNOWLEDGE_SNAPSHOT_NOT_FOUND', message: 'Không tìm thấy bản cũ này.' }, String(changedAt));
+  }
+  await assert.rejects(restoreArticle(first._id, edited.history[0].changedAt.toISOString(), first.version, admin.id), { statusCode: 409, code: 'KNOWLEDGE_VERSION_CONFLICT' });
+  assert.deepEqual(await article('khoi-phuc-loi'), before);
+});
+
+test('POST /:id/publish, /:id/unpublish and /:id/restore return { article }; an unknown snapshot is 404 { message, code }', async () => {
+  const draft = await createArticle({ key: 'qua-http', title: 'Qua HTTP', terms: ['qua http'], answer: 'Bản đầu qua HTTP.', sources: [], suggestions: [] }, admin.id);
+  const path = `${KNOWLEDGE}/${draft._id}`;
+  const published = await request(`${path}/publish`, { method: 'POST', as: admin, body: { version: 0 } });
+  assert.deepEqual([published.status, published.body.article.status, published.body.article.version], [200, 'PUBLISHED', 1]);
+  const edited = await request(path, { method: 'PUT', as: admin, body: { ...draft, answer: 'Bản hai qua HTTP.', version: 1 } });
+  const hidden = await request(`${path}/unpublish`, { method: 'POST', as: admin, body: { version: edited.body.article.version } });
+  assert.deepEqual([hidden.status, hidden.body.article.status, hidden.body.article.version], [200, 'DRAFT', 3]);
+  // The admin page sends back changedAt exactly as it received it in JSON.
+  const firstContent = hidden.body.article.history.find(snapshot => snapshot.answer === 'Bản đầu qua HTTP.' && snapshot.status === 'PUBLISHED');
+  const restored = await request(`${path}/restore`, { method: 'POST', as: admin, body: { version: 3, changedAt: firstContent.changedAt } });
+  assert.deepEqual([restored.status, restored.body.article.answer, restored.body.article.status, restored.body.article.version], [200, 'Bản đầu qua HTTP.', 'DRAFT', 4]);
+  const missing = await request(`${path}/restore`, { method: 'POST', as: admin, body: { version: 4, changedAt: '2001-01-01T00:00:00.000Z' } });
+  assert.deepEqual([missing.status, missing.body], [404, { message: 'Không tìm thấy bản cũ này.', code: 'KNOWLEDGE_SNAPSHOT_NOT_FOUND' }]);
 });

@@ -14,9 +14,10 @@ const notFound = () => httpError(404, 'Không tìm thấy bài tri thức.', err
 const conflict = () => httpError(409, 'Bài đã được người khác sửa, hãy tải lại.', errorCodes.KNOWLEDGE_VERSION_CONFLICT);
 const invalid = message => httpError(400, message, errorCodes.KNOWLEDGE_INVALID);
 
-// A form sets content only: key, status, version and history never come from the request body.
-function pickContent(input) {
-  const body = input && typeof input === 'object' ? input : {};
+// The content fields of a request body, an article or a snapshot. A form never sets key, status,
+// version or history directly.
+function contentOf(source) {
+  const body = source && typeof source === 'object' ? source : {};
   return Object.fromEntries(CONTENT_FIELDS.filter(field => body[field] !== undefined).map(field => [field, body[field]]));
 }
 
@@ -49,7 +50,7 @@ async function getArticle(id) {
 async function createArticle(input, actorId) {
   let created;
   try {
-    created = await SupportArticle.create({ ...pickContent(input), key: input?.key, status: 'DRAFT', updatedBy: actorId });
+    created = await SupportArticle.create({ ...contentOf(input), key: input?.key, status: 'DRAFT', updatedBy: actorId });
   } catch (error) {
     if (error?.code === 11000) throw httpError(409, 'Mã bài đã tồn tại.', errorCodes.KNOWLEDGE_KEY_TAKEN);
     throw asHttpError(error);
@@ -57,14 +58,14 @@ async function createArticle(input, actorId) {
   return getArticle(created._id);
 }
 
-// Applies `fields` only while the article is still at `version`. The content before the write goes to
-// history, signed with who saved that content and when, so the list reads "bản do X lưu lúc T".
-async function writeArticle(id, version, actorId, fields) {
+// Applies change(current) only while the article is still at `version`. The content before the write
+// goes to history, signed with who saved that content and when, so the list reads "bản do X lưu lúc T".
+async function writeArticle(id, version, actorId, change) {
   if (!Number.isInteger(version) || version < 0) throw invalid('Phiên bản bài không hợp lệ, hãy tải lại.');
   const current = mongoose.isObjectIdOrHexString(id) && await SupportArticle.findById(id).lean();
   if (!current) throw notFound();
-  const { title, terms, answer, sources, suggestions, priority, status } = current;
-  const snapshot = { title, terms, answer, sources, suggestions, priority, status, changedBy: current.updatedBy ?? null, changedAt: current.updatedAt };
+  const fields = change(current);
+  const snapshot = { ...contentOf(current), status: current.status, changedBy: current.updatedBy ?? null, changedAt: current.updatedAt };
   let saved;
   try {
     saved = await withNames(SupportArticle.findOneAndUpdate(
@@ -80,6 +81,20 @@ async function writeArticle(id, version, actorId, fields) {
   return present(saved);
 }
 
-const updateArticle = (id, input, version, actorId) => writeArticle(id, version, actorId, pickContent(input));
+const updateArticle = (id, input, version, actorId) => writeArticle(id, version, actorId, () => contentOf(input));
 
-module.exports = { ARTICLE_HISTORY_LIMIT, listArticles, getArticle, createArticle, updateArticle };
+// Publishing and unpublishing are versioned writes like any other, so they leave a snapshot too.
+const setArticleStatus = (id, status, version, actorId) => writeArticle(id, version, actorId, () => ({ status }));
+
+// Copies an older content back and keeps the current status. The content it replaces goes to history,
+// so a restore can itself be undone. A snapshot is identified by the time its content was saved.
+function restoreArticle(id, changedAt, version, actorId) {
+  return writeArticle(id, version, actorId, current => {
+    const at = new Date(changedAt).getTime();
+    const snapshot = current.history?.findLast(item => item.changedAt?.getTime() === at);
+    if (!snapshot) throw httpError(404, 'Không tìm thấy bản cũ này.', errorCodes.KNOWLEDGE_SNAPSHOT_NOT_FOUND);
+    return contentOf(snapshot);
+  });
+}
+
+module.exports = { ARTICLE_HISTORY_LIMIT, listArticles, getArticle, createArticle, updateArticle, setArticleStatus, restoreArticle };
