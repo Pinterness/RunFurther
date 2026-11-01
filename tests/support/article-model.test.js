@@ -32,7 +32,7 @@ test('article rejects external links, empty-after-normalize terms and over-limit
   for (const patch of [
     { sources: [{ title: 'x', url: '//evil.example' }] }, { sources: [{ title: 'x', url: 'https://evil.example/x' }] }, { terms: ['🙂'] }, { terms: [] },
     { terms: Array.from({ length: 31 }, (_, i) => 'cum ' + i) }, { answer: 'x'.repeat(2001) }, { title: 'x'.repeat(121) },
-    { key: 'Bad Key' }, { priority: 10 }, { priority: 1.5 }, { suggestions: ['a', 'b', 'c', 'd'] },
+    { key: 'Bad Key' }, { priority: 10 }, { priority: 1.5 }, { suggestions: ['a', 'b', 'c', 'd'] }, { suggestions: ['  '] },
     { sources: [1, 2, 3, 4].map(i => ({ title: 't', url: '/a' + i })) },
   ]) await assert.rejects(SupportArticle.create(fresh(patch)), { name: 'ValidationError' }, JSON.stringify(patch));
 });

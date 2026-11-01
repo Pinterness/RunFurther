@@ -45,7 +45,9 @@ function meetsBaseline(metrics, baseline) {
   for (const split of SPLITS) {
     for (const [name, floor] of Object.entries(baseline[split] || {})) {
       const value = metrics[split][name];
-      if (LOWER_IS_BETTER.includes(name) ? value > floor : value < floor) {
+      // A misspelt metric is undefined, and undefined < floor is false: report it instead of passing.
+      if (typeof value !== 'number') worse.push(`${split}.${name}: missing`);
+      else if (LOWER_IS_BETTER.includes(name) ? value > floor : value < floor) {
         worse.push(`${split}.${name}: ${value} ${LOWER_IS_BETTER.includes(name) ? '>' : '<'} ${floor}`);
       }
     }

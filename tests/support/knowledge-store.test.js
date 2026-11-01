@@ -81,3 +81,26 @@ test('a failing store gives the FALLBACK answer', async () => {
   const result = await answer({ message: 'giữ chỗ được bao lâu' });
   assert.equal(result.mode, 'guide'); assert.match(result.reply, /chưa có thông tin đã xác thực/);
 });
+
+test('a failed knowledge read is logged, so an outage does not look like an unanswered question', async (t) => {
+  const logged = t.mock.method(console, 'error', () => {});
+  await createSupportResponder({ findArticles: async () => { throw new Error('db down'); }, generateReply: null })({ message: 'giữ chỗ được bao lâu' });
+  assert.match(logged.mock.calls.map(call => call.arguments.join(' ')).join('\n'), /db down/);
+});
+
+test('a PUBLISHED row written around the model rules is skipped and logged, and other articles still answer', async (t) => {
+  const logged = t.mock.method(console, 'error', () => {});
+  const broken = ['hong-terms', 'link-ngoai'];
+  t.after(() => SupportArticle.deleteMany({ key: { $in: [...broken, 'con-tot'] } }));
+  await SupportArticle.collection.insertMany([ // như khi sửa tay trong Compass: không qua luật của model
+    { key: 'hong-terms', title: 'Hỏng', terms: null, answer: 'Bài hỏng', status: 'PUBLISHED', createdAt: new Date() },
+    { key: 'link-ngoai', title: 'Link ngoài', terms: ['cau co link ngoai'], answer: 'Xem trang ngoài', sources: [{ title: 'x', url: 'https://evil.example' }], status: 'PUBLISHED', createdAt: new Date() },
+  ]);
+  await SupportArticle.create({ key: 'con-tot', title: 'Còn tốt', terms: ['cau van tra loi duoc'], answer: 'Bài còn tốt', status: 'PUBLISHED' });
+  clearKnowledgeCache();
+  const keys = (await loadPublishedArticles()).map(article => article.key);
+  assert.ok(keys.includes('con-tot')); assert.deepEqual(broken.filter(key => keys.includes(key)), []);
+  assert.equal(logged.mock.callCount(), 2);
+  const result = await createSupportResponder({ generateReply: null })({ message: 'Câu vẫn trả lời được không?' });
+  assert.match(result.reply, /Bài còn tốt/);
+});

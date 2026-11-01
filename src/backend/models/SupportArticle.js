@@ -44,7 +44,7 @@ const supportArticleSchema = new mongoose.Schema(
     answer: { type: String, required: [true, 'Bài phải có câu trả lời.'], trim: true, maxlength: [2000, 'Câu trả lời tối đa 2000 ký tự.'] },
     sources: { type: [{ _id: false, ...sourceFields() }], validate: maxItems(3, 'Nguồn') },
     suggestions: {
-      type: [{ type: String, trim: true, maxlength: [120, 'Mỗi câu gợi ý tối đa 120 ký tự.'] }],
+      type: [{ type: String, trim: true, minlength: [1, 'Câu gợi ý không được để trống.'], maxlength: [120, 'Mỗi câu gợi ý tối đa 120 ký tự.'] }],
       validate: maxItems(3, 'Câu gợi ý'),
     },
     priority: {

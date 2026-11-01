@@ -23,10 +23,18 @@ function createKnowledgeStore({ find, ttlMs = 60000, now = Date.now }) {
   };
 }
 
+// A row written around the model rules (edited by hand in Compass, or by a raw updateOne) is skipped,
+// so it can neither crash every chat answer nor slip an external link into one. The log names it.
+function isValidArticle(row) {
+  const error = new SupportArticle(row).validateSync();
+  if (error) console.error(`Support article "${row.key}" skipped:`, error.message);
+  return !error;
+}
+
 const store = createKnowledgeStore({
-  find: () => SupportArticle.find({ status: 'PUBLISHED' })
+  find: async () => (await SupportArticle.find({ status: 'PUBLISHED' })
     .select('key title terms answer sources suggestions priority')
-    .sort({ createdAt: 1, _id: 1 }).maxTimeMS(1500).lean(),
+    .sort({ createdAt: 1, _id: 1 }).maxTimeMS(1500).lean()).filter(isValidArticle),
 });
 
 const loadPublishedArticles = () => store.load();

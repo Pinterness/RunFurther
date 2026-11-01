@@ -141,7 +141,7 @@ function createSupportResponder({ findArticles = loadPublishedArticles, findEven
     }
     let published;
     // A failed knowledge read is an outage, not a question the bot cannot answer: reply with FALLBACK.
-    try { published = await findArticles(); } catch { return result; }
+    try { published = await findArticles(); } catch (error) { console.error('Support knowledge read failed:', error.message); return result; }
     const articles = rankArticles(published, question, history);
     if (!articles.length) return result;
     result.reply = articles.map(article => article.answer).join('\n\n');

@@ -52,6 +52,7 @@ test('meetsBaseline reports only the numbers that got worse', () => {
   assert.deepEqual(meetsBaseline({ luyen: { ...floor.luyen }, kiem: { ...floor.kiem } }, floor), []);
   assert.deepEqual(meetsBaseline({ luyen: { ...floor.luyen, top1: 9, wrong: 0, wrongTotal: 1 }, kiem: { ...floor.kiem } }, floor), []);
   assert.deepEqual(meetsBaseline({ luyen: { ...floor.luyen, top2: 5 }, kiem: { ...floor.kiem, wrong: 3, wrongTotal: 6 } }, floor), ['luyen.top2: 5 < 6', 'kiem.wrong: 3 > 2', 'kiem.wrongTotal: 6 > 5']);
+  assert.deepEqual(meetsBaseline({ luyen: { ...floor.luyen }, kiem: { ...floor.kiem } }, { luyen: { top_1: 5 }, kiem: {} }), ['luyen.top_1: missing'], 'a misspelt metric must not pass');
 });
 
 test('the kiem half is frozen', () => {
