@@ -165,6 +165,15 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await expect(previewReply.locator('script, img')).toHaveCount(0);
     assert.equal(previews.at(-1).draft.key, 'doi-co-ao');
 
+    // An emptied "Ưu tiên" stops the save instead of going out as priority 0.
+    const priority = editor.getByLabel('Ưu tiên', { exact: true }), writesBeforeEmpty = writes.length;
+    await priority.fill('');
+    await saveButton.click();
+    await expect.poll(() => priority.evaluate(input => input.validity.valueMissing)).toBe(true);
+    await editor.getByRole('button', { name: 'Hủy thay đổi', exact: true }).click();
+    await expect(priority).toHaveValue('0');
+    assert.equal(writes.length, writesBeforeEmpty, 'an empty priority is never sent');
+
     // Unsaved edits are not dropped by opening another article.
     await editor.getByLabel('Tiêu đề').fill('Đổi cỡ áo (sửa dở)');
     await rows.filter({ hasText: 'Giữ chỗ và đơn hết hạn' }).click();
@@ -206,6 +215,6 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     // 8. No dialog and no uncaught error anywhere in the run.
     assert.deepEqual(dialogs, []);
     assert.deepEqual(errors, []);
-    console.log('PASS: knowledge tab list, create as draft, preview before saving (a taken key refused), publish, 409 with reload, busy guard, markup as plain text, unsaved-edit guard, history and restore by changedAt, mobile layout and role gate (API fixtures only).');
+    console.log('PASS: knowledge tab list, create as draft, preview before saving (a taken key refused), publish, 409 with reload, busy guard, empty priority refused, markup as plain text, unsaved-edit guard, history and restore by changedAt, mobile layout and role gate (API fixtures only).');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

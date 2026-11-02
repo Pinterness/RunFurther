@@ -397,7 +397,7 @@ Tất cả endpoint dưới đây dùng tiền tố `/api/support`, trả `Cache
 - Bốn thao tác đó xóa cache tri thức, nên bot dùng nội dung mới ngay, không chờ hết 60 giây. Tạo bài thì không cần xóa, vì bài mới là nháp.
 - Xem thử dựng bài đang soạn trong bộ nhớ, kiểm bằng đúng luật của model, ghép vào một bản sao danh sách bài đã xuất bản, rồi gọi chính bộ trả lời của chat với AI tắt. Bản nháp của một bài đang xuất bản đứng đúng chỗ của bài đó, vì hai bài bằng điểm và bằng ưu tiên thì bài lưu trước đứng trước; bản nháp khác đứng cuối, như một bài vừa tạo. Nhờ vậy xem thử ra đúng câu mà chat trả lời sau khi lưu. Danh sách mà chat thật đang dùng không bị sửa. Bài mới chưa có mã thì giao diện dùng mã tạm `ban-nhap`; mã đã có bài khác dùng thì giao diện báo lỗi thay vì xem thử, vì lưu bài đó sẽ nhận 409. MongoDB lỗi lúc xem thử thì trả 500, không giả câu dự phòng như chat, để admin biết đó là sự cố chứ không phải bài không khớp.
 - Nội dung admin nhập hiển thị bằng text của React, không dùng `dangerouslySetInnerHTML`, nên `<script>` hiện đúng là chữ.
-- Giao diện khóa các nút ghi trong lúc đang lưu, không mở bài khác khi còn thay đổi chưa lưu, chỉ cho xuất bản khi form không còn thay đổi chưa lưu, và hỏi xác nhận trong hộp thoại trước khi khôi phục.
+- Giao diện khóa các nút ghi trong lúc đang lưu, không mở bài khác khi còn thay đổi chưa lưu, chỉ cho xuất bản khi form không còn thay đổi chưa lưu, không cho lưu khi ô "Ưu tiên" để trống, và hỏi xác nhận trong hộp thoại trước khi khôi phục.
 
 **Kiểm tra**
 
