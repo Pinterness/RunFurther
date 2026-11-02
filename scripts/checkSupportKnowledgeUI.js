@@ -109,7 +109,17 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await expect(previewReply).toHaveText('Đổi cỡ áo tại quầy nhận kit.');
     assert.deepEqual(previews.at(-1), { question: 'đổi size áo được không', draft: { key: 'ban-nhap', title: 'Đổi cỡ áo', terms: ['đổi size áo', 'đổi size'], answer: 'Đổi cỡ áo tại quầy nhận kit.', sources: [], suggestions: [], priority: 0 } });
     assert.equal(writes.length, 0, 'Xem thử saves nothing');
+    // A key another article uses could never be saved, so "Xem thử" refuses it instead of answering for it.
+    const previewCount = previews.length;
+    await editor.getByLabel('Mã bài').fill('hold');
+    await editor.getByRole('button', { name: 'Xem thử', exact: true }).click();
+    await expect(editor.locator('.knowledge-preview').getByRole('alert')).toHaveText('Mã bài “hold” đã có bài khác dùng. Hãy đổi mã rồi xem thử lại.');
+    await expect(previewReply).toHaveCount(0);
+    assert.equal(previews.length, previewCount);
     await editor.getByLabel('Mã bài').fill('doi-co-ao');
+    await editor.getByRole('button', { name: 'Xem thử', exact: true }).click();
+    await expect(previewReply).toHaveText('Đổi cỡ áo tại quầy nhận kit.');
+    assert.equal(previews.at(-1).draft.key, 'doi-co-ao');
     holdReads = true; // a read of the new article that answers after "Xuất bản" must not put version 0 back
     await saveButton.click();
     const shirtRow = rows.filter({ hasText: 'Đổi cỡ áo' });
@@ -196,6 +206,6 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     // 8. No dialog and no uncaught error anywhere in the run.
     assert.deepEqual(dialogs, []);
     assert.deepEqual(errors, []);
-    console.log('PASS: knowledge tab list, create as draft, preview before saving, publish, 409 with reload, busy guard, markup as plain text, unsaved-edit guard, history and restore by changedAt, mobile layout and role gate (API fixtures only).');
+    console.log('PASS: knowledge tab list, create as draft, preview before saving (a taken key refused), publish, 409 with reload, busy guard, markup as plain text, unsaved-edit guard, history and restore by changedAt, mobile layout and role gate (API fixtures only).');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

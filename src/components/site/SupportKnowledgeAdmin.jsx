@@ -126,7 +126,10 @@ export default function SupportKnowledgeAdmin() {
     const request = new AbortController(); previewRequest.current = request;
     setPreviewBusy(true); setPreview(null); setPreviewError('');
     try {
-      const draft = { key: isNew ? form.key.trim() || PREVIEW_KEY : article.key, ...contentOf(form) };
+      const key = isNew ? form.key.trim() || PREVIEW_KEY : article.key;
+      // Saving a new article under a key in use fails with 409, so a preview of it would mislead.
+      if (isNew && articles.some(item => item.key === key)) throw new Error('Mã bài “' + key + '” đã có bài khác dùng. Hãy đổi mã rồi xem thử lại.');
+      const draft = { key, ...contentOf(form) };
       const result = await api(endpoint + '/preview', { method: 'POST', signal: request.signal, body: JSON.stringify({ question: text, draft }) });
       if (!request.signal.aborted) setPreview(result);
     } catch (error) { if (!request.signal.aborted) setPreviewError(error.message); }

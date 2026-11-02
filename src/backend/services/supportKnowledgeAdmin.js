@@ -114,8 +114,13 @@ async function previewAnswer({ question, draft } = {}) {
       throw asHttpError(error);
     }
     const { key, title, terms, answer, sources, suggestions, priority } = candidate.toObject();
-    // A new array: the cached list the live chat reads must never see the draft.
-    articles = [...articles.filter(article => article.key !== key), { key, title, terms, answer, sources, suggestions, priority }];
+    const stand = { key, title, terms, answer, sources, suggestions, priority };
+    // Ranking ties keep the stored order (oldest first), so a draft of a published article takes that
+    // article's place, and any other draft goes last, as a newly created article would. A new array:
+    // the cached list the live chat reads must never see the draft.
+    articles = articles.some(article => article.key === key)
+      ? articles.map(article => (article.key === key ? stand : article))
+      : [...articles, stand];
   }
   return createSupportResponder({ findArticles: async () => articles, generateReply: null })({ message: question });
 }

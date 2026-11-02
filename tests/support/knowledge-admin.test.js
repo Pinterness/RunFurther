@@ -273,3 +273,25 @@ test('an invalid draft or question is 400 KNOWLEDGE_INVALID', async () => {
     assert.deepEqual([response.status, response.body], [400, { message, code: 'KNOWLEDGE_INVALID' }], JSON.stringify(body).slice(0, 80));
   }
 });
+
+test('preview gives the reply the chat gives once the draft is saved, also when articles tie', async () => {
+  // Same term and priority, so only the stored order (oldest first) decides which answers come first.
+  const question = 'hòa điểm xem thử';
+  const ask = async () => (await createSupportResponder({ generateReply: null })({ message: question })).reply;
+  const publish = async (key, answer) => {
+    const draft = await createArticle({ key, title: answer, terms: [question], answer, sources: [], suggestions: [] }, admin.id);
+    return setArticleStatus(draft._id, 'PUBLISHED', draft.version, admin.id);
+  };
+  const older = await publish('hoa-diem-mot', 'Bài cũ hơn.');
+  await publish('hoa-diem-hai', 'Bài mới hơn.');
+  // An edit of the older article keeps its place ahead of the newer one.
+  const edited = { ...older, answer: 'Bài cũ hơn, đã sửa.' };
+  const editPreview = await previewAnswer({ question, draft: edited });
+  await updateArticle(older._id, edited, older.version, admin.id);
+  assert.equal(editPreview.reply, await ask());
+  // A new article goes after both, as it will once it is created and published.
+  const fresh = { key: 'hoa-diem-ba', title: 'Bài mới nhất.', terms: [question], answer: 'Bài mới nhất.', sources: [], suggestions: [] };
+  const newPreview = await previewAnswer({ question, draft: fresh });
+  await publish('hoa-diem-ba', 'Bài mới nhất.');
+  assert.equal(newPreview.reply, await ask());
+});
