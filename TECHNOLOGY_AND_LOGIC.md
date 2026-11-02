@@ -376,9 +376,33 @@ Tất cả endpoint dưới đây dùng tiền tố `/api/support`, trả `Cache
 - Nội dung chat nhanh chỉ ở state giao diện, không được lưu thành cuộc hội thoại trong MongoDB. Đổi phiên đăng nhập xóa state và hủy request cũ để tránh phản hồi tài khoản trước đi vào tài khoản mới. Câu hỏi gửi qua AI khi bật provider vẫn được xử lý theo chính sách của provider.
 - Rate limit theo IP trong bộ nhớ từng tiến trình: chat 12/phút, tạo yêu cầu 6/phút; bổ sung/phản hồi/đóng/mở lại dùng chung bộ giới hạn 30/phút. Nếu triển khai nhiều instance cần kho giới hạn và điều phối đồng thời dùng chung; giới hạn hiện tại chưa phải hạn mức chi phí toàn nền tảng.
 
+**Dạy bot trên trang admin (P05, 02/11/2026)**
+
+- SUPER_ADMIN dạy bot tại `/admin` → **Tri thức trợ lý** (`src/components/site/SupportKnowledgeAdmin.jsx`). Bên trái là danh sách mọi bài, cả nháp lẫn đã xuất bản, kèm người lưu gần nhất; bài chưa ai sửa ghi "Script nạp". Bên phải là form theo đúng giới hạn của model, ô xem thử, lịch sử và khôi phục. P06 và P08 thêm mục của mình vào chính component này.
+- API nằm dưới `/api/support/admin/knowledge`, sau lớp `requireSuperAdmin`, theo kiểu vỏ `{ ticket }` của hộp thư:
+
+| Endpoint | Hành vi |
+| --- | --- |
+| `GET /admin/knowledge` | `{ articles }`: mọi bài, không kèm lịch sử |
+| `GET /admin/knowledge/:id` | `{ article }` đầy đủ, `history` mới nhất đứng trước |
+| `POST /admin/knowledge` | 201 `{ article }`, bài mới luôn là nháp; trùng mã thì 409 |
+| `PUT /admin/knowledge/:id` | Sửa nội dung, body kèm `version`; mã bài không đổi được |
+| `POST /admin/knowledge/:id/publish`, `/unpublish` | Đổi trạng thái, body `{ version }` |
+| `POST /admin/knowledge/:id/restore` | Chép lại nội dung của bản cũ có `changedAt` đó, giữ trạng thái hiện tại; body `{ version, changedAt }` |
+| `POST /admin/knowledge/preview` | Xem thử, trả đúng vỏ của `POST /chat`; không lưu gì, không gọi AI |
+
+- Không có route xóa: muốn ẩn bài thì gỡ xuất bản. Các route ghi dùng chung bộ giới hạn 30 lần/phút với các thao tác ghi của hộp thư hỗ trợ; xem thử chỉ đọc nên không bị đếm. Lỗi trả `{ message, code }` với thông báo tiếng Việt.
+- Chống ghi đè: mỗi lần ghi gửi kèm `version` mà trang đang giữ. Server chỉ ghi khi bài vẫn ở đúng `version` đó (`findOneAndUpdate({ _id, version })`) rồi tăng `version` lên 1. Người khác lưu trước thì trả 409 "Bài đã được người khác sửa, hãy tải lại.", và giao diện hiện nút **Tải lại bài**.
+- Lịch sử: trước mỗi lần sửa, xuất bản, gỡ hay khôi phục, nội dung cũ được cất vào `history` cùng người lưu và thời điểm lưu của chính bản đó, giữ 20 bản mới nhất. Khôi phục cũng là một lần ghi, nên khôi phục nhầm thì vẫn khôi phục lại được.
+- Bốn thao tác đó xóa cache tri thức, nên bot dùng nội dung mới ngay, không chờ hết 60 giây. Tạo bài thì không cần xóa, vì bài mới là nháp.
+- Xem thử dựng bài đang soạn trong bộ nhớ, kiểm bằng đúng luật của model, ghép vào một bản sao danh sách bài đã xuất bản, rồi gọi chính bộ trả lời của chat với AI tắt. Bản nháp của một bài đang xuất bản đứng đúng chỗ của bài đó, vì hai bài bằng điểm và bằng ưu tiên thì bài lưu trước đứng trước; bản nháp khác đứng cuối, như một bài vừa tạo. Nhờ vậy xem thử ra đúng câu mà chat trả lời sau khi lưu. Danh sách mà chat thật đang dùng không bị sửa. Bài mới chưa có mã thì giao diện dùng mã tạm `ban-nhap`; mã đã có bài khác dùng thì giao diện báo lỗi thay vì xem thử, vì lưu bài đó sẽ nhận 409. MongoDB lỗi lúc xem thử thì trả 500, không giả câu dự phòng như chat, để admin biết đó là sự cố chứ không phải bài không khớp.
+- Nội dung admin nhập hiển thị bằng text của React, không dùng `dangerouslySetInnerHTML`, nên `<script>` hiện đúng là chữ.
+- Giao diện khóa các nút ghi trong lúc đang lưu, không mở bài khác khi còn thay đổi chưa lưu, chỉ cho xuất bản khi form không còn thay đổi chưa lưu, không cho lưu khi ô "Ưu tiên" để trống, và hỏi xác nhận trong hộp thoại trước khi khôi phục.
+
 **Kiểm tra**
 
-- `npm run test:support`: đã đạt 17/17 tại lần cập nhật này. Bao gồm 13 kiểm tra service với DB/fetch giả lập và 4 kiểm tra API trên MongoMemoryReplSet riêng: sở hữu, vai trò, phản hồi, đóng/mở lại, giới hạn đồng thời 100 tin, phiên bị khóa và validation.
+- `npm run test:support`: đạt 63/63 tại lần cập nhật P05, gồm `tests/support.test.js`, `tests/support-service.test.js` và `tests/support/*.test.js`. Riêng `tests/support/knowledge-admin.test.js` kiểm quyền, vỏ JSON, hai lần lưu cùng lúc (một bên nhận 409), lịch sử 20 bản, xuất bản và gỡ, khôi phục, và xem thử không ghi gì, không gọi AI kể cả khi AI đang bật.
+- `npm run test:support-knowledge-ui`: kịch bản Chrome với API giả cho tab Tri thức trợ lý; cần web đang chạy. API giả theo đúng vỏ JSON của các route trên và cũng trả 409 khi `version` lệch.
 - Provider được kiểm tra cấu hình bắt buộc, body Responses, đọc nhiều output, timeout/lỗi/phản hồi quá dài, tối đa 4 lời gọi đồng thời, câu hỏi đủ 2.000 ký tự và dữ liệu nhạy cảm ở cuối câu. Không gọi API AI hoặc giao dịch thật.
 - `npm run test:support-ui`: kịch bản Chrome/API fixtures cho hộp thư hỗ trợ; cần web đang chạy. Kết quả kiểm tra giao diện được xác nhận riêng khi chạy lệnh này, không suy ra từ kiểm tra backend.
 
