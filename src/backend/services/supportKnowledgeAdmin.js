@@ -1,6 +1,8 @@
 const mongoose = require('mongoose');
 const SupportArticle = require('../models/SupportArticle');
-const { clearKnowledgeCache } = require('./supportKnowledgeStore');
+const { SUPPORT_MESSAGE_LIMIT } = require('./supportKnowledge');
+const { loadPublishedArticles, clearKnowledgeCache } = require('./supportKnowledgeStore');
+const { createSupportResponder } = require('./supportAiService');
 const { httpError } = require('../lib/errors');
 const errorCodes = require('../lib/errorCodes');
 
@@ -97,4 +99,25 @@ function restoreArticle(id, changedAt, version, actorId) {
   });
 }
 
-module.exports = { ARTICLE_HISTORY_LIMIT, listArticles, getArticle, createArticle, updateArticle, setArticleStatus, restoreArticle };
+// "Xem thử": how the bot would answer if `draft` were published. The draft stands in for the PUBLISHED
+// article with its key, for this answer only: nothing is saved, and the AI is never called (spec T6).
+async function previewAnswer({ question, draft } = {}) {
+  if (typeof question !== 'string' || !question.trim() || question.length > SUPPORT_MESSAGE_LIMIT) {
+    throw invalid(`Câu hỏi xem thử phải có từ 1 đến ${SUPPORT_MESSAGE_LIMIT} ký tự.`);
+  }
+  let articles = await loadPublishedArticles();
+  if (draft !== undefined && draft !== null) {
+    const candidate = new SupportArticle({ ...contentOf(draft), key: draft.key, status: 'PUBLISHED' });
+    try {
+      await candidate.validate();
+    } catch (error) {
+      throw asHttpError(error);
+    }
+    const { key, title, terms, answer, sources, suggestions, priority } = candidate.toObject();
+    // A new array: the cached list the live chat reads must never see the draft.
+    articles = [...articles.filter(article => article.key !== key), { key, title, terms, answer, sources, suggestions, priority }];
+  }
+  return createSupportResponder({ findArticles: async () => articles, generateReply: null })({ message: question });
+}
+
+module.exports = { ARTICLE_HISTORY_LIMIT, listArticles, getArticle, createArticle, updateArticle, setArticleStatus, restoreArticle, previewAnswer };

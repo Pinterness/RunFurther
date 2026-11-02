@@ -22,6 +22,7 @@ router.patch('/admin/tickets/:ticketId', writes, support.setStatus);
 // Super Admin teaches the bot. There is no delete route: an article is hidden by unpublishing it.
 router.get('/admin/knowledge', knowledge.list);
 router.post('/admin/knowledge', writes, knowledge.create);
+router.post('/admin/knowledge/preview', knowledge.preview); // reads only, so outside the write limit
 router.get('/admin/knowledge/:id', knowledge.detail);
 router.put('/admin/knowledge/:id', writes, knowledge.update);
 router.post('/admin/knowledge/:id/publish', writes, knowledge.publish);

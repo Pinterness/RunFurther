@@ -11,7 +11,7 @@ const SupportArticle = require('../../src/backend/models/SupportArticle');
 const { seedSupportKnowledge } = require('../../scripts/seedSupportKnowledge');
 const { loadPublishedArticles, clearKnowledgeCache } = require('../../src/backend/services/supportKnowledgeStore');
 const { createSupportResponder } = require('../../src/backend/services/supportAiService');
-const { createArticle, updateArticle, setArticleStatus, restoreArticle } = require('../../src/backend/services/supportKnowledgeAdmin');
+const { createArticle, updateArticle, setArticleStatus, restoreArticle, previewAnswer } = require('../../src/backend/services/supportKnowledgeAdmin');
 const { createBackendHarness } = require('../helpers/backendHarness');
 
 const harness = createBackendHarness({ app, dbName: 'runfurther_support_admin' });
@@ -32,7 +32,7 @@ after(harness.stop);
 // The two tests below count the 11 seed articles, so they run before any test creates one.
 test('RUNNER gets 403 on knowledge admin routes, and there is no delete route', async () => {
   const hold = await article('hold');
-  const routes = [['GET', KNOWLEDGE], ['POST', KNOWLEDGE], ['GET', `${KNOWLEDGE}/${hold._id}`], ['PUT', `${KNOWLEDGE}/${hold._id}`],
+  const routes = [['GET', KNOWLEDGE], ['POST', KNOWLEDGE], ['POST', `${KNOWLEDGE}/preview`], ['GET', `${KNOWLEDGE}/${hold._id}`], ['PUT', `${KNOWLEDGE}/${hold._id}`],
     ...['publish', 'unpublish', 'restore'].map(action => ['POST', `${KNOWLEDGE}/${hold._id}/${action}`])];
   for (const [method, path] of routes) {
     const body = method === 'GET' ? undefined : { key: 'cua-runner', title: 'Runner', terms: ['runner'], answer: 'Không được lưu.', version: hold.version };
@@ -213,4 +213,63 @@ test('POST /:id/publish, /:id/unpublish and /:id/restore return { article }; an 
   assert.deepEqual([restored.status, restored.body.article.answer, restored.body.article.status, restored.body.article.version], [200, 'Bản đầu qua HTTP.', 'DRAFT', 4]);
   const missing = await request(`${path}/restore`, { method: 'POST', as: admin, body: { version: 4, changedAt: '2001-01-01T00:00:00.000Z' } });
   assert.deepEqual([missing.status, missing.body], [404, { message: 'Không tìm thấy bản cũ này.', code: 'KNOWLEDGE_SNAPSHOT_NOT_FOUND' }]);
+});
+
+test('preview answers with an unsaved draft in the chat reply shape, and the live chat never sees the draft', async () => {
+  const draft = { key: 'gui-xe', title: 'Gửi xe', terms: ['gửi xe'], answer: 'Bãi gửi xe ở cổng B.', sources: [{ title: 'Trang giải', url: '/events' }], suggestions: ['Giờ mở bãi xe?'] };
+  const { status, body } = await request(`${KNOWLEDGE}/preview`, { method: 'POST', as: admin, body: { question: 'cho mình gửi xe ở đâu', draft } });
+  assert.equal(status, 200);
+  assert.deepEqual(Object.keys(body).sort(), ['mode', 'reply', 'sources', 'suggestions']);
+  assert.deepEqual([body.mode, body.reply, body.sources, body.suggestions], ['guide', 'Bãi gửi xe ở cổng B.', [{ title: 'Trang giải', url: '/events' }], ['Giờ mở bãi xe?']]);
+  const live = await createSupportResponder({ generateReply: null })({ message: 'cho mình gửi xe ở đâu' });
+  assert.doesNotMatch(live.reply, /Bãi gửi xe/);
+  assert.equal(await SupportArticle.countDocuments({ key: 'gui-xe' }), 0);
+});
+
+test('preview writes nothing and never calls the AI, even with the AI switched on', async t => {
+  // Switch the current AI adapter fully on and fake its provider: an answer that reached it would come back in 'ai' mode.
+  const realFetch = global.fetch, aiCalls = [];
+  global.fetch = async (url, options) => {
+    if (!String(url).startsWith('https://api.openai.com/')) return realFetch(url, options);
+    aiCalls.push(String(url));
+    return Response.json({ status: 'completed', output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Câu trả lời do AI viết.' }] }] });
+  };
+  const keys = ['SUPPORT_AI_PROVIDER', 'OPENAI_API_KEY', 'OPENAI_MODEL'];
+  const savedEnv = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  Object.assign(process.env, { SUPPORT_AI_PROVIDER: 'openai', OPENAI_API_KEY: 'test-only-key', OPENAI_MODEL: 'test-model' });
+  t.after(() => {
+    global.fetch = realFetch;
+    for (const key of keys) if (savedEnv[key] === undefined) delete process.env[key]; else process.env[key] = savedEnv[key];
+  });
+  // Control: the ordinary chat does reach the fake provider, so the "no AI call" check below can fail.
+  const control = await createSupportResponder()({ message: 'giữ chỗ được bao lâu' });
+  assert.deepEqual([control.mode, aiCalls.length], ['ai', 1]);
+  const articlesBefore = await SupportArticle.find().sort({ _id: 1 }).lean();
+  const draft = { key: 'giu-cho-thu', title: 'Giữ chỗ thử', terms: ['giữ chỗ'], answer: 'Bản nháp về giữ chỗ.', sources: [], suggestions: [] };
+  const result = await previewAnswer({ question: 'giữ chỗ được bao lâu', draft });
+  assert.deepEqual([result.mode, aiCalls.length], ['guide', 1]);
+  assert.deepEqual(await SupportArticle.find().sort({ _id: 1 }).lean(), articlesBefore);
+});
+
+test('preview without a draft answers from the published articles; a draft with a published key stands in for it in the preview only', async () => {
+  const hold = await article('hold');
+  assert.ok((await previewAnswer({ question: 'giữ chỗ được bao lâu' })).reply.startsWith(hold.answer));
+  // The admin page sends the whole article it is editing; only the content and the key count.
+  const result = await previewAnswer({ question: 'giữ chỗ được bao lâu', draft: { ...hold, answer: 'Giữ chỗ thử 99 phút.' } });
+  assert.ok(result.reply.startsWith('Giữ chỗ thử 99 phút.'), result.reply);
+  assert.ok(!result.reply.includes(hold.answer), 'the published hold answer is replaced, not repeated');
+  assert.deepEqual(await article('hold'), hold);
+});
+
+test('an invalid draft or question is 400 KNOWLEDGE_INVALID', async () => {
+  const draft = { key: 'nhap-sai', title: 'Nháp sai', terms: ['nháp sai'], answer: 'Nháp.', sources: [], suggestions: [] };
+  for (const [body, message] of [
+    [{ question: 'nháp sai', draft: { ...draft, sources: [{ title: 'Ngoài', url: '//evil.example/x' }] } }, 'Liên kết nguồn phải là đường dẫn nội bộ.'],
+    [{ question: 'nháp sai', draft: { ...draft, terms: ['🙂'] } }, 'Từ khóa phải có chữ hoặc số.'],
+    [{ question: '   ', draft }, 'Câu hỏi xem thử phải có từ 1 đến 2000 ký tự.'],
+    [{ question: 'x'.repeat(2001) }, 'Câu hỏi xem thử phải có từ 1 đến 2000 ký tự.'],
+  ]) {
+    const response = await request(`${KNOWLEDGE}/preview`, { method: 'POST', as: admin, body });
+    assert.deepEqual([response.status, response.body], [400, { message, code: 'KNOWLEDGE_INVALID' }], JSON.stringify(body).slice(0, 80));
+  }
 });
