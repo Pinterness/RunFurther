@@ -2,6 +2,7 @@
 // normalized text, and every read is scoped to the userId of the verified token: nothing typed in
 // the question (a BIB, an order code, an email) ever selects whose data is read. Reads only.
 const Registration = require('../models/Registration');
+const Booking = require('../models/Booking');
 const { internalPath } = require('../../lib/internalPath.cjs');
 const { calendarDate } = require('../../lib/runnerValidation.cjs');
 const { normalizeSupportText } = require('./supportKnowledge');
@@ -113,6 +114,20 @@ const readers = {
     const lines = upcoming.slice(0, LIMITS.shown).map(row => `- ${row.eventId.name}${row.categoryId?.name ? ` (${row.categoryId.name})` : ''}, ngày ${vietnamDate(row.eventId.dateInfo.raceDate)}: BIB ${row.bibNumber || 'chưa cấp'}, ${TICKET_LABELS[row.status]}.`);
     const more = upcoming.length > LIMITS.shown ? `\nMình hiện ${LIMITS.shown} vé gần nhất, bạn xem đủ trong "Vé của tôi".` : '';
     return { reply: `Bạn có ${upcoming.length} vé sắp chạy:\n${lines.join('\n')}${more}`, actions };
+  },
+
+  // Expired holds stay HOLD until the sweeper runs, so the query itself requires expiresAt > now.
+  // The order code is not selected: it is the transfer content and the bot never needs it.
+  async holds(userId, now) {
+    const rows = await Booking.find({ userId, status: 'HOLD', expiresAt: { $gt: now } })
+      .select('eventId categoryId expiresAt')
+      .populate('eventId', 'name').populate('categoryId', 'name')
+      .sort({ expiresAt: 1 }).limit(LIMITS.privateRows).maxTimeMS(LIMITS.queryMs).lean();
+    const actions = [TASKS.holds.action];
+    if (!rows.length) return { reply: 'Bạn không có đơn nào đang giữ chỗ. Đơn quá giờ giữ chỗ sẽ hết hiệu lực và không còn hiện ở đây.', actions };
+    const lines = rows.slice(0, LIMITS.shown).map(row => `- ${row.eventId?.name || 'Giải chạy'}${row.categoryId?.name ? ` (${row.categoryId.name})` : ''}: còn ${Math.ceil((new Date(row.expiresAt) - now) / 60000)} phút để thanh toán.`);
+    const more = rows.length > LIMITS.shown ? `\nMình hiện ${LIMITS.shown} đơn sắp hết giờ nhất, bạn xem đủ trong "Xem đơn đang giữ".` : '';
+    return { reply: `Bạn có ${rows.length} đơn đang giữ chỗ:\n${lines.join('\n')}${more}\nQuá giờ mà chưa thanh toán thì đơn hết hiệu lực.`, actions };
   },
 };
 

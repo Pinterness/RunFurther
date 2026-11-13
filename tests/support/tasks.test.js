@@ -10,6 +10,7 @@ const { app } = require('../../src/backend/server');
 const Event = require('../../src/backend/models/Event');
 const EventCategory = require('../../src/backend/models/EventCategory');
 const Registration = require('../../src/backend/models/Registration');
+const Booking = require('../../src/backend/models/Booking');
 const { seedArticles, normalizeSupportText } = require('../../src/backend/services/supportKnowledge');
 const { createSupportResponder } = require('../../src/backend/services/supportAiService');
 const { routeTask, toActions, createTaskRunner } = require('../../src/backend/services/supportTasks');
@@ -153,4 +154,53 @@ test('a user without tickets is told so', async () => {
   const { empty } = await ticketData();
   const own = await ask('vé của tôi', empty.id);
   assert.match(own.reply, /chưa có vé sắp chạy/); assert.deepEqual(own.actions, [{ label: 'Vé của tôi', url: '/account' }]);
+});
+
+// ---- Task 7.3: holds and minutes left -----------------------------------------------------------------
+const MINUTE = 60 * 1000;
+const makeHold = (userId, { event, category }, orderCode, msLeft, status = 'HOLD') => Booking.create({
+  orderCode, userId, eventId: event._id, categoryId: category._id, status, expiresAt: new Date(Date.now() + msLeft),
+  runnerInfo: { fullName: 'Người Giữ Chỗ', email: 'holder@test.local', phone: '0911111111' },
+  price: 500000, totalAmount: 500000, finalAmount: 500000,
+});
+
+let holdOwners;
+async function holdData() {
+  if (holdOwners) return holdOwners;
+  const [a, b, none] = [await harness.createUser(), await harness.createUser(), await harness.createUser()];
+  const hue = await makeEvent(40, 'Giải Giữ Chỗ Huế'), vungTau = await makeEvent(50, 'Giải Của Người B');
+  await makeHold(a.id, hue, 'RUN0A0A0A0A0A0A0A0A', 4.5 * MINUTE);
+  // Still HOLD in the database because the sweeper has not run yet, but already past expiresAt.
+  await makeHold(a.id, vungTau, 'RUN0A0A0A0A0A0A0A0B', -MINUTE);
+  await makeHold(a.id, vungTau, 'RUN0A0A0A0A0A0A0A0C', 8 * MINUTE, 'PAID');
+  await makeHold(b.id, vungTau, 'RUN0B0B0B0B0B0B0B0B', 9 * MINUTE);
+  holdOwners = { a, b, none };
+  return holdOwners;
+}
+
+test('holds tells the asker how many minutes are left, rounded up', async () => {
+  const { a } = await holdData();
+  const own = await ask('đơn giữ chỗ của tôi còn bao lâu', a.id);
+  assert.match(own.reply, /Giải Giữ Chỗ Huế/); assert.match(own.reply, /Half Marathon 21K/); assert.match(own.reply, /còn 5 phút/);
+  assert.deepEqual(own.actions, [{ label: 'Xem đơn đang giữ', url: '/account' }]); assert.equal(own.mode, 'guide');
+  assert.doesNotMatch(JSON.stringify(own), /holder@test|0911111111|RUN0A/);
+});
+
+test('expired and paid holds are not shown', async () => {
+  const { a } = await holdData();
+  const own = await ask('đơn của tôi', a.id);
+  assert.match(own.reply, /Giải Giữ Chỗ Huế/); assert.doesNotMatch(own.reply, /Giải Của Người B/);
+  assert.equal((own.reply.match(/còn \d+ phút/g) || []).length, 1);
+});
+
+test("A typing B's order code still sees only A's holds", async () => {
+  const { a } = await holdData();
+  const own = await ask('kiểm tra đơn RUN0B0B0B0B0B0B0B0B của tôi', a.id);
+  assert.match(own.reply, /Giải Giữ Chỗ Huế/); assert.doesNotMatch(JSON.stringify(own), /Giải Của Người B|RUN0B|9 phút/);
+});
+
+test('a user without holds is told so', async () => {
+  const { none } = await holdData();
+  const own = await ask('đơn của tôi', none.id);
+  assert.match(own.reply, /không có đơn nào đang giữ chỗ/); assert.deepEqual(own.actions, [{ label: 'Xem đơn đang giữ', url: '/account' }]);
 });

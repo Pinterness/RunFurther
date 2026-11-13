@@ -5,6 +5,7 @@ const { createSupportResponder, createOpenAIAdapter, publicEventFilter, retrieve
 const Event = require('../src/backend/models/Event');
 const EventCategory = require('../src/backend/models/EventCategory');
 const Registration = require('../src/backend/models/Registration');
+const Booking = require('../src/backend/models/Booking');
 const { runTask } = require('../src/backend/services/supportTasks');
 const env = { SUPPORT_AI_PROVIDER: 'openai', OPENAI_API_KEY: 'test-only-key', OPENAI_MODEL: 'test-model' };
 const input = { question: 'Làm sao mua vé?', articles: [SUPPORT_KNOWLEDGE.find(item => item.id === 'registration')], events: [] };
@@ -57,15 +58,19 @@ function queryRows(rows, captured) {
 
 // Spec 5.1 row :67. Each task reader added in P07 adds its query here.
 test('task queries filter by token userId with limit and maxTimeMS and never select private fields', async () => {
-  const PRIVATE = /qrToken|runnerInfo|runnerProfile|identityCard|medicalHistory|transferCode|bank|payment/;
-  const ticketFind = Registration.find, captured = {};
-  try {
-    Registration.find = filter => { captured.filter = filter; return queryRows([], captured); };
-    await runTask('tickets', 'token-user', { now: new Date() });
-    assert.equal(captured.filter.userId, 'token-user'); assert.equal(captured.limit, 20); assert.equal(captured.maxTimeMS, 1500);
-    assert.doesNotMatch(captured.select, PRIVATE);
-    for (const fields of Object.values(captured.populate)) assert.doesNotMatch(fields, PRIVATE);
-  } finally { Registration.find = ticketFind; }
+  const PRIVATE = /qrToken|runnerInfo|runnerProfile|identityCard|medicalHistory|transferCode|bank|payment|orderCode/;
+  const now = new Date('2026-11-13T03:00:00Z');
+  for (const [Model, key] of [[Registration, 'tickets'], [Booking, 'holds']]) {
+    const original = Model.find, captured = {};
+    try {
+      Model.find = filter => { captured.filter = filter; return queryRows([], captured); };
+      await runTask(key, 'token-user', { now });
+      assert.equal(captured.filter.userId, 'token-user', key); assert.equal(captured.limit, 20, key); assert.equal(captured.maxTimeMS, 1500, key);
+      assert.doesNotMatch(captured.select, PRIVATE, key);
+      for (const fields of Object.values(captured.populate)) assert.doesNotMatch(fields, PRIVATE, key);
+      if (key === 'holds') assert.deepEqual([captured.filter.status, captured.filter.expiresAt], ['HOLD', { $gt: now }]);
+    } finally { Model.find = original; }
+  }
 });
 
 test('public retrieval applies moderation/public filters and strips all private event fields', async () => {
