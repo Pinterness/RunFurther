@@ -1,8 +1,12 @@
 // Private-data tasks of the support bot (spec 4.7). A question is routed by fixed patterns on the
 // normalized text, and every read is scoped to the userId of the verified token: nothing typed in
 // the question (a BIB, an order code, an email) ever selects whose data is read. Reads only.
+const Registration = require('../models/Registration');
 const { internalPath } = require('../../lib/internalPath.cjs');
+const { calendarDate } = require('../../lib/runnerValidation.cjs');
 const { normalizeSupportText } = require('./supportKnowledge');
+
+const LIMITS = { privateRows: 20, queryMs: 1500, shown: 3 };
 
 const TASK_KEYS = ['tickets', 'holds', 'wallet', 'supportTickets', 'results', 'runpoints'];
 // One table for the guest prompt, the failed-read reply and the buttons of an unclear question.
@@ -88,6 +92,30 @@ function createTaskRunner({ readers = {} } = {}) {
   };
 }
 
-const runTask = createTaskRunner();
+const TICKET_STATUSES = ['CONFIRMED', 'CHECKED_IN', 'KIT_COLLECTED', 'PENDING_TRANSFER'];
+// The same words as the ticket card (TicketCard.jsx:6); PENDING_TRANSFER means the BIB is listed on the marketplace.
+const TICKET_LABELS = { CONFIRMED: 'Vé đã xác nhận', CHECKED_IN: 'Đã check-in', KIT_COLLECTED: 'Đã nhận race-kit', PENDING_TRANSFER: 'Đang chuyển nhượng' };
+const vietnamDate = value => new Date(value).toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+
+// Every reader filters by the userId of the verified token, selects only the fields it shows and is bounded.
+const readers = {
+  async tickets(userId, now) {
+    const rows = await Registration.find({ userId, status: { $in: TICKET_STATUSES } })
+      .select('eventId categoryId bibNumber status')
+      .populate('eventId', 'name dateInfo.raceDate').populate('categoryId', 'name')
+      .sort({ createdAt: -1 }).limit(LIMITS.privateRows).maxTimeMS(LIMITS.queryMs).lean();
+    // Filter after reading, then cut to 3: tickets of past races are often newer and would crowd out upcoming ones.
+    const today = calendarDate(now);
+    const upcoming = rows.filter(row => row.eventId?.dateInfo?.raceDate && calendarDate(row.eventId.dateInfo.raceDate) >= today)
+      .sort((x, y) => new Date(x.eventId.dateInfo.raceDate) - new Date(y.eventId.dateInfo.raceDate));
+    const actions = [TASKS.tickets.action];
+    if (!upcoming.length) return { reply: 'Bạn chưa có vé sắp chạy nào trong tài khoản này. Vé của các giải đã qua vẫn xem được trong "Vé của tôi".', actions };
+    const lines = upcoming.slice(0, LIMITS.shown).map(row => `- ${row.eventId.name}${row.categoryId?.name ? ` (${row.categoryId.name})` : ''}, ngày ${vietnamDate(row.eventId.dateInfo.raceDate)}: BIB ${row.bibNumber || 'chưa cấp'}, ${TICKET_LABELS[row.status]}.`);
+    const more = upcoming.length > LIMITS.shown ? `\nMình hiện ${LIMITS.shown} vé gần nhất, bạn xem đủ trong "Vé của tôi".` : '';
+    return { reply: `Bạn có ${upcoming.length} vé sắp chạy:\n${lines.join('\n')}${more}`, actions };
+  },
+};
+
+const runTask = createTaskRunner({ readers });
 
 module.exports = { TASK_KEYS, routeTask, taskForEval, toActions, guestAnswer, failedAnswer, unclearAnswer, createTaskRunner, runTask };

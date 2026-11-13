@@ -4,6 +4,8 @@ const { SUPPORT_KNOWLEDGE, findSupportKnowledge, seedArticles } = require('../sr
 const { createSupportResponder, createOpenAIAdapter, publicEventFilter, retrievePublicEvents } = require('../src/backend/services/supportAiService');
 const Event = require('../src/backend/models/Event');
 const EventCategory = require('../src/backend/models/EventCategory');
+const Registration = require('../src/backend/models/Registration');
+const { runTask } = require('../src/backend/services/supportTasks');
 const env = { SUPPORT_AI_PROVIDER: 'openai', OPENAI_API_KEY: 'test-only-key', OPENAI_MODEL: 'test-model' };
 const input = { question: 'Làm sao mua vé?', articles: [SUPPORT_KNOWLEDGE.find(item => item.id === 'registration')], events: [] };
 const success = text => new Response(JSON.stringify({ status: 'completed', output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text }] }] }));
@@ -49,8 +51,22 @@ test('task answers contain only the token owner data and never reach the provide
 });
 
 function queryRows(rows, captured) {
-  return { select(value) { captured.select = value; return this; }, sort(value) { captured.sort = value; return this; }, limit(value) { captured.limit = value; return this; }, maxTimeMS(value) { captured.maxTimeMS = value; return this; }, async lean() { return rows; } };
+  return { select(value) { captured.select = value; return this; }, sort(value) { captured.sort = value; return this; }, limit(value) { captured.limit = value; return this; }, maxTimeMS(value) { captured.maxTimeMS = value; return this; },
+    populate(path, select) { (captured.populate ||= {})[path] = select; return this; }, async lean() { return rows; } };
 }
+
+// Spec 5.1 row :67. Each task reader added in P07 adds its query here.
+test('task queries filter by token userId with limit and maxTimeMS and never select private fields', async () => {
+  const PRIVATE = /qrToken|runnerInfo|runnerProfile|identityCard|medicalHistory|transferCode|bank|payment/;
+  const ticketFind = Registration.find, captured = {};
+  try {
+    Registration.find = filter => { captured.filter = filter; return queryRows([], captured); };
+    await runTask('tickets', 'token-user', { now: new Date() });
+    assert.equal(captured.filter.userId, 'token-user'); assert.equal(captured.limit, 20); assert.equal(captured.maxTimeMS, 1500);
+    assert.doesNotMatch(captured.select, PRIVATE);
+    for (const fields of Object.values(captured.populate)) assert.doesNotMatch(fields, PRIVATE);
+  } finally { Registration.find = ticketFind; }
+});
 
 test('public retrieval applies moderation/public filters and strips all private event fields', async () => {
   const eventFind = Event.find, categoryFind = EventCategory.find, eventQuery = {}, categoryQuery = {};

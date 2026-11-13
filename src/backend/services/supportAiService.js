@@ -8,7 +8,7 @@ const { loadPublishedArticles } = require('./supportKnowledgeStore');
 const { routeTask, toActions, guestAnswer, failedAnswer, unclearAnswer, runTask: defaultTaskRunner } = require('./supportTasks');
 
 const PUBLIC_STATUSES = ['PUBLISHED', 'REGISTRATION_OPEN', 'REGISTRATION_CLOSED', 'COMPLETED'];
-const LIMITS = { events: 5, categories: 40, privateRows: 20, queryMs: 1500, replyCharacters: 4000 };
+const LIMITS = { events: 5, categories: 40, queryMs: 1500, replyCharacters: 4000 };
 const FALLBACK = 'Mình chưa có thông tin đã xác thực để trả lời câu hỏi này. Bạn có thể gửi yêu cầu cho bộ phận hỗ trợ trong cuộc trò chuyện này, hoặc chọn một chủ đề bên dưới.';
 const DEFAULT_SUGGESTIONS = ['Làm sao mua vé giải chạy?', 'Chuyển khoản rồi sao chưa có vé?', 'Kiểm tra vé của tôi'];
 const plain = (value, limit = 200) => (typeof value === 'string' ? value : '').replace(/[\u0000-\u001f<>]/g, ' ').trim().slice(0, limit);

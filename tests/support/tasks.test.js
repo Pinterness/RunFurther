@@ -1,9 +1,23 @@
-// Private-data tasks of the support bot (spec 4.7, plan P07): routing, guests, unclear questions and actions.
-const { test } = require('node:test');
+// Private-data tasks of the support bot (spec 4.7, plan P07): routing, guests, unclear questions, actions,
+// and each task's reads against an in-memory MongoDB replica set (tests/helpers).
+const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
+
+process.env.JWT_SECRET = 'isolated-support-tasks-test-secret';
+
+const mongoose = require('mongoose');
+const { app } = require('../../src/backend/server');
+const Event = require('../../src/backend/models/Event');
+const EventCategory = require('../../src/backend/models/EventCategory');
+const Registration = require('../../src/backend/models/Registration');
 const { seedArticles, normalizeSupportText } = require('../../src/backend/services/supportKnowledge');
 const { createSupportResponder } = require('../../src/backend/services/supportAiService');
 const { routeTask, toActions, createTaskRunner } = require('../../src/backend/services/supportTasks');
+const { createBackendHarness } = require('../helpers/backendHarness');
+
+const harness = createBackendHarness({ app, dbName: 'runfurther_support_tasks' });
+before(harness.start);
+after(harness.stop);
 
 const USER = '507f1f77bcf86cd799439011';
 const mustNotRun = () => { throw Error('Must not run'); };
@@ -74,4 +88,69 @@ test('toActions keeps at most 3 internal or ticket-view actions', () => {
   assert.deepEqual(toActions([{ label: 'x'.repeat(41), url: '/account' }, { label: '', url: '/account' }, { url: '/account' }, null, { label: 'Ví', url: '/account/wallet', extra: 'drop' }]),
     [{ label: 'Ví', url: '/account/wallet' }]);
   assert.deepEqual(toActions('not a list'), []);
+});
+
+// ---- Task 7.2: upcoming tickets and BIB --------------------------------------------------------------
+const DAY = 24 * 60 * 60 * 1000;
+let eventSeq = 0;
+async function makeEvent(daysFromNow, name) {
+  eventSeq += 1;
+  const raceDate = new Date(Date.now() + daysFromNow * DAY);
+  const event = await Event.create({
+    slug: `giai-thu-${eventSeq}`, name, status: 'REGISTRATION_OPEN', location: { city: 'Huế', venue: 'Kinh thành' },
+    dateInfo: { raceDate, registrationStart: new Date(Date.now() - 60 * DAY), registrationEnd: new Date(raceDate.getTime() - DAY) },
+  });
+  const category = await EventCategory.create({ eventId: event._id, code: '21K', name: 'Half Marathon 21K', distance: 21, price: 500000, quotaTotal: 100 });
+  return { event, category };
+}
+const makeTicket = (userId, { event, category }, bibNumber, qrToken, status = 'CONFIRMED') => Registration.create({
+  userId, eventId: event._id, categoryId: category._id, bibNumber, qrToken, status,
+  runnerProfile: { fullName: 'Người Chạy', email: 'runner@test.local', phone: '0900000000' },
+  payment: { bookingId: new mongoose.Types.ObjectId(), paidAmount: 500000 },
+});
+const ask = (message, userId) => createSupportResponder({ findArticles: async () => seedArticles(), generateReply: null })({ message, userId });
+
+let ticketOwners;
+async function ticketData() {
+  if (ticketOwners) return ticketOwners;
+  const [a, b, c, empty] = [await harness.createUser(), await harness.createUser(), await harness.createUser(), await harness.createUser()];
+  const soon = await makeEvent(20, 'Huế Heritage Run'), later = await makeEvent(60, 'Đà Lạt Trail'), past = await makeEvent(-30, 'Giải Đã Chạy');
+  await makeTicket(a.id, later, 'A-001', 'qr-secret-A1');
+  await makeTicket(a.id, soon, 'A-002', 'qr-secret-A2', 'PENDING_TRANSFER');
+  // Created after the upcoming ones, so they come first by createdAt: they must not crowd out A-001 and A-002.
+  for (const n of [1, 2, 3]) await makeTicket(a.id, past, `A-P0${n}`, `qr-secret-AP${n}`);
+  await makeTicket(b.id, soon, 'B-001', 'qr-secret-B1');
+  for (const [n, slot] of [[1, later], [2, soon], [3, later], [4, soon]]) await makeTicket(c.id, slot, `C-00${n}`, `qr-secret-C${n}`);
+  ticketOwners = { a, b, c, empty };
+  return ticketOwners;
+}
+
+test('tickets lists up to 3 upcoming tickets of the asker with BIB and never qrToken', async () => {
+  const { a, c } = await ticketData();
+  const own = await ask('Kiểm tra vé của tôi', a.id);
+  assert.match(own.reply, /vé sắp chạy/); assert.match(own.reply, /A-001/); assert.match(own.reply, /A-002/);
+  assert.match(own.reply, /Huế Heritage Run/); assert.match(own.reply, /Half Marathon 21K/); assert.match(own.reply, /Đang chuyển nhượng/);
+  assert.ok(own.reply.indexOf('A-002') < own.reply.indexOf('A-001'), 'the earliest race comes first');
+  assert.deepEqual(own.actions, [{ label: 'Vé của tôi', url: '/account' }]); assert.equal(own.mode, 'guide');
+  assert.doesNotMatch(JSON.stringify(own), /qr-secret|runner@test|0900000000/);
+  const many = await ask('vé của mình', c.id);
+  assert.equal((many.reply.match(/C-00\d/g) || []).length, 3, 'at most 3 tickets are listed');
+});
+
+test('tickets of past races never hide upcoming ones', async () => {
+  const { a } = await ticketData();
+  const own = await ask('vé của tôi', a.id);
+  assert.match(own.reply, /A-001/); assert.match(own.reply, /A-002/); assert.doesNotMatch(own.reply, /A-P0/);
+});
+
+test("A typing B's BIB still sees only A's tickets", async () => {
+  const { a } = await ticketData();
+  const own = await ask('vé của tôi, BIB B-001', a.id);
+  assert.match(own.reply, /A-001/); assert.doesNotMatch(JSON.stringify(own), /B-001|qr-secret/);
+});
+
+test('a user without tickets is told so', async () => {
+  const { empty } = await ticketData();
+  const own = await ask('vé của tôi', empty.id);
+  assert.match(own.reply, /chưa có vé sắp chạy/); assert.deepEqual(own.actions, [{ label: 'Vé của tôi', url: '/account' }]);
 });
