@@ -6,6 +6,8 @@ const Event = require('../src/backend/models/Event');
 const EventCategory = require('../src/backend/models/EventCategory');
 const Registration = require('../src/backend/models/Registration');
 const Booking = require('../src/backend/models/Booking');
+const Wallet = require('../src/backend/models/Wallet');
+const PaymentRequest = require('../src/backend/models/PaymentRequest');
 const { runTask } = require('../src/backend/services/supportTasks');
 const env = { SUPPORT_AI_PROVIDER: 'openai', OPENAI_API_KEY: 'test-only-key', OPENAI_MODEL: 'test-model' };
 const input = { question: 'Làm sao mua vé?', articles: [SUPPORT_KNOWLEDGE.find(item => item.id === 'registration')], events: [] };
@@ -71,6 +73,16 @@ test('task queries filter by token userId with limit and maxTimeMS and never sel
       if (key === 'holds') assert.deepEqual([captured.filter.status, captured.filter.expiresAt], ['HOLD', { $gt: now }]);
     } finally { Model.find = original; }
   }
+  // wallet reads one Wallet document and the live pending top-ups; with no wallet it still answers.
+  const walletFind = Wallet.findOne, requestFind = PaymentRequest.find, wallet = {}, requests = {};
+  try {
+    Wallet.findOne = filter => { wallet.filter = filter; return queryRows(null, wallet); };
+    PaymentRequest.find = filter => { requests.filter = filter; return queryRows([], requests); };
+    await runTask('wallet', 'token-user', { now });
+    assert.deepEqual(wallet.filter, { userId: 'token-user' }); assert.equal(wallet.maxTimeMS, 1500); assert.doesNotMatch(wallet.select, PRIVATE);
+    assert.deepEqual(requests.filter, { userId: 'token-user', kind: 'TOPUP', status: 'PENDING', expiresAt: { $gt: now } });
+    assert.equal(requests.limit, 20); assert.equal(requests.maxTimeMS, 1500); assert.doesNotMatch(requests.select, PRIVATE);
+  } finally { Wallet.findOne = walletFind; PaymentRequest.find = requestFind; }
 });
 
 test('public retrieval applies moderation/public filters and strips all private event fields', async () => {

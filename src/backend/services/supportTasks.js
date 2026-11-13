@@ -3,6 +3,9 @@
 // the question (a BIB, an order code, an email) ever selects whose data is read. Reads only.
 const Registration = require('../models/Registration');
 const Booking = require('../models/Booking');
+const Wallet = require('../models/Wallet');
+const PaymentRequest = require('../models/PaymentRequest');
+const { vnd } = require('./topupService');
 const { internalPath } = require('../../lib/internalPath.cjs');
 const { calendarDate } = require('../../lib/runnerValidation.cjs');
 const { normalizeSupportText } = require('./supportKnowledge');
@@ -97,6 +100,8 @@ const TICKET_STATUSES = ['CONFIRMED', 'CHECKED_IN', 'KIT_COLLECTED', 'PENDING_TR
 // The same words as the ticket card (TicketCard.jsx:6); PENDING_TRANSFER means the BIB is listed on the marketplace.
 const TICKET_LABELS = { CONFIRMED: 'Vé đã xác nhận', CHECKED_IN: 'Đã check-in', KIT_COLLECTED: 'Đã nhận race-kit', PENDING_TRANSFER: 'Đang chuyển nhượng' };
 const vietnamDate = value => new Date(value).toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+// "10:05 13/11/2026" in Vietnam time, whatever the server's time zone.
+const vietnamTime = value => new Date(value).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' });
 
 // Every reader filters by the userId of the verified token, selects only the fields it shows and is bounded.
 const readers = {
@@ -128,6 +133,27 @@ const readers = {
     const lines = rows.slice(0, LIMITS.shown).map(row => `- ${row.eventId?.name || 'Giải chạy'}${row.categoryId?.name ? ` (${row.categoryId.name})` : ''}: còn ${Math.ceil((new Date(row.expiresAt) - now) / 60000)} phút để thanh toán.`);
     const more = rows.length > LIMITS.shown ? `\nMình hiện ${LIMITS.shown} đơn sắp hết giờ nhất, bạn xem đủ trong "Xem đơn đang giữ".` : '';
     return { reply: `Bạn có ${rows.length} đơn đang giữ chỗ:\n${lines.join('\n')}${more}\nQuá giờ mà chưa thanh toán thì đơn hết hiệu lực.`, actions };
+  },
+
+  // A wallet exists only after the wallet page was opened once (walletController upserts it); the bot never creates one.
+  // Expired top-ups stay PENDING forever, so the query requires expiresAt > now, as topupService does.
+  // Neither transferCode nor bankSnapshot is selected. vnd throws on a missing number, which becomes a failed read.
+  async wallet(userId, now) {
+    const [wallet, pending] = await Promise.all([
+      Wallet.findOne({ userId }).select('balance status').maxTimeMS(LIMITS.queryMs).lean(),
+      PaymentRequest.find({ userId, kind: 'TOPUP', status: 'PENDING', expiresAt: { $gt: now } })
+        .select('amount createdAt').sort({ createdAt: -1 }).limit(LIMITS.privateRows).maxTimeMS(LIMITS.queryMs).lean(),
+    ]);
+    const parts = [wallet ? `Số dư ví của bạn là ${vnd(wallet.balance)}.` : 'Bạn chưa có ví. Ví được tạo khi bạn mở trang "Ví của tôi" lần đầu.'];
+    // The same wording as topupService when it refuses a top-up for a wallet that is not ACTIVE.
+    if (wallet && wallet.status !== 'ACTIVE') parts.push('Ví của bạn đang bị tạm khóa nên chưa thể nạp tiền. Bạn gửi yêu cầu hỗ trợ nếu cần mở lại nhé.');
+    if (!pending.length) parts.push('Bạn không có lệnh nạp nào đang chờ đối soát.');
+    else {
+      const lines = pending.slice(0, LIMITS.shown).map(row => `- ${vnd(row.amount)}, tạo lúc ${vietnamTime(row.createdAt)}.`);
+      const more = pending.length > LIMITS.shown ? `\nMình hiện ${LIMITS.shown} lệnh mới nhất, bạn xem đủ trong "Ví của tôi".` : '';
+      parts.push(`Bạn có ${pending.length} lệnh nạp đang chờ đối soát:\n${lines.join('\n')}${more}\nSố dư chỉ tăng khi lệnh được duyệt.`);
+    }
+    return { reply: parts.join('\n'), actions: [TASKS.wallet.action] };
   },
 };
 

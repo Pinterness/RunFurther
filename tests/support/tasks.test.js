@@ -11,6 +11,8 @@ const Event = require('../../src/backend/models/Event');
 const EventCategory = require('../../src/backend/models/EventCategory');
 const Registration = require('../../src/backend/models/Registration');
 const Booking = require('../../src/backend/models/Booking');
+const Wallet = require('../../src/backend/models/Wallet');
+const PaymentRequest = require('../../src/backend/models/PaymentRequest');
 const { seedArticles, normalizeSupportText } = require('../../src/backend/services/supportKnowledge');
 const { createSupportResponder } = require('../../src/backend/services/supportAiService');
 const { routeTask, toActions, createTaskRunner } = require('../../src/backend/services/supportTasks');
@@ -203,4 +205,64 @@ test('a user without holds is told so', async () => {
   const { none } = await holdData();
   const own = await ask('đơn của tôi', none.id);
   assert.match(own.reply, /không có đơn nào đang giữ chỗ/); assert.deepEqual(own.actions, [{ label: 'Xem đơn đang giữ', url: '/account' }]);
+});
+
+// ---- Task 7.4: wallet balance and pending top-ups -----------------------------------------------------
+const HOUR = 60 * MINUTE;
+const BANK = { bankBin: '970422', bankName: 'MB Bank', accountNo: '0123456789', accountName: 'NGUYEN VAN QUAN TRI' };
+let requestSeq = 0;
+const makeTopup = (userId, amount, transferCode, msLeft, status = 'PENDING') => PaymentRequest.create({
+  userId, kind: 'TOPUP', amount, status, transferCode, bankSnapshot: BANK,
+  requestKey: `support-topup-${++requestSeq}`, expiresAt: new Date(Date.now() + msLeft),
+});
+
+let walletOwners;
+async function walletData() {
+  if (walletOwners) return walletOwners;
+  const [a, b, noWallet, locked] = [await harness.createUser({ balance: 150000 }), await harness.createUser({ balance: 777000 }),
+    await harness.createUser(), await harness.createUser({ balance: 50000 })];
+  await makeTopup(a.id, 200000, 'NAPAAAA2222', 20 * HOUR);
+  await makeTopup(a.id, 100000, 'NAPAAAA3333', 2 * HOUR);
+  // Expired requests stay PENDING forever (topupService only filters them out), so the query must check expiresAt.
+  await makeTopup(a.id, 300000, 'NAPAAAA4444', -MINUTE);
+  await makeTopup(a.id, 400000, 'NAPAAAA5555', 5 * HOUR, 'APPROVED');
+  await makeTopup(b.id, 888000, 'NAPBBBB2222', 10 * HOUR);
+  // A user only has a wallet after opening the wallet page once; the bot must not create one.
+  await Wallet.deleteOne({ userId: noWallet.id });
+  await Wallet.updateOne({ userId: locked.id }, { status: 'SUSPENDED' });
+  walletOwners = { a, b, noWallet, locked };
+  return walletOwners;
+}
+
+test('wallet shows the balance and live pending top-ups only', async () => {
+  const { a } = await walletData();
+  const own = await ask('số dư ví của tôi', a.id);
+  assert.match(own.reply, /150\.000đ/); assert.match(own.reply, /2 lệnh nạp/);
+  assert.match(own.reply, /200\.000đ/); assert.match(own.reply, /100\.000đ/);
+  assert.doesNotMatch(own.reply, /300\.000đ|400\.000đ/);
+  assert.deepEqual(own.actions, [{ label: 'Ví của tôi', url: '/account/wallet' }]); assert.equal(own.mode, 'guide');
+});
+
+test("wallet never shows another user's balance or top-ups", async () => {
+  const { a } = await walletData();
+  const own = await ask('ví của tôi còn bao nhiêu', a.id);
+  assert.match(own.reply, /150\.000đ/); assert.doesNotMatch(own.reply, /777\.000đ|888\.000đ/);
+});
+
+test('a user without a wallet is told so and the bot does not create one', async () => {
+  const { noWallet } = await walletData();
+  const own = await ask('ví của tôi', noWallet.id);
+  assert.match(own.reply, /chưa có ví/); assert.equal(await Wallet.countDocuments({ userId: noWallet.id }), 0);
+});
+
+test('wallet answers never carry the transfer code or the bank snapshot', async () => {
+  const { a } = await walletData();
+  const own = JSON.stringify(await ask('lệnh nạp tiền của tôi duyệt chưa', a.id));
+  assert.match(own, /200\.000đ/); assert.doesNotMatch(own, /NAP[A-Z0-9]{8}|0123456789|NGUYEN VAN|MB Bank|970422/);
+});
+
+test('a suspended wallet is reported as locked', async () => {
+  const { locked } = await walletData();
+  const own = await ask('ví của tôi', locked.id);
+  assert.match(own.reply, /50\.000đ/); assert.match(own.reply, /tạm khóa/);
 });

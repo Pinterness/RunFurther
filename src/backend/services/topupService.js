@@ -274,6 +274,7 @@ module.exports = {
   SETTING_KEY,
   TOPUP_LIMITS,
   CODE_PATTERN,
+  vnd,
   generateTransferCode,
   getTopupAccount,
   topupConfig,
