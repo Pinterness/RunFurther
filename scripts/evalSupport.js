@@ -9,6 +9,7 @@ const { rankArticles, seedArticles } = require('../src/backend/services/supportK
 const { loadPublishedArticles } = require('../src/backend/services/supportKnowledgeStore');
 const { evaluateSupport } = require('../src/backend/services/supportEval');
 const { describeTarget } = require('./seedSupportKnowledge');
+const { taskForEval } = require('../src/backend/services/supportTasks');
 
 (async () => {
   let articles, target;
@@ -22,6 +23,6 @@ const { describeTarget } = require('./seedSupportKnowledge');
     articles = await loadPublishedArticles();
     target = { source: 'database', ...describeTarget(process.env.MONGODB_URI, mongoose.connection.db.databaseName) };
   }
-  const metrics = await evaluateSupport(items, { rank: question => rankArticles(articles, question) });
+  const metrics = await evaluateSupport(items, { rank: question => rankArticles(articles, question), routeTask: taskForEval });
   console.log(JSON.stringify({ ...target, articles: articles.length, ...metrics }, null, 2));
 })().catch(error => { console.error(error.message); process.exitCode = 1; }).finally(() => mongoose.disconnect());

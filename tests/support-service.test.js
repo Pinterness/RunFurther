@@ -1,11 +1,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { SUPPORT_KNOWLEDGE, findSupportKnowledge, seedArticles } = require('../src/backend/services/supportKnowledge');
-const { createSupportResponder, createOpenAIAdapter, publicEventFilter, retrievePublicEvents, retrieveAccountStatus } = require('../src/backend/services/supportAiService');
+const { createSupportResponder, createOpenAIAdapter, publicEventFilter, retrievePublicEvents } = require('../src/backend/services/supportAiService');
 const Event = require('../src/backend/models/Event');
 const EventCategory = require('../src/backend/models/EventCategory');
-const Registration = require('../src/backend/models/Registration');
-const Booking = require('../src/backend/models/Booking');
 const env = { SUPPORT_AI_PROVIDER: 'openai', OPENAI_API_KEY: 'test-only-key', OPENAI_MODEL: 'test-model' };
 const input = { question: 'Làm sao mua vé?', articles: [SUPPORT_KNOWLEDGE.find(item => item.id === 'registration')], events: [] };
 const success = text => new Response(JSON.stringify({ status: 'completed', output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text }] }] }));
@@ -32,17 +30,22 @@ test('unsupported requests are honest and do not call a provider', async () => {
   assert.equal(result.mode, 'guide'); assert.match(result.reply, /chưa có thông tin đã xác thực/); assert.deepEqual(result.sources, []);
 });
 
-test('private summaries are scoped to authenticated ID and never reach the provider', async () => {
-  const userId = '507f1f77bcf86cd799439011'; let calls = 0;
+test('task answers contain only the token owner data and never reach the provider', async () => {
+  const userId = '507f1f77bcf86cd799439011'; const calls = []; let providerCalls = 0;
   const answer = withSeed({
-    findAccountStatus: async id => { assert.equal(id, userId); calls++; return { tickets: [{ status: 'CONFIRMED', qrToken: 'private-secret' }], bookings: [{ status: 'HOLD', expiresAt: new Date(Date.now() - 1000), runnerInfo: { email: 'secret@example.test' } }] }; },
-    generateReply: () => { throw Error('Private context reached provider'); },
+    runTask: async (key, id, { now }) => {
+      calls.push([key, id, now instanceof Date]);
+      return { reply: 'Bạn có 1 vé sắp chạy: BIB A-001.', actions: [{ label: 'Vé của tôi', url: '/account' }, { label: 'Lạ', url: 'https://evil.example' }], sources: [] };
+    },
+    // A throwing fake would be swallowed by the responder's catch, so count the calls.
+    generateReply: async () => { providerCalls++; return 'Private context reached provider'; },
   });
   const guest = await answer({ message: 'Kiểm tra vé của tôi' });
-  assert.match(guest.reply, /cần đăng nhập/); assert.equal(calls, 0);
-  const own = await answer({ message: 'Kiểm tra vé của tôi, mã của người khác', userId });
-  assert.equal(calls, 1); assert.equal(own.mode, 'guide'); assert.match(own.reply, /1 vé đang có hiệu lực/); assert.match(own.reply, /1 đơn hết hạn/);
-  assert.doesNotMatch(JSON.stringify(own), /private-secret|secret@example|507f/);
+  assert.match(guest.reply, /cần đăng nhập/); assert.deepEqual(calls, []);
+  const own = await answer({ message: 'Kiểm tra vé của tôi, BIB B-001 của người khác', userId });
+  assert.deepEqual(calls, [['tickets', userId, true]]); assert.equal(own.mode, 'guide'); assert.match(own.reply, /A-001/);
+  assert.deepEqual(own.actions, [{ label: 'Vé của tôi', url: '/account' }]);
+  assert.doesNotMatch(JSON.stringify(own), /evil\.example|507f/); assert.equal(providerCalls, 0);
 });
 
 function queryRows(rows, captured) {
@@ -64,17 +67,6 @@ test('public retrieval applies moderation/public filters and strips all private 
     assert.equal(publicEventFilter('giá vé', '/events/mountain-race/register').slug, 'mountain-race');
     assert.equal(publicEventFilter('giá vé', 'https://evil.example/events/foo').slug, undefined);
   } finally { Event.find = eventFind; EventCategory.find = categoryFind; }
-});
-
-test('private database queries select only bounded status rows from the current user', async () => {
-  const ticketFind = Registration.find, bookingFind = Booking.find, ticketQuery = {}, bookingQuery = {};
-  try {
-    Registration.find = filter => { ticketQuery.filter = filter; return queryRows([], ticketQuery); };
-    Booking.find = filter => { bookingQuery.filter = filter; return queryRows([], bookingQuery); };
-    await retrieveAccountStatus('current-user');
-    for (const query of [ticketQuery, bookingQuery]) { assert.deepEqual(query.filter, { userId: 'current-user' }); assert.equal(query.limit, 20); assert.equal(query.maxTimeMS, 1500); }
-    assert.equal(ticketQuery.select, '-_id status'); assert.equal(bookingQuery.select, '-_id status expiresAt');
-  } finally { Registration.find = ticketFind; Booking.find = bookingFind; }
 });
 
 test('OpenAI requires explicit provider, server key and model', async () => {
@@ -130,7 +122,7 @@ test('private requests and sensitive identifiers after character 1200 still stay
   let providerCalls = 0, accountCalls = 0;
   const answer = withSeed({
     generateReply: async () => { providerCalls++; return 'Must not be used'; },
-    findAccountStatus: async () => { accountCalls++; return { tickets: [], bookings: [] }; },
+    runTask: async () => { accountCalls++; return { reply: 'Vé của bạn', actions: [], sources: [] }; },
   });
   const own = await answer({ message: 'x'.repeat(1500) + ' Kiểm tra vé của tôi', userId: '507f1f77bcf86cd799439011' });
   assert.equal(own.mode, 'guide'); assert.equal(accountCalls, 1); assert.equal(providerCalls, 0);
@@ -139,15 +131,21 @@ test('private requests and sensitive identifiers after character 1200 still stay
   assert.doesNotMatch(sensitive.reply, /private@example/);
 });
 
-test('failed account and event reads do not invent status or send stale data to AI', async () => {
+test('failed task reads do not invent status or call AI', async () => {
   let providerCalls = 0;
   const answer = withSeed({
-    findAccountStatus: async () => { throw Error('database unavailable'); },
+    runTask: async () => { throw Error('database unavailable'); },
     findEvents: async () => { throw Error('database unavailable'); },
     generateReply: async () => { providerCalls++; return 'Must not be used'; },
   });
-  const account = await answer({ message: 'Kiểm tra vé của tôi', userId: '507f1f77bcf86cd799439011' });
-  assert.match(account.reply, /chưa đọc được trạng thái/); assert.equal(account.mode, 'guide');
+  const logged = []; const consoleError = console.error;
+  console.error = (...args) => logged.push(args.join(' '));
+  let account;
+  try { account = await answer({ message: 'Kiểm tra vé của tôi', userId: '507f1f77bcf86cd799439011' }); }
+  finally { console.error = consoleError; }
+  assert.ok(logged.some(line => /database unavailable/.test(line)), 'a failed task read is logged for the operator');
+  assert.match(account.reply, /chưa đọc được/); assert.equal(account.mode, 'guide');
+  assert.doesNotMatch(account.reply, /hiệu lực|đã thanh toán|đang giữ/); assert.deepEqual(account.actions, [{ label: 'Vé của tôi', url: '/account' }]);
   const events = await answer({ message: 'Có giải nào sắp diễn ra?' });
   assert.match(events.reply, /chưa tải được thông tin giải/); assert.equal(events.mode, 'guide');
   assert.equal(providerCalls, 0);

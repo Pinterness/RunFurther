@@ -1,12 +1,11 @@
 const mongoose = require('mongoose');
 const Event = require('../models/Event');
 const EventCategory = require('../models/EventCategory');
-const Registration = require('../models/Registration');
-const Booking = require('../models/Booking');
 const { availableEvent } = require('./eventPolicy');
 const { escapeRegex, httpError } = require('../lib/errors');
 const { SUPPORT_MESSAGE_LIMIT, rankArticles, normalizeSupportText } = require('./supportKnowledge');
 const { loadPublishedArticles } = require('./supportKnowledgeStore');
+const { routeTask, toActions, guestAnswer, failedAnswer, unclearAnswer, runTask: defaultTaskRunner } = require('./supportTasks');
 
 const PUBLIC_STATUSES = ['PUBLISHED', 'REGISTRATION_OPEN', 'REGISTRATION_CLOSED', 'COMPLETED'];
 const LIMITS = { events: 5, categories: 40, privateRows: 20, queryMs: 1500, replyCharacters: 4000 };
@@ -49,32 +48,8 @@ async function retrievePublicEvents({ message, page }) {
   }));
 }
 
-async function retrieveAccountStatus(userId) {
-  // The authenticated caller supplies userId. No identifier from a chat message
-  // or page path is ever used as an ownership filter. No populate or PII fields.
-  const [tickets, bookings] = await Promise.all([
-    Registration.find({ userId }).select('-_id status').sort({ createdAt: -1 })
-      .limit(LIMITS.privateRows).maxTimeMS(LIMITS.queryMs).lean(),
-    Booking.find({ userId }).select('-_id status expiresAt').sort({ createdAt: -1 })
-      .limit(LIMITS.privateRows).maxTimeMS(LIMITS.queryMs).lean(),
-  ]);
-  return { tickets, bookings };
-}
-
-const privateQuestion = query => /ve cua toi|don cua toi|don hang cua toi|kiem tra ve|kiem tra don|trang thai don|trang thai ve cua|toi da mua/.test(query);
 const sensitiveQuestion = message => /[\w.+-]+@[\w.-]+\.[a-z]{2,}|\b(?:\+?\d[\s.-]?){9,}\b|\b(?:sk-|RF-|RUN[0-9a-f]{8}|eyJ)[a-z0-9_-]+/i.test(message)
   || /mat khau|otp|cccd|cmnd|so tai khoan|ma don|qr token|qr ve|the ngan hang/.test(normalizeSupportText(message));
-
-function formatPrivateSummary(data) {
-  const tickets = Array.isArray(data?.tickets) ? data.tickets.slice(0, LIMITS.privateRows) : [];
-  const bookings = Array.isArray(data?.bookings) ? data.bookings.slice(0, LIMITS.privateRows) : [];
-  const valid = tickets.filter(ticket => ['CONFIRMED', 'CHECKED_IN', 'KIT_COLLECTED'].includes(ticket.status)).length;
-  const pending = tickets.filter(ticket => ticket.status === 'PENDING_TRANSFER').length;
-  const held = bookings.filter(booking => booking.status === 'HOLD' && new Date(booking.expiresAt) > new Date()).length;
-  const expired = bookings.filter(booking => booking.status === 'EXPIRED' || booking.status === 'HOLD' && new Date(booking.expiresAt) <= new Date()).length;
-  if (!tickets.length && !bookings.length) return 'Mình chưa tìm thấy vé hoặc đơn giữ chỗ trong tài khoản đang đăng nhập. Nếu đã chuyển khoản, hãy kiểm tra tài khoản bạn dùng lúc đặt vé và gửi yêu cầu hỗ trợ để được hướng dẫn đối soát với chủ giải.';
-  return `Trong tối đa ${LIMITS.privateRows} vé và ${LIMITS.privateRows} đơn gần nhất của tài khoản đang đăng nhập: ${valid} vé đang có hiệu lực, ${pending} vé đang đăng chuyển nhượng, ${held} đơn còn thời gian giữ chỗ và ${expired} đơn hết hạn. Mở Vé của tôi để xem đầy đủ chi tiết. Tóm tắt này được kiểm tra trực tiếp trong hệ thống; không có dữ liệu vé được gửi đến dịch vụ AI.`;
-}
 
 // Only this fixed Responses endpoint can receive a request. There are no model
 // tools, database actions, arbitrary URLs, conversation IDs or client keys.
@@ -119,7 +94,7 @@ function createOpenAIAdapter({ env = process.env, fetchImpl = (...args) => fetch
   };
 }
 
-function createSupportResponder({ findArticles = loadPublishedArticles, findEvents = retrievePublicEvents, findAccountStatus = retrieveAccountStatus, generateReply = createOpenAIAdapter() } = {}) {
+function createSupportResponder({ findArticles = loadPublishedArticles, findEvents = retrievePublicEvents, runTask = defaultTaskRunner, generateReply = createOpenAIAdapter() } = {}) {
   return async function answerSupport({ message, history = [], userId = null, page = '/' } = {}) {
     if (typeof message !== 'string' || !message.trim() || message.length > SUPPORT_MESSAGE_LIMIT) {
       throw httpError(400, `Tin nhắn phải có từ 1 đến ${SUPPORT_MESSAGE_LIMIT} ký tự.`);
@@ -127,15 +102,16 @@ function createSupportResponder({ findArticles = loadPublishedArticles, findEven
     const question = message.trim();
     const query = normalizeSupportText(question);
     const result = { reply: FALLBACK, mode: 'guide', sources: [], suggestions: [...DEFAULT_SUGGESTIONS] };
-    if (privateQuestion(query)) {
-      result.sources = [{ title: 'Vé của tôi', url: '/account' }];
-      if (!userId || !mongoose.isValidObjectId(userId)) {
-        result.reply = 'Bạn cần đăng nhập để kiểm tra trạng thái vé của chính mình. Mở Vé của tôi sau khi đăng nhập; trợ lý không tra cứu đơn riêng tư bằng email, số điện thoại hoặc mã do người khác gửi.';
-        result.sources.unshift({ title: 'Đăng nhập', url: '/login' });
-      } else {
-        try { result.reply = formatPrivateSummary(await findAccountStatus(userId)); }
-        catch { result.reply = 'Hiện chưa đọc được trạng thái vé của bạn. Bạn hãy mở Vé của tôi để tải lại, hoặc gửi yêu cầu hỗ trợ. Mình chưa thể kết luận đơn đã thanh toán hay chưa.'; }
+    const route = routeTask(query);
+    if (route?.key) {
+      // userId comes only from the verified token: nothing typed in the question selects whose data is read.
+      let answer;
+      if (!userId || !mongoose.isValidObjectId(userId)) answer = guestAnswer(route.key);
+      else {
+        try { answer = await runTask(route.key, userId, { now: new Date() }); }
+        catch (error) { console.error(`Support task ${route.key} failed:`, error.message); answer = failedAnswer(route.key); }
       }
+      result.reply = answer.reply; result.actions = toActions(answer.actions); result.sources = [];
       // Deliberately return before constructing any provider input.
       return result;
     }
@@ -143,7 +119,11 @@ function createSupportResponder({ findArticles = loadPublishedArticles, findEven
     // A failed knowledge read is an outage, not a question the bot cannot answer: reply with FALLBACK.
     try { published = await findArticles(); } catch (error) { console.error('Support knowledge read failed:', error.message); return result; }
     const articles = rankArticles(published, question, history);
-    if (!articles.length) return result;
+    if (!articles.length) {
+      // A personal question that names no task and matches no article gets task buttons, not a guess.
+      if (route?.ambiguous) Object.assign(result, unclearAnswer());
+      return result;
+    }
     result.reply = articles.map(article => article.answer).join('\n\n');
     result.sources = [...new Map(articles.flatMap(article => article.sources).map(source => [source.url, { ...source }])).values()].slice(0, 5);
     result.suggestions = [...new Set(articles.flatMap(article => article.suggestions))].slice(0, 3);
@@ -174,4 +154,4 @@ function createSupportResponder({ findArticles = loadPublishedArticles, findEven
 }
 
 const answerSupport = createSupportResponder();
-module.exports = { answerSupport, createSupportResponder, createOpenAIAdapter, publicEventFilter, retrievePublicEvents, retrieveAccountStatus };
+module.exports = { answerSupport, createSupportResponder, createOpenAIAdapter, publicEventFilter, retrievePublicEvents };

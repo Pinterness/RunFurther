@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const { createHash } = require('node:crypto');
 const { rankArticles, seedArticles } = require('../../src/backend/services/supportKnowledge');
 const { evaluateSupport, meetsBaseline } = require('../../src/backend/services/supportEval');
+const { taskForEval } = require('../../src/backend/services/supportTasks');
 const items = require('../helpers/supportEvalSet.json');
 const baseline = require('../helpers/supportEvalBaseline.json');
 
@@ -62,7 +63,7 @@ test('the kiem half is frozen', () => {
 });
 
 test('seed ranking scores exactly the recorded baseline', async () => {
-  const metrics = await evaluateSupport(items, { rank: q => rankArticles(seedArticles(), q) });
+  const metrics = await evaluateSupport(items, { rank: q => rankArticles(seedArticles(), q), routeTask: taskForEval });
   assert.deepEqual(meetsBaseline(metrics, baseline), []);
   // Exact: a better score raises the floor in the same commit, so later wrong picks cannot hide in the slack.
   for (const split of ['luyen', 'kiem']) {
