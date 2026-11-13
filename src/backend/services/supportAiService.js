@@ -48,12 +48,13 @@ async function retrievePublicEvents({ message, page }) {
   }));
 }
 
-// Top-up transfer codes (NAP + 8, topupService CODE_PATTERN) are as private as order codes (RUN…).
+// Mã nạp tiền (NAP + 8 ký tự, CODE_PATTERN của topupService) cũng riêng tư như mã đơn (RUN…).
 const sensitiveQuestion = message => /[\w.+-]+@[\w.-]+\.[a-z]{2,}|\b(?:\+?\d[\s.-]?){9,}\b|\b(?:sk-|RF-|RUN[0-9a-f]{8}|eyJ)[a-z0-9_-]+|\bNAP[2-9A-HJ-NP-Z]{8}\b/i.test(message)
   || /mat khau|otp|cccd|cmnd|so tai khoan|ma don|qr token|qr ve|the ngan hang/.test(normalizeSupportText(message));
 
-// Only this fixed Responses endpoint can receive a request. There are no model
-// tools, database actions, arbitrary URLs, conversation IDs or client keys.
+// Chỉ gửi request tới một địa chỉ cố định là API Responses của OpenAI. Request không khai báo công cụ (tool) nào,
+// nên model không đụng được database hay gọi URL; request cũng không gửi mã hội thoại. Khóa API do server tự
+// lấy từ biến môi trường, trình duyệt không bao giờ gửi khóa.
 function createOpenAIAdapter({ env = process.env, fetchImpl = (...args) => fetch(...args), timeoutMs = 15000 } = {}) {
   let inFlight = 0;
   return async function generateReply({ question, articles, events }) {
@@ -95,7 +96,8 @@ function createOpenAIAdapter({ env = process.env, fetchImpl = (...args) => fetch
   };
 }
 
-// `now` is the clock handed to task readers ("today", minutes left, expired top-ups); tests pin it.
+// `now` là đồng hồ đưa cho các reader (hàm đọc dữ liệu của từng tác vụ), dùng để biết "hôm nay", số phút còn lại
+// và lệnh nạp quá hạn. Test truyền vào một thời điểm cố định.
 function createSupportResponder({ findArticles = loadPublishedArticles, findEvents = retrievePublicEvents, runTask = defaultTaskRunner, generateReply = createOpenAIAdapter(), now = () => new Date() } = {}) {
   return async function answerSupport({ message, history = [], userId = null, page = '/' } = {}) {
     if (typeof message !== 'string' || !message.trim() || message.length > SUPPORT_MESSAGE_LIMIT) {
@@ -106,7 +108,7 @@ function createSupportResponder({ findArticles = loadPublishedArticles, findEven
     const result = { reply: FALLBACK, mode: 'guide', sources: [], suggestions: [...DEFAULT_SUGGESTIONS] };
     const route = routeTask(query);
     if (route?.key) {
-      // userId comes only from the verified token: nothing typed in the question selects whose data is read.
+      // userId chỉ lấy từ token đã xác thực: dù người hỏi gõ BIB hay mã đơn của người khác, bot vẫn chỉ đọc dữ liệu của chủ token.
       let answer;
       if (!userId || !mongoose.isValidObjectId(userId)) answer = guestAnswer(route.key);
       else {
@@ -114,15 +116,15 @@ function createSupportResponder({ findArticles = loadPublishedArticles, findEven
         catch (error) { console.error(`Support task ${route.key} failed:`, error.message); answer = failedAnswer(route.key); }
       }
       result.reply = answer.reply; result.actions = toActions(answer.actions); result.sources = [];
-      // Deliberately return before constructing any provider input.
+      // Cố ý trả về ở đây, trước khi tạo bất kỳ dữ liệu nào gửi cho AI.
       return result;
     }
     let published;
-    // A failed knowledge read is an outage, not a question the bot cannot answer: reply with FALLBACK.
+    // Đọc bài tri thức lỗi là sự cố hệ thống: ghi log rồi trả câu FALLBACK ngay, không gọi AI.
     try { published = await findArticles(); } catch (error) { console.error('Support knowledge read failed:', error.message); return result; }
     const articles = rankArticles(published, question, history);
     if (!articles.length) {
-      // A personal question that names no task and matches no article gets task buttons, not a guess.
+      // Câu "của tôi" không nêu tác vụ và không khớp bài nào thì nhận các nút tác vụ, bot không đoán.
       if (route?.ambiguous) Object.assign(result, unclearAnswer());
       return result;
     }
@@ -149,7 +151,7 @@ function createSupportResponder({ findArticles = loadPublishedArticles, findEven
         if (typeof aiReply === 'string' && aiReply.trim() && aiReply.length <= LIMITS.replyCharacters) {
           result.reply = aiReply.trim(); result.mode = 'ai';
         }
-      } catch { /* The local guide remains available when the provider fails. */ }
+      } catch { /* AI lỗi thì vẫn còn câu trả lời soạn sẵn. */ }
     }
     return result;
   };

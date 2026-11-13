@@ -1,5 +1,6 @@
-// Private-data tasks of the support bot (spec 4.7, plan P07): routing, guests, unclear questions, actions,
-// and each task's reads against an in-memory MongoDB replica set (tests/helpers).
+// Các tác vụ đọc dữ liệu riêng của người hỏi (spec mục 4.7, plan P07): định tuyến, khách chưa đăng nhập, câu chưa
+// rõ ý, nút bấm, và phần đọc của từng tác vụ trên MongoDB chạy trong bộ nhớ (replica set: một cụm MongoDB nhỏ
+// để dùng được transaction, dựng sẵn ở tests/helpers).
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -24,32 +25,32 @@ after(harness.stop);
 
 const USER = '507f1f77bcf86cd799439011';
 const mustNotRun = () => { throw Error('Must not run'); };
-// The responder swallows AI errors, so a throwing fake cannot prove the AI was never called: count calls instead.
+// Responder nuốt mọi lỗi của AI, nên AI giả ném lỗi không chứng minh được AI chưa bị gọi: phải đếm số lần gọi.
 const countingAi = () => { const ai = async () => { ai.calls++; return null; }; ai.calls = 0; return ai; };
 const r = q => routeTask(normalizeSupportText(q));
 
-test('routeTask maps personal phrases to tasks and flags unclear personal questions', () => {
+test('routeTask dẫn câu hỏi về dữ liệu riêng tới đúng tác vụ và đánh dấu câu "của tôi" chưa rõ ý', () => {
   assert.deepEqual(r('Kiểm tra vé của tôi'), { key: 'tickets' }); assert.deepEqual(r('đơn của mình còn bao lâu'), { key: 'holds' });
   assert.deepEqual(r('ví của tôi còn bao nhiêu'), { key: 'wallet' }); assert.deepEqual(r('yêu cầu hỗ trợ của tôi'), { key: 'supportTickets' });
   assert.deepEqual(r('của tôi sao rồi'), { ambiguous: true }); assert.equal(r('nạp ví thế nào'), null);
 });
 
-test('an ownership word or "kiểm tra giúp" makes a question about holds, BIB or top-ups a task', () => {
+test('có chữ sở hữu hoặc "kiểm tra giúp" thì câu hỏi về đơn giữ chỗ, BIB hay lệnh nạp được nhận là tác vụ', () => {
   assert.deepEqual(r('đơn giữ chỗ của tôi hết hạn chưa'), { key: 'holds' });
   assert.deepEqual(r('kiểm tra giúp mình đơn giữ chỗ còn hạn không'), { key: 'holds' });
   assert.deepEqual(r('BIB của tôi là số mấy'), { key: 'tickets' });
   assert.deepEqual(r('lệnh nạp tiền của tôi duyệt chưa'), { key: 'wallet' });
 });
 
-test('words that only look like task words once accents are stripped stay out of tasks', () => {
-  // "vì", "vị" and "ví" all normalize to "vi"; "cô đơn" and "đơn vị" contain "don".
+test('chữ chỉ giống từ khóa tác vụ sau khi bỏ dấu thì không bị nhận là tác vụ', () => {
+  // "vì", "vị" và "ví" bỏ dấu đều thành "vi"; "cô đơn" và "đơn vị" có chứa "don".
   for (const q of ['kiểm tra vì sao chưa nhận được email xác nhận vé', 'kiểm tra vị trí xuất phát ở đâu', 'check vị trí gửi đồ',
     'mình cô đơn quá', 'tôi có đơn vị tổ chức chưa', 'em có đơn bị hủy thì có được hoàn tiền không', 'đơn vị của tôi tạo giải thế nào']) {
     assert.equal(r(q)?.key, undefined, q);
   }
 });
 
-test('guests get a login prompt with a /login action and no task runs', async () => {
+test('khách chưa đăng nhập nhận lời mời đăng nhập kèm nút /login, không tác vụ nào chạy', async () => {
   const ai = countingAi();
   const answer = createSupportResponder({ findArticles: async () => seedArticles(), generateReply: ai, runTask: mustNotRun });
   for (const userId of [null, 'not-an-object-id']) {
@@ -61,17 +62,17 @@ test('guests get a login prompt with a /login action and no task runs', async ()
   assert.equal(ai.calls, 0);
 });
 
-test('ambiguous personal questions return task buttons without reading data', async () => {
+test('câu "của tôi" chưa rõ ý nhận các nút tác vụ, bot không đọc dữ liệu', async () => {
   const ai = countingAi();
   const answer = createSupportResponder({ findArticles: async () => seedArticles(), generateReply: ai, runTask: mustNotRun });
   const result = await answer({ message: 'Của tôi sao rồi?', userId: USER });
   assert.equal(result.mode, 'guide'); assert.equal(ai.calls, 0);
-  // The buttons open pages, so the reply does not promise that the bot will look (language review of 13-11, second round).
+  // Các nút chỉ mở trang, nên câu trả lời không hứa là bot sẽ tự xem (lần soát ngôn ngữ thứ hai ngày 13-11).
   assert.equal(result.reply, 'Bạn muốn xem vé và đơn giữ chỗ, ví hay yêu cầu hỗ trợ? Bạn bấm nút để mở trang, hoặc hỏi rõ hơn như "số dư ví của tôi" nhé.');
   assert.deepEqual(result.actions, [{ label: 'Vé của tôi', url: '/account' }, { label: 'Ví của tôi', url: '/account/wallet' }, { label: 'Yêu cầu hỗ trợ của tôi', view: 'tickets' }]);
 });
 
-test('"của tôi" questions that match an article still get the article', async () => {
+test('câu có "của tôi" mà khớp một bài tri thức thì vẫn nhận bài đó', async () => {
   const answer = createSupportResponder({ findArticles: async () => seedArticles(), generateReply: null, runTask: mustNotRun });
   for (const [q, key] of [['hồ sơ của tôi sửa ở đâu', 'profile'], ['avatar của tôi không hiện', 'profile'], ['quên mật khẩu tài khoản của mình', 'account']]) {
     const result = await answer({ message: q, userId: USER });
@@ -79,7 +80,7 @@ test('"của tôi" questions that match an article still get the article', async
   }
 });
 
-test('a reader that returns no reply text is treated as a failed read', async () => {
+test('reader trả câu rỗng bị coi là đọc lỗi', async () => {
   const runTask = createTaskRunner({ readers: { wallet: async () => ({ actions: [] }) } });
   await assert.rejects(runTask('wallet', USER, { now: new Date() }));
   await assert.rejects(runTask('results', USER, { now: new Date() }), /No reader/);
@@ -89,7 +90,7 @@ test('a reader that returns no reply text is treated as a failed read', async ()
   assert.deepEqual(failed.actions, [{ label: 'Ví của tôi', url: '/account/wallet' }, { label: 'Gửi yêu cầu hỗ trợ', view: 'tickets' }]);
 });
 
-test('toActions keeps at most 3 internal or ticket-view actions', () => {
+test('toActions chỉ giữ tối đa 3 nút trỏ vào trang nội bộ hoặc tab hỗ trợ', () => {
   assert.deepEqual(toActions([{ label: 'A', url: '/account' }, { label: 'B', url: 'https://x.example' }, { label: 'C', view: 'tickets' },
     { label: 'D', view: 'admin' }, { label: 'E', url: '/events' }, { label: 'F', url: '/lookup' }]),
   [{ label: 'A', url: '/account' }, { label: 'C', view: 'tickets' }, { label: 'E', url: '/events' }]);
@@ -99,13 +100,13 @@ test('toActions keeps at most 3 internal or ticket-view actions', () => {
 });
 
 
-// ---- Task 7.2–7.4 readers against real data ---------------------------------------------------------
-// One fixed clock (10:00 on 13/11/2026 in Vietnam) so dates, times, "today" and minutes are asserted exactly.
+// ---- Task 7.2–7.4: các reader đọc từ database chạy trong bộ nhớ ---------------------------------------------------------
+// Một đồng hồ cố định (10:00 ngày 13/11/2026 giờ Việt Nam), để ngày, giờ, "hôm nay" và số phút được so chính xác.
 const NOW = new Date('2026-11-13T03:00:00Z');
 const MINUTE = 60 * 1000, HOUR = 60 * MINUTE, DAY = 24 * HOUR;
 const at = ms => new Date(NOW.getTime() + ms);
 const SUPPORT = { label: 'Gửi yêu cầu hỗ trợ', view: 'tickets' };
-// Every task question goes through the responder with a counting AI: no task may ever reach the provider.
+// Mọi câu tác vụ đi qua responder với một AI đếm số lần gọi: không tác vụ nào được phép tới AI.
 const taskAi = countingAi();
 const ask = async (message, userId) => {
   const result = await createSupportResponder({ findArticles: async () => seedArticles(), generateReply: taskAi, now: () => NOW })({ message, userId });
@@ -141,7 +142,7 @@ const makeTopup = (userId, amount, createdAt, expiresAt, status = 'PENDING') => 
   requestSeq += 1;
   return PaymentRequest.create({
     userId, kind: 'TOPUP', amount, status, createdAt, requestKey: `support-topup-${requestSeq}`,
-    // Requests made before transfer codes existed have no code, bank snapshot or expiry.
+    // Lệnh nạp tạo trước khi có mã chuyển khoản thì không có mã, không có tài khoản nhận và không có hạn.
     ...(expiresAt ? { transferCode: CODES[requestSeq], bankSnapshot: BANK, expiresAt } : {}),
   });
 };
@@ -149,20 +150,20 @@ const makeTopup = (userId, amount, createdAt, expiresAt, status = 'PENDING') => 
 const data = {};
 before(async () => {
   const user = options => harness.createUser(options);
-  // ---- tickets
-  const today = await makeEvent(at(-5 * HOUR), 'Giải Sáng Nay'); // 05:00 today: still an upcoming race
-  const lateYesterday = await makeEvent(at(-10.5 * HOUR), 'Giải Đêm Qua'); // 23:30 yesterday: already past
+  // ---- vé
+  const today = await makeEvent(at(-5 * HOUR), 'Giải Sáng Nay'); // 05:00 hôm nay: vẫn tính là giải sắp chạy
+  const lateYesterday = await makeEvent(at(-10.5 * HOUR), 'Giải Đêm Qua'); // 23:30 hôm qua: đã qua
   const soon = await makeEvent(at(20 * DAY), 'Huế Heritage Run');
   const later = await makeEvent(at(60 * DAY), 'Đà Lạt Trail');
   const past = await makeEvent(at(-30 * DAY), 'Giải Đã Chạy');
   const cancelled = await makeEvent(at(30 * DAY), 'Giải Bị Hủy', 'CANCELLED');
   Object.assign(data, { a: await user(), b: await user(), c: await user(), d: await user(), e: await user(), empty: await user() });
-  // Created in an order that differs from race order, so only sorting by race date lists them right.
+  // Tạo theo thứ tự khác thứ tự ngày chạy, nên chỉ khi sắp theo ngày chạy thì danh sách mới đúng.
   await makeTicket(data.a.id, soon, 'A-002', 'qr-secret-A2', 'PENDING_TRANSFER');
   await makeTicket(data.a.id, later, 'A-001', 'qr-secret-A1');
   await makeTicket(data.a.id, today, 'A-T01', 'qr-secret-AT', 'CHECKED_IN');
   await makeTicket(data.a.id, lateYesterday, 'A-Y01', 'qr-secret-AY');
-  // Newer than the upcoming ones: they must not crowd them out.
+  // Tạo sau các vé sắp chạy: không được chiếm chỗ của chúng.
   for (const n of [1, 2, 3]) await makeTicket(data.a.id, past, `A-P0${n}`, `qr-secret-AP${n}`);
   await makeTicket(data.a.id, soon, 'A-X01', 'qr-secret-AX1', 'CANCELLED');
   await makeTicket(data.a.id, soon, 'A-X02', 'qr-secret-AX2', 'TRANSFERRED');
@@ -171,7 +172,7 @@ before(async () => {
   await makeTicket(data.d.id, past, 'D-P01', 'qr-secret-D1');
   await makeTicket(data.d.id, lateYesterday, 'D-Y01', 'qr-secret-DY');
   await makeTicket(data.e.id, cancelled, null, 'qr-secret-E1');
-  // ---- holds
+  // ---- đơn giữ chỗ
   const events = {};
   for (const name of ['Hội An Night Run', 'Quy Nhơn Marathon', 'Sầm Sơn Run', 'Hạ Long Bay Run', 'Côn Đảo Run', 'Phú Quốc Run', 'Giải Của Người B']) {
     events[name] = await makeEvent(at(40 * DAY), name);
@@ -181,35 +182,35 @@ before(async () => {
   await makeHold(data.holdA.id, events['Hội An Night Run'], at(3 * MINUTE));
   await makeHold(data.holdA.id, events['Hạ Long Bay Run'], at(9.5 * MINUTE));
   await makeHold(data.holdA.id, events['Sầm Sơn Run'], at(4.5 * MINUTE));
-  // Still HOLD in the database because the sweeper has not run yet, but already past expiresAt.
+  // Trong database vẫn là HOLD vì bộ quét chưa chạy, nhưng đã quá expiresAt.
   await makeHold(data.holdA.id, events['Hội An Night Run'], at(-MINUTE));
   await makeHold(data.holdA.id, events['Quy Nhơn Marathon'], at(7 * MINUTE), 'PAID');
   await makeHold(data.holdB.id, events['Giải Của Người B'], at(9 * MINUTE));
   await makeHold(data.holdF.id, events['Côn Đảo Run'], at(2 * MINUTE));
-  // The runner pressed "Tôi đã chuyển khoản": the booking stays HOLD and a BOOKING request waits for review.
+  // Người chạy đã bấm "Tôi đã chuyển khoản": đơn vẫn là HOLD và có một lệnh BOOKING chờ duyệt.
   const reported = await makeHold(data.holdF.id, events['Phú Quốc Run'], at(6 * MINUTE));
   await PaymentRequest.create({ userId: data.holdF.id, bookingId: reported._id, kind: 'BOOKING', amount: 500000, requestKey: 'BOOKING-' + reported._id });
-  // ---- wallet
+  // ---- ví
   Object.assign(data, {
     walletA: await user({ balance: 150000 }), walletB: await user({ balance: 777000 }), noWallet: await user(),
     suspended: await user({ balance: 50000 }), closed: await user({ balance: 20000 }),
   });
   await makeTopup(data.walletA.id, 200000, at(-1 * HOUR), at(23 * HOUR));
   await makeTopup(data.walletA.id, 100000, at(-13 * HOUR), at(11 * HOUR));
-  await makeTopup(data.walletA.id, 250000, at(-50 * HOUR), null); // made before codes and expiry existed: still waiting
+  await makeTopup(data.walletA.id, 250000, at(-50 * HOUR), null); // tạo trước khi có mã và hạn: vẫn tính là đang chờ
   await makeTopup(data.walletA.id, 60000, at(-2 * HOUR), at(22 * HOUR));
-  // Expired requests stay PENDING forever; the wallet page lists them as "Quá hạn".
+  // Lệnh quá hạn vẫn giữ trạng thái PENDING tới khi admin duyệt hoặc từ chối; trang ví liệt kê chúng với nhãn "Quá hạn".
   await makeTopup(data.walletA.id, 300000, at(-30 * HOUR), at(-6 * HOUR));
   await makeTopup(data.walletA.id, 400000, at(-5 * HOUR), at(19 * HOUR), 'APPROVED');
   await makeTopup(data.walletB.id, 888000, at(-1 * HOUR), at(23 * HOUR));
-  // A wallet exists only once the account or wallet page was opened; the bot must not create one.
+  // Người này chưa từng mở trang có gọi GET /wallet và chưa được cộng tiền nên chưa có ví; bot không được tự tạo ví.
   await Wallet.deleteOne({ userId: data.noWallet.id });
   await Wallet.updateOne({ userId: data.suspended.id }, { status: 'SUSPENDED' });
   await Wallet.updateOne({ userId: data.closed.id }, { status: 'CLOSED' });
 });
 
-// ---- Task 7.2: upcoming tickets and BIB
-test('tickets lists upcoming valid tickets by race date, today included, with the card wording', async () => {
+// ---- Task 7.2: vé sắp chạy và BIB
+test('vé: liệt kê vé còn hiệu lực theo ngày chạy, tính cả giải hôm nay, dùng chữ của thẻ vé', async () => {
   const own = await ask('Kiểm tra vé của tôi', data.a.id);
   assert.equal(own.reply, [
     'Bạn có 3 vé sắp chạy:',
@@ -221,7 +222,7 @@ test('tickets lists upcoming valid tickets by race date, today included, with th
   assert.doesNotMatch(JSON.stringify(own), /qr-secret|runner@test|0900000000/);
 });
 
-test('tickets shows the 3 earliest races and says how many there are', async () => {
+test('vé: hiện 3 giải chạy sớm nhất và nói rõ tổng số vé', async () => {
   const many = await ask('vé của mình', data.c.id);
   const lines = many.reply.split('\n');
   assert.equal(lines[0], 'Bạn có 4 vé sắp chạy, đây là 3 vé chạy sớm nhất:');
@@ -229,7 +230,7 @@ test('tickets shows the 3 earliest races and says how many there are', async () 
   assert.equal(lines.at(-1), 'Vé còn lại bạn xem trong "Vé của tôi" nhé.');
 });
 
-test('a user with only past tickets is told there is no upcoming ticket', async () => {
+test('vé: người chỉ có vé của giải đã qua được báo là chưa có vé sắp chạy', async () => {
   for (const who of [data.d, data.empty]) {
     const own = await ask('vé của tôi', who.id);
     assert.equal(own.reply, 'Bạn chưa có vé sắp chạy nào. Nếu bạn vừa chuyển khoản, vé chỉ được cấp sau khi xác nhận tiền đã nhận. Vé của các giải đã qua vẫn xem được trong "Vé của tôi".');
@@ -237,18 +238,18 @@ test('a user with only past tickets is told there is no upcoming ticket', async 
   }
 });
 
-test('a ticket of a cancelled race says the race was cancelled', async () => {
+test('vé: vé của giải bị hủy ghi rõ giải đã bị hủy', async () => {
   const own = await ask('vé của tôi', data.e.id);
   assert.equal(own.reply, 'Bạn có 1 vé sắp chạy:\n- 13/12/2026 · Giải Bị Hủy (Half Marathon 21K) · chưa có số BIB · Giải đã bị hủy');
 });
 
-test("A typing B's BIB still sees only A's tickets", async () => {
+test('vé: A gõ BIB của B vẫn chỉ thấy vé của A', async () => {
   const own = await ask('vé của tôi, BIB B-001', data.a.id);
   assert.match(own.reply, /A-001/); assert.doesNotMatch(JSON.stringify(own), /B-001|qr-secret/);
 });
 
-// ---- Task 7.3: holds
-test('holds lists the 3 holds expiring first with the deadline and minutes rounded up', async () => {
+// ---- Task 7.3: đơn giữ chỗ
+test('đơn giữ chỗ: hiện 3 đơn sắp hết giờ nhất, kèm giờ hết hạn và số phút làm tròn lên', async () => {
   const own = await ask('đơn giữ chỗ của tôi còn bao lâu', data.holdA.id);
   assert.equal(own.reply, [
     'Bạn có 4 đơn đang giữ chỗ, đây là 3 đơn sắp hết giờ nhất:',
@@ -262,7 +263,7 @@ test('holds lists the 3 holds expiring first with the deadline and minutes round
   assert.doesNotMatch(JSON.stringify(own), /holder@test|0911111111|RUN0/);
 });
 
-test('a hold whose transfer was reported is not pushed for payment again', async () => {
+test('đơn giữ chỗ: đơn đã báo chuyển khoản không bị giục thanh toán nữa', async () => {
   const own = await ask('đơn của tôi', data.holdF.id);
   assert.equal(own.reply, [
     'Bạn có 2 đơn đang giữ chỗ:',
@@ -272,19 +273,19 @@ test('a hold whose transfer was reported is not pushed for payment again', async
   ].join('\n'));
 });
 
-test("A typing B's order code still sees only A's holds", async () => {
+test('đơn giữ chỗ: A gõ mã đơn của B vẫn chỉ thấy đơn của A', async () => {
   const own = await ask('kiểm tra đơn RUN0B0B0B0B0B0B0B0B của tôi', data.holdA.id);
   assert.match(own.reply, /Hội An Night Run/); assert.doesNotMatch(JSON.stringify(own), /Giải Của Người B|RUN0B/);
 });
 
-test('a user without holds is told so and sent to the tickets', async () => {
+test('đơn giữ chỗ: người không có đơn được báo và nhận nút về Vé của tôi', async () => {
   const own = await ask('đơn của tôi', data.noHold.id);
   assert.equal(own.reply, 'Bạn không có đơn nào đang giữ chỗ. Đơn quá giờ giữ chỗ mà chưa thanh toán đã hết hiệu lực, bạn cần đăng ký lại ở trang giải.');
   assert.deepEqual(own.actions, [{ label: 'Vé của tôi', url: '/account' }]);
 });
 
-// ---- Task 7.4: wallet
-test('wallet shows the balance, the 3 newest waiting top-ups and the expired ones', async () => {
+// ---- Task 7.4: ví
+test('ví: hiện số dư, 3 lệnh nạp đang chờ mới nhất và các lệnh đã quá hạn', async () => {
   const own = await ask('số dư ví của tôi', data.walletA.id);
   assert.equal(own.reply, [
     'Số dư ví của bạn là 150.000đ.',
@@ -300,14 +301,14 @@ test('wallet shows the balance, the 3 newest waiting top-ups and the expired one
   assert.doesNotMatch(JSON.stringify(own), /NAP[A-Z0-9]{8}|0123456789|NGUYEN VAN|MB Bank|970422|777\.000đ|888\.000đ/);
 });
 
-test('a user without a wallet is told how to get one and the bot does not create it', async () => {
+test('ví: người chưa có ví được chỉ cách tạo, bot không tự tạo ví', async () => {
   const own = await ask('ví của tôi', data.noWallet.id);
   assert.equal(own.reply, 'Bạn chưa có ví. Bạn bấm "Ví của tôi" bên dưới là ví được tạo ngay.');
   assert.deepEqual(own.actions, [{ label: 'Ví của tôi', url: '/account/wallet' }]);
   assert.equal(await Wallet.countDocuments({ userId: data.noWallet.id }), 0);
 });
 
-test('a wallet that is not active is reported as locked with a support button', async () => {
+test('ví: ví không ACTIVE được báo là tạm khóa, kèm nút gửi yêu cầu hỗ trợ', async () => {
   for (const [who, balance] of [[data.suspended, '50.000đ'], [data.closed, '20.000đ']]) {
     const own = await ask('ví của tôi', who.id);
     assert.equal(own.reply, `Số dư ví của bạn là ${balance}.\nBạn không có lệnh nạp nào đang chờ đối soát.\nVí của bạn đang bị tạm khóa nên chưa thể nạp tiền. Bạn bấm "Gửi yêu cầu hỗ trợ" nếu cần mở lại nhé.`);
@@ -315,8 +316,8 @@ test('a wallet that is not active is reported as locked with a support button', 
   }
 });
 
-// ---- The HTTP route: whose data is read comes only from the token
-test('the chat route reads only the token owner, whatever userId the request body carries', async () => {
+// ---- Route HTTP: dữ liệu của ai bị đọc chỉ do token quyết định
+test('route chat chỉ đọc dữ liệu của chủ token, dù body gửi kèm userId của người khác', async () => {
   const own = await harness.request('/support/chat', { method: 'POST', as: data.walletA, body: { message: 'ví của tôi', userId: data.walletB.id } });
   assert.equal(own.status, 200); assert.match(own.body.reply, /150\.000đ/); assert.doesNotMatch(JSON.stringify(own.body), /777\.000đ|888\.000đ/);
   const guest = await harness.request('/support/chat', { method: 'POST', body: { message: 'ví của tôi', userId: data.walletB.id } });

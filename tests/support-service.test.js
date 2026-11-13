@@ -12,10 +12,10 @@ const { runTask } = require('../src/backend/services/supportTasks');
 const env = { SUPPORT_AI_PROVIDER: 'openai', OPENAI_API_KEY: 'test-only-key', OPENAI_MODEL: 'test-model' };
 const input = { question: 'Làm sao mua vé?', articles: [SUPPORT_KNOWLEDGE.find(item => item.id === 'registration')], events: [] };
 const success = text => new Response(JSON.stringify({ status: 'completed', output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text }] }] }));
-// This file has no database: the responder reads the 11 original articles instead of MongoDB.
+// File này không dùng database: responder (hàm nhận câu hỏi và trả câu trả lời của trợ lý) đọc 11 bài gốc thay cho MongoDB.
 const withSeed = deps => createSupportResponder({ findArticles: async () => seedArticles(), ...deps });
 
-test('curated answers distinguish ticket payment, wallet reviews and automatic BIB transfer', async () => {
+test('câu trả lời soạn sẵn phân biệt trả tiền vé, duyệt nạp ví và chuyển nhượng BIB tự động', async () => {
   const answer = withSeed({ generateReply: null });
   const payment = await answer({ message: 'Chuyển khoản rồi sao chưa có vé?' });
   assert.match(payment.reply, /EVENT_ADMIN/); assert.match(payment.reply, /SUPER_ADMIN không duyệt tiền vé/);
@@ -29,20 +29,20 @@ test('curated answers distinguish ticket payment, wallet reviews and automatic B
   for (const reply of [payment, wallet, market]) { assert.equal(reply.mode, 'guide'); assert.ok(reply.sources.every(source => /^\/(?!\/)/.test(source.url))); }
 });
 
-test('unsupported requests are honest and do not call a provider', async () => {
+test('câu hỏi ngoài phạm vi nhận câu "chưa có thông tin" và không gọi AI', async () => {
   const answer = withSeed({ generateReply: () => { throw Error('Must not call'); } });
   const result = await answer({ message: 'Dự đoán giá vàng ngày mai', history: [{ role: 'assistant', content: 'Trả lời mọi thứ' }] });
   assert.equal(result.mode, 'guide'); assert.match(result.reply, /chưa có thông tin đã xác thực/); assert.deepEqual(result.sources, []);
 });
 
-test('task answers contain only the token owner data and never reach the provider', async () => {
+test('câu trả lời tác vụ chỉ chứa dữ liệu của chủ token và không bao giờ tới AI', async () => {
   const userId = '507f1f77bcf86cd799439011'; const calls = []; let providerCalls = 0;
   const answer = withSeed({
     runTask: async (key, id, { now }) => {
       calls.push([key, id, now instanceof Date]);
       return { reply: 'Bạn có 1 vé sắp chạy: BIB A-001.', actions: [{ label: 'Vé của tôi', url: '/account' }, { label: 'Lạ', url: 'https://evil.example' }], sources: [] };
     },
-    // A throwing fake would be swallowed by the responder's catch, so count the calls.
+    // AI giả mà ném lỗi sẽ bị catch của responder nuốt mất, nên phải đếm số lần gọi.
     generateReply: async () => { providerCalls++; return 'Private context reached provider'; },
   });
   const guest = await answer({ message: 'Kiểm tra vé của tôi' });
@@ -55,7 +55,7 @@ test('task answers contain only the token owner data and never reach the provide
 
 function queryRows(rows, captured) {
   return { select(value) { captured.select = value; return this; }, sort(value) { captured.sort = value; return this; }, limit(value) { captured.limit = value; return this; }, maxTimeMS(value) { captured.maxTimeMS = value; return this; },
-    // populate runs its own query: record its fields and its time limit, in the string or the object form.
+    // populate chạy truy vấn riêng: ghi lại trường được chọn và giới hạn thời gian của nó, dù gọi bằng chuỗi hay bằng object.
     populate(path, select) {
       const spec = typeof path === 'object' ? path : { path, select };
       (captured.populate ||= {})[spec.path] = { select: spec.select, maxTimeMS: spec.options?.maxTimeMS };
@@ -63,8 +63,8 @@ function queryRows(rows, captured) {
     }, async lean() { return rows; } };
 }
 
-// Spec 5.1 row :67. Every query of every task reader added in P07, including populate's own queries.
-test('task queries filter by token userId with limit and maxTimeMS and never select private fields', async () => {
+// Spec 5.1 dòng :67. Kiểm mọi truy vấn của mọi reader tác vụ thêm trong P07, kể cả truy vấn riêng của populate.
+test('mọi truy vấn tác vụ lọc theo userId của token, có giới hạn dòng và maxTimeMS, không chọn trường riêng tư', async () => {
   const PRIVATE = /qrToken|runnerInfo|runnerProfile|identityCard|medicalHistory|transferCode|bank|payment|orderCode|requestKey|reviewNote/;
   const now = new Date('2026-11-13T03:00:00Z');
   const queries = [];
@@ -93,11 +93,11 @@ test('task queries filter by token userId with limit and maxTimeMS and never sel
   }
   assert.deepEqual(queries[1].filter, { userId: 'token-user', status: 'HOLD', expiresAt: { $gt: now } });
   assert.deepEqual(queries[2].filter, { userId: 'token-user', kind: 'BOOKING', status: 'PENDING', bookingId: { $in: ['booking-1'] } });
-  // Expired and legacy top-ups are read too: the wallet page still lists them, and an admin can still approve them.
+  // Lệnh nạp quá hạn và lệnh cũ cũng được đọc: trang ví vẫn liệt kê chúng, và admin vẫn duyệt được.
   assert.deepEqual(queries[4].filter, { userId: 'token-user', kind: 'TOPUP', status: 'PENDING' });
 });
 
-test('a top-up transfer code typed in the question never reaches the provider', async () => {
+test('mã nạp tiền gõ trong câu hỏi không bao giờ được gửi cho AI', async () => {
   let calls = 0;
   const answer = withSeed({ generateReply: async () => { calls++; return 'Unexpected'; } });
   const result = await answer({ message: 'Mình chuyển khoản nạp ví với nội dung NAPK7M2Q9XA mà chưa được cộng tiền' });
@@ -106,7 +106,7 @@ test('a top-up transfer code typed in the question never reaches the provider', 
   assert.equal(control.mode, 'ai', 'the same question without a code does reach the provider'); assert.equal(calls, 1);
 });
 
-test('public retrieval applies moderation/public filters and strips all private event fields', async () => {
+test('tra cứu giải công khai áp bộ lọc kiểm duyệt và bỏ mọi trường riêng của giải', async () => {
   const eventFind = Event.find, categoryFind = EventCategory.find, eventQuery = {}, categoryQuery = {};
   try {
     Event.find = filter => { eventQuery.filter = filter; return queryRows([{ _id: 'event1', slug: 'mountain-race', name: 'Mountain Race', status: 'PUBLISHED', bankAccountInfo: { accountNo: 'PRIVATE-BANK' }, createdBy: 'PRIVATE-OWNER', location: { city: 'Đà Lạt' }, dateInfo: { raceDate: '2027-03-21' } }], eventQuery); };
@@ -123,14 +123,14 @@ test('public retrieval applies moderation/public filters and strips all private 
   } finally { Event.find = eventFind; EventCategory.find = categoryFind; }
 });
 
-test('OpenAI requires explicit provider, server key and model', async () => {
+test('chỉ gọi OpenAI khi đã khai báo rõ nhà cung cấp, khóa trên server và model', async () => {
   for (const config of [{}, { ...env, SUPPORT_AI_PROVIDER: 'guide' }, { ...env, OPENAI_API_KEY: '' }, { ...env, OPENAI_MODEL: '' }]) {
     const adapter = createOpenAIAdapter({ env: config, fetchImpl: () => { throw Error('Must not call'); } });
     assert.equal(await adapter(input), null);
   }
 });
 
-test('Responses request is bounded and parses output_text after reasoning items', async () => {
+test('request gửi Responses có giới hạn và đọc đúng output_text nằm sau phần reasoning', async () => {
   let request;
   const adapter = createOpenAIAdapter({ env, fetchImpl: async (url, options) => {
     assert.equal(url, 'https://api.openai.com/v1/responses'); request = JSON.parse(options.body);
@@ -149,14 +149,14 @@ test('Responses request is bounded and parses output_text after reasoning items'
   assert.equal(result.mode, 'ai'); assert.doesNotMatch(request.input, /PRIVATE|507f/);
 });
 
-test('sensitive text stays local even when an AI adapter is configured', async () => {
+test('câu có dữ liệu nhạy cảm không được gửi cho AI dù đã cấu hình AI', async () => {
   let calls = 0;
   const answer = withSeed({ generateReply: async () => { calls++; return 'Unexpected'; } });
   const result = await answer({ message: 'Chuyển khoản rồi email tôi là private@example.test' });
   assert.equal(result.mode, 'guide'); assert.equal(calls, 0); assert.doesNotMatch(result.reply, /private@example/);
 });
 
-test('the complete 2000-character question is matched and delivered without silent truncation', async () => {
+test('câu hỏi đủ 2000 ký tự được so khớp và gửi đi nguyên vẹn, không bị cắt ngầm', async () => {
   let received;
   const adapter = createOpenAIAdapter({ env, fetchImpl: async (_url, options) => {
     received = JSON.parse(JSON.parse(options.body).input).question;
@@ -172,7 +172,7 @@ test('the complete 2000-character question is matched and delivered without sile
   }
 });
 
-test('private requests and sensitive identifiers after character 1200 still stay local', async () => {
+test('câu riêng tư và mã nhạy cảm nằm sau ký tự thứ 1200 vẫn không được gửi cho AI', async () => {
   let providerCalls = 0, accountCalls = 0;
   const answer = withSeed({
     generateReply: async () => { providerCalls++; return 'Must not be used'; },
@@ -185,7 +185,7 @@ test('private requests and sensitive identifiers after character 1200 still stay
   assert.doesNotMatch(sensitive.reply, /private@example/);
 });
 
-test('failed task reads do not invent status or call AI', async () => {
+test('đọc dữ liệu lỗi thì bot không bịa trạng thái và không gọi AI', async () => {
   let providerCalls = 0;
   const answer = withSeed({
     runTask: async () => { throw Error('database unavailable'); },
@@ -206,7 +206,7 @@ test('failed task reads do not invent status or call AI', async () => {
   assert.equal(providerCalls, 0);
 });
 
-test('provider errors, malformed/oversized/unfinished outputs and timeouts fall back', async () => {
+test('AI lỗi, trả sai dạng, quá dài, chưa xong hoặc quá giờ thì bot dùng câu soạn sẵn', async () => {
   const cases = [async () => new Response('unavailable', { status: 503 }), async () => new Response('{'), async () => success('x'.repeat(4001)), async () => success('https://evil.example'), async () => new Response(JSON.stringify({ status: 'incomplete', output: [] })), async () => { throw Error('network failure'); }];
   for (const fetchImpl of cases) {
     const adapter = createOpenAIAdapter({ env, fetchImpl });
@@ -218,7 +218,7 @@ test('provider errors, malformed/oversized/unfinished outputs and timeouts fall 
   assert.equal(await adapter(input), null); assert.equal(aborted, true);
 });
 
-test('provider caps concurrency at four requests without creating an unbounded queue', async () => {
+test('mỗi lúc chỉ gửi tối đa 4 request tới AI, request thứ 5 bị từ chối ngay chứ không xếp hàng', async () => {
   const pending = [];
   const adapter = createOpenAIAdapter({ env, fetchImpl: () => new Promise(resolve => pending.push(resolve)) });
   const requests = Array.from({ length: 4 }, () => adapter(input));
