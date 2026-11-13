@@ -55,34 +55,55 @@ test('task answers contain only the token owner data and never reach the provide
 
 function queryRows(rows, captured) {
   return { select(value) { captured.select = value; return this; }, sort(value) { captured.sort = value; return this; }, limit(value) { captured.limit = value; return this; }, maxTimeMS(value) { captured.maxTimeMS = value; return this; },
-    populate(path, select) { (captured.populate ||= {})[path] = select; return this; }, async lean() { return rows; } };
+    // populate runs its own query: record its fields and its time limit, in the string or the object form.
+    populate(path, select) {
+      const spec = typeof path === 'object' ? path : { path, select };
+      (captured.populate ||= {})[spec.path] = { select: spec.select, maxTimeMS: spec.options?.maxTimeMS };
+      return this;
+    }, async lean() { return rows; } };
 }
 
-// Spec 5.1 row :67. Each task reader added in P07 adds its query here.
+// Spec 5.1 row :67. Every query of every task reader added in P07, including populate's own queries.
 test('task queries filter by token userId with limit and maxTimeMS and never select private fields', async () => {
-  const PRIVATE = /qrToken|runnerInfo|runnerProfile|identityCard|medicalHistory|transferCode|bank|payment|orderCode/;
+  const PRIVATE = /qrToken|runnerInfo|runnerProfile|identityCard|medicalHistory|transferCode|bank|payment|orderCode|requestKey|reviewNote/;
   const now = new Date('2026-11-13T03:00:00Z');
-  for (const [Model, key] of [[Registration, 'tickets'], [Booking, 'holds']]) {
-    const original = Model.find, captured = {};
-    try {
-      Model.find = filter => { captured.filter = filter; return queryRows([], captured); };
-      await runTask(key, 'token-user', { now });
-      assert.equal(captured.filter.userId, 'token-user', key); assert.equal(captured.limit, 20, key); assert.equal(captured.maxTimeMS, 1500, key);
-      assert.doesNotMatch(captured.select, PRIVATE, key);
-      for (const fields of Object.values(captured.populate)) assert.doesNotMatch(fields, PRIVATE, key);
-      if (key === 'holds') assert.deepEqual([captured.filter.status, captured.filter.expiresAt], ['HOLD', { $gt: now }]);
-    } finally { Model.find = original; }
-  }
-  // wallet reads one Wallet document and the live pending top-ups; with no wallet it still answers.
-  const walletFind = Wallet.findOne, requestFind = PaymentRequest.find, wallet = {}, requests = {};
+  const queries = [];
+  const stub = (Model, method, rowsFor) => {
+    const original = Model[method];
+    Model[method] = filter => { const captured = { model: Model.modelName, method, filter }; queries.push(captured); return queryRows(rowsFor(filter), captured); };
+    return () => { Model[method] = original; };
+  };
+  const hold = { _id: 'booking-1', eventId: { name: 'X' }, categoryId: { name: 'Y' }, expiresAt: new Date(now.getTime() + 60000) };
+  const restore = [
+    stub(Registration, 'find', () => []), stub(Booking, 'find', () => [hold]),
+    stub(PaymentRequest, 'find', () => []), stub(Wallet, 'findOne', () => null),
+  ];
   try {
-    Wallet.findOne = filter => { wallet.filter = filter; return queryRows(null, wallet); };
-    PaymentRequest.find = filter => { requests.filter = filter; return queryRows([], requests); };
-    await runTask('wallet', 'token-user', { now });
-    assert.deepEqual(wallet.filter, { userId: 'token-user' }); assert.equal(wallet.maxTimeMS, 1500); assert.doesNotMatch(wallet.select, PRIVATE);
-    assert.deepEqual(requests.filter, { userId: 'token-user', kind: 'TOPUP', status: 'PENDING', expiresAt: { $gt: now } });
-    assert.equal(requests.limit, 20); assert.equal(requests.maxTimeMS, 1500); assert.doesNotMatch(requests.select, PRIVATE);
-  } finally { Wallet.findOne = walletFind; PaymentRequest.find = requestFind; }
+    for (const key of ['tickets', 'holds', 'wallet']) await runTask(key, 'token-user', { now });
+  } finally { restore.forEach(undo => undo()); }
+  assert.deepEqual(queries.map(q => q.model + '.' + q.method), ['Registration.find', 'Booking.find', 'PaymentRequest.find', 'Wallet.findOne', 'PaymentRequest.find']);
+  for (const q of queries) {
+    const name = q.model + '.' + q.method;
+    assert.equal(q.filter.userId, 'token-user', name); assert.equal(q.maxTimeMS, 1500, name);
+    if (q.method === 'find') assert.equal(q.limit, 20, name);
+    assert.doesNotMatch(q.select, PRIVATE, name);
+    for (const [path, populated] of Object.entries(q.populate || {})) {
+      assert.doesNotMatch(populated.select, PRIVATE, name + ' ' + path); assert.equal(populated.maxTimeMS, 1500, name + ' ' + path);
+    }
+  }
+  assert.deepEqual(queries[1].filter, { userId: 'token-user', status: 'HOLD', expiresAt: { $gt: now } });
+  assert.deepEqual(queries[2].filter, { userId: 'token-user', kind: 'BOOKING', status: 'PENDING', bookingId: { $in: ['booking-1'] } });
+  // Expired and legacy top-ups are read too: the wallet page still lists them, and an admin can still approve them.
+  assert.deepEqual(queries[4].filter, { userId: 'token-user', kind: 'TOPUP', status: 'PENDING' });
+});
+
+test('a top-up transfer code typed in the question never reaches the provider', async () => {
+  let calls = 0;
+  const answer = withSeed({ generateReply: async () => { calls++; return 'Unexpected'; } });
+  const result = await answer({ message: 'Mình chuyển khoản nạp ví với nội dung NAPK7M2Q9XA mà chưa được cộng tiền' });
+  assert.equal(result.mode, 'guide'); assert.equal(calls, 0);
+  const control = await answer({ message: 'Mình chuyển khoản nạp ví mà chưa được cộng tiền' });
+  assert.equal(control.mode, 'ai', 'the same question without a code does reach the provider'); assert.equal(calls, 1);
 });
 
 test('public retrieval applies moderation/public filters and strips all private event fields', async () => {
@@ -178,7 +199,8 @@ test('failed task reads do not invent status or call AI', async () => {
   finally { console.error = consoleError; }
   assert.ok(logged.some(line => /database unavailable/.test(line)), 'a failed task read is logged for the operator');
   assert.match(account.reply, /chưa đọc được/); assert.equal(account.mode, 'guide');
-  assert.doesNotMatch(account.reply, /hiệu lực|đã thanh toán|đang giữ/); assert.deepEqual(account.actions, [{ label: 'Vé của tôi', url: '/account' }]);
+  assert.doesNotMatch(account.reply, /hiệu lực|đã thanh toán|đang giữ/);
+  assert.deepEqual(account.actions, [{ label: 'Vé của tôi', url: '/account' }, { label: 'Gửi yêu cầu hỗ trợ', view: 'tickets' }]);
   const events = await answer({ message: 'Có giải nào sắp diễn ra?' });
   assert.match(events.reply, /chưa tải được thông tin giải/); assert.equal(events.mode, 'guide');
   assert.equal(providerCalls, 0);

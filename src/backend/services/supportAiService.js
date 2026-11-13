@@ -48,7 +48,8 @@ async function retrievePublicEvents({ message, page }) {
   }));
 }
 
-const sensitiveQuestion = message => /[\w.+-]+@[\w.-]+\.[a-z]{2,}|\b(?:\+?\d[\s.-]?){9,}\b|\b(?:sk-|RF-|RUN[0-9a-f]{8}|eyJ)[a-z0-9_-]+/i.test(message)
+// Top-up transfer codes (NAP + 8, topupService CODE_PATTERN) are as private as order codes (RUN…).
+const sensitiveQuestion = message => /[\w.+-]+@[\w.-]+\.[a-z]{2,}|\b(?:\+?\d[\s.-]?){9,}\b|\b(?:sk-|RF-|RUN[0-9a-f]{8}|eyJ)[a-z0-9_-]+|\bNAP[2-9A-HJ-NP-Z]{8}\b/i.test(message)
   || /mat khau|otp|cccd|cmnd|so tai khoan|ma don|qr token|qr ve|the ngan hang/.test(normalizeSupportText(message));
 
 // Only this fixed Responses endpoint can receive a request. There are no model
@@ -94,7 +95,8 @@ function createOpenAIAdapter({ env = process.env, fetchImpl = (...args) => fetch
   };
 }
 
-function createSupportResponder({ findArticles = loadPublishedArticles, findEvents = retrievePublicEvents, runTask = defaultTaskRunner, generateReply = createOpenAIAdapter() } = {}) {
+// `now` is the clock handed to task readers ("today", minutes left, expired top-ups); tests pin it.
+function createSupportResponder({ findArticles = loadPublishedArticles, findEvents = retrievePublicEvents, runTask = defaultTaskRunner, generateReply = createOpenAIAdapter(), now = () => new Date() } = {}) {
   return async function answerSupport({ message, history = [], userId = null, page = '/' } = {}) {
     if (typeof message !== 'string' || !message.trim() || message.length > SUPPORT_MESSAGE_LIMIT) {
       throw httpError(400, `Tin nhắn phải có từ 1 đến ${SUPPORT_MESSAGE_LIMIT} ký tự.`);
@@ -108,7 +110,7 @@ function createSupportResponder({ findArticles = loadPublishedArticles, findEven
       let answer;
       if (!userId || !mongoose.isValidObjectId(userId)) answer = guestAnswer(route.key);
       else {
-        try { answer = await runTask(route.key, userId, { now: new Date() }); }
+        try { answer = await runTask(route.key, userId, { now: now() }); }
         catch (error) { console.error(`Support task ${route.key} failed:`, error.message); answer = failedAnswer(route.key); }
       }
       result.reply = answer.reply; result.actions = toActions(answer.actions); result.sources = [];
