@@ -19,7 +19,8 @@ const fresh = patch => ({ ...valid, key: 'k-' + Math.random().toString(36).slice
 
 test('internalPath keeps same-origin paths and rejects everything else', () => {
   assert.equal(internalPath('/account/wallet?tab=1#x'), '/account/wallet?tab=1#x');
-  for (const bad of ['https://evil.example/x', '//evil.example/x', '/\\evil', '/a b', 'account', '', null, '/\u0000x'])
+  // Dot segments normalize to //host, a protocol-relative link to another site.
+  for (const bad of ['https://evil.example/x', '//evil.example/x', '/\\evil', '/a b', 'account', '', null, '/\u0000x', '/.//evil.example', '/%2e//evil.example', '/a/..//evil.example'])
     assert.equal(internalPath(bad), null, String(bad));
 });
 

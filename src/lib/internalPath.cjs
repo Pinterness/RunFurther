@@ -4,7 +4,9 @@ function internalPath(value) {
   if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//') || /[\\\u0000- ]/.test(value)) return null;
   try {
     const url = new URL(value, 'https://runfurther.invalid');
-    return url.origin === 'https://runfurther.invalid' ? url.pathname + url.search + url.hash : null;
+    const path = url.pathname + url.search + url.hash;
+    // Dot segments such as /.//evil.example normalize to //evil.example, which a browser opens as another site.
+    return url.origin === 'https://runfurther.invalid' && !path.startsWith('//') ? path : null;
   } catch { return null; }
 }
 
