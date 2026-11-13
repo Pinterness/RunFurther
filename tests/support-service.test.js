@@ -38,8 +38,9 @@ test('câu hỏi ngoài phạm vi nhận câu "chưa có thông tin" và không 
 test('câu trả lời tác vụ chỉ chứa dữ liệu của chủ token và không bao giờ tới AI', async () => {
   const userId = '507f1f77bcf86cd799439011'; const calls = []; let providerCalls = 0;
   const answer = withSeed({
+    // Responder thật (không truyền `now`) phải đưa cho reader giờ hiện tại, không phải một mốc nào khác.
     runTask: async (key, id, { now }) => {
-      calls.push([key, id, now instanceof Date]);
+      calls.push([key, id, now instanceof Date && Math.abs(now.getTime() - Date.now()) < 5000]);
       return { reply: 'Bạn có 1 vé sắp chạy: BIB A-001.', actions: [{ label: 'Vé của tôi', url: '/account' }, { label: 'Lạ', url: 'https://evil.example' }], sources: [] };
     },
     // AI giả mà ném lỗi sẽ bị catch của responder nuốt mất, nên phải đếm số lần gọi.
@@ -55,6 +56,8 @@ test('câu trả lời tác vụ chỉ chứa dữ liệu của chủ token và 
 
 function queryRows(rows, captured) {
   return { select(value) { captured.select = value; return this; }, sort(value) { captured.sort = value; return this; }, limit(value) { captured.limit = value; return this; }, maxTimeMS(value) { captured.maxTimeMS = value; return this; },
+    // countDocuments trả về một số, nên query giả cũng phải "await" được.
+    then(resolve, reject) { return Promise.resolve(Array.isArray(rows) ? rows.length : rows).then(resolve, reject); },
     // populate chạy truy vấn riêng: ghi lại trường được chọn và giới hạn thời gian của nó, dù gọi bằng chuỗi hay bằng object.
     populate(path, select) {
       const spec = typeof path === 'object' ? path : { path, select };
@@ -76,34 +79,48 @@ test('mọi truy vấn tác vụ lọc theo userId của token, có giới hạn
   const hold = { _id: 'booking-1', eventId: { name: 'X' }, categoryId: { name: 'Y' }, expiresAt: new Date(now.getTime() + 60000) };
   const restore = [
     stub(Registration, 'find', () => []), stub(Booking, 'find', () => [hold]),
-    stub(PaymentRequest, 'find', () => []), stub(Wallet, 'findOne', () => null),
+    stub(PaymentRequest, 'find', () => []), stub(PaymentRequest, 'countDocuments', () => 0), stub(Wallet, 'findOne', () => null),
   ];
   try {
     for (const key of ['tickets', 'holds', 'wallet']) await runTask(key, 'token-user', { now });
   } finally { restore.forEach(undo => undo()); }
-  assert.deepEqual(queries.map(q => q.model + '.' + q.method), ['Registration.find', 'Booking.find', 'PaymentRequest.find', 'Wallet.findOne', 'PaymentRequest.find']);
+  assert.deepEqual(queries.map(q => q.model + '.' + q.method), [
+    'Registration.find', 'Booking.find', 'PaymentRequest.find',
+    'Wallet.findOne', 'PaymentRequest.find', 'PaymentRequest.find', 'PaymentRequest.countDocuments',
+  ]);
   for (const q of queries) {
     const name = q.model + '.' + q.method;
     assert.equal(q.filter.userId, 'token-user', name); assert.equal(q.maxTimeMS, 1500, name);
-    if (q.method === 'find') assert.equal(q.limit, 20, name);
+    if (q.method === 'countDocuments') continue;
+    if (q.method === 'find') assert.ok(q.limit >= 1 && q.limit <= 20, name);
     assert.doesNotMatch(q.select, PRIVATE, name);
     for (const [path, populated] of Object.entries(q.populate || {})) {
       assert.doesNotMatch(populated.select, PRIVATE, name + ' ' + path); assert.equal(populated.maxTimeMS, 1500, name + ' ' + path);
     }
   }
   assert.deepEqual(queries[1].filter, { userId: 'token-user', status: 'HOLD', expiresAt: { $gt: now } });
-  assert.deepEqual(queries[2].filter, { userId: 'token-user', kind: 'BOOKING', status: 'PENDING', bookingId: { $in: ['booking-1'] } });
-  // Lệnh nạp quá hạn và lệnh cũ cũng được đọc: trang ví vẫn liệt kê chúng, và admin vẫn duyệt được.
-  assert.deepEqual(queries[4].filter, { userId: 'token-user', kind: 'TOPUP', status: 'PENDING' });
+  // Mọi lệnh BOOKING đang chờ hoặc bị từ chối của người hỏi, kể cả của đơn đã hết giờ giữ chỗ.
+  assert.deepEqual(queries[2].filter, { userId: 'token-user', kind: 'BOOKING', status: { $in: ['PENDING', 'REJECTED'] } });
+  // Lệnh đang chờ (còn hạn hoặc không có hạn) và lệnh quá hạn được đọc riêng, để lệnh quá hạn không đẩy lệnh đang chờ ra ngoài.
+  assert.deepEqual(queries[4].filter, { userId: 'token-user', kind: 'TOPUP', status: 'PENDING', $or: [{ expiresAt: { $gt: now } }, { expiresAt: null }] });
+  assert.deepEqual(queries[5].filter, { userId: 'token-user', kind: 'TOPUP', status: 'PENDING', expiresAt: { $lte: now } });
+  assert.deepEqual(queries[6].filter, queries[5].filter);
 });
 
 test('mã nạp tiền gõ trong câu hỏi không bao giờ được gửi cho AI', async () => {
   let calls = 0;
   const answer = withSeed({ generateReply: async () => { calls++; return 'Unexpected'; } });
-  const result = await answer({ message: 'Mình chuyển khoản nạp ví với nội dung NAPK7M2Q9XA mà chưa được cộng tiền' });
-  assert.equal(result.mode, 'guide'); assert.equal(calls, 0);
-  const control = await answer({ message: 'Mình chuyển khoản nạp ví mà chưa được cộng tiền' });
-  assert.equal(control.mode, 'ai', 'the same question without a code does reach the provider'); assert.equal(calls, 1);
+  // Sao kê ngân hàng có thể in mã có khoảng trắng hoặc gạch nối, và người dùng chép nguyên như vậy.
+  for (const code of ['NAPK7M2Q9XA', 'NAP K7M2Q9XA', 'nap k7m2-q9xa', 'NAP-K7M2 Q9XA']) {
+    const result = await answer({ message: `Mình chuyển khoản nạp ví với nội dung ${code} mà chưa được cộng tiền` });
+    assert.equal(result.mode, 'guide', code);
+  }
+  assert.equal(calls, 0);
+  // Câu đối chứng không có mã, kể cả viết không dấu, vẫn được gửi cho AI: mẫu không chặn nhầm chữ "nap".
+  for (const control of ['Mình chuyển khoản nạp ví mà chưa được cộng tiền', 'minh chuyen khoan nap vi ma chua duoc cong tien', 'minh nap them tien vao vi bang chuyen khoan ma chua duoc cong tien']) {
+    assert.equal((await answer({ message: control })).mode, 'ai', control);
+  }
+  assert.equal(calls, 3);
 });
 
 test('tra cứu giải công khai áp bộ lọc kiểm duyệt và bỏ mọi trường riêng của giải', async () => {
@@ -198,7 +215,7 @@ test('đọc dữ liệu lỗi thì bot không bịa trạng thái và không g�
   try { account = await answer({ message: 'Kiểm tra vé của tôi', userId: '507f1f77bcf86cd799439011' }); }
   finally { console.error = consoleError; }
   assert.ok(logged.some(line => /database unavailable/.test(line)), 'a failed task read is logged for the operator');
-  assert.match(account.reply, /chưa đọc được/); assert.equal(account.mode, 'guide');
+  assert.match(account.reply, /chưa xem được/); assert.equal(account.mode, 'guide');
   assert.doesNotMatch(account.reply, /hiệu lực|đã thanh toán|đang giữ/);
   assert.deepEqual(account.actions, [{ label: 'Vé của tôi', url: '/account' }, { label: 'Gửi yêu cầu hỗ trợ', view: 'tickets' }]);
   const events = await answer({ message: 'Có giải nào sắp diễn ra?' });
