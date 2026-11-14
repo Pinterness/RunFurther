@@ -9,6 +9,7 @@ const Booking = require('../src/backend/models/Booking');
 const Wallet = require('../src/backend/models/Wallet');
 const PaymentRequest = require('../src/backend/models/PaymentRequest');
 const SupportTicket = require('../src/backend/models/SupportTicket');
+const RunPoints = require('../src/backend/models/RunPoints');
 const { runTask } = require('../src/backend/services/supportTasks');
 const env = { SUPPORT_AI_PROVIDER: 'openai', OPENAI_API_KEY: 'test-only-key', OPENAI_MODEL: 'test-model' };
 const input = { question: 'Làm sao mua vé?', articles: [SUPPORT_KNOWLEDGE.find(item => item.id === 'registration')], events: [] };
@@ -82,15 +83,15 @@ test('mọi truy vấn tác vụ lọc theo userId của token, có giới hạn
   const restore = [
     stub(Registration, 'find', () => []), stub(Booking, 'find', () => [hold]),
     stub(PaymentRequest, 'find', () => []), stub(PaymentRequest, 'countDocuments', () => 0), stub(Wallet, 'findOne', () => null),
-    stub(SupportTicket, 'find', () => []),
+    stub(SupportTicket, 'find', () => []), stub(RunPoints, 'findOne', () => null),
   ];
   try {
-    for (const key of ['tickets', 'holds', 'wallet', 'supportTickets']) await runTask(key, 'token-user', { now });
+    for (const key of ['tickets', 'holds', 'wallet', 'supportTickets', 'results', 'runpoints']) await runTask(key, 'token-user', { now });
   } finally { restore.forEach(undo => undo()); }
   assert.deepEqual(queries.map(q => q.model + '.' + q.method), [
     'Registration.find', 'Booking.find', 'PaymentRequest.find',
     'Wallet.findOne', 'PaymentRequest.find', 'PaymentRequest.find', 'PaymentRequest.countDocuments',
-    'SupportTicket.find',
+    'SupportTicket.find', 'Registration.find', 'RunPoints.findOne',
   ]);
   for (const q of queries) {
     const name = q.model + '.' + q.method;
@@ -110,6 +111,11 @@ test('mọi truy vấn tác vụ lọc theo userId của token, có giới hạn
   assert.deepEqual(queries[5].filter, { userId: 'token-user', kind: 'TOPUP', status: 'PENDING', expiresAt: { $lte: now } });
   assert.deepEqual(queries[6].filter, queries[5].filter);
   assert.deepEqual([queries[7].filter, queries[7].sort], [{ userId: 'token-user' }, { updatedAt: -1 }]);
+  // Kết quả chạy: cùng điều kiện với trang kết quả công khai (listResults trong eventController); chỉ chọn thời gian.
+  assert.deepEqual(queries[8].filter, { userId: 'token-user', status: { $in: ['CONFIRMED', 'CHECKED_IN', 'KIT_COLLECTED'] }, 'finishResult.chipTime': { $regex: '^\\d{1,3}:[0-5]\\d:[0-5]\\d$' } });
+  assert.equal(queries[8].select, 'eventId categoryId finishResult.chipTime finishResult.gunTime');
+  // RunPoints: chỉ đọc số điểm, không đọc lịch sử tích và dùng điểm.
+  assert.deepEqual([queries[9].filter, queries[9].select], [{ userId: 'token-user' }, 'balance']);
 });
 
 test('mã nạp tiền gõ trong câu hỏi không bao giờ được gửi cho AI', async () => {

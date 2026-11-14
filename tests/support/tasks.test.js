@@ -15,6 +15,7 @@ const Booking = require('../../src/backend/models/Booking');
 const Wallet = require('../../src/backend/models/Wallet');
 const PaymentRequest = require('../../src/backend/models/PaymentRequest');
 const SupportTicket = require('../../src/backend/models/SupportTicket');
+const RunPoints = require('../../src/backend/models/RunPoints');
 const { seedArticles, normalizeSupportText } = require('../../src/backend/services/supportKnowledge');
 const { createSupportResponder } = require('../../src/backend/services/supportAiService');
 const { routeTask, toActions, createTaskRunner } = require('../../src/backend/services/supportTasks');
@@ -49,6 +50,23 @@ test('chữ chỉ giống từ khóa tác vụ sau khi bỏ dấu thì không b�
   // "vì", "vị" và "ví" bỏ dấu đều thành "vi"; "cô đơn" và "đơn vị" có chứa "don".
   for (const q of ['kiểm tra vì sao chưa nhận được email xác nhận vé', 'kiểm tra vị trí xuất phát ở đâu', 'check vị trí gửi đồ',
     'mình cô đơn quá', 'tôi có đơn vị tổ chức chưa', 'em có đơn bị hủy thì có được hoàn tiền không', 'đơn vị của tôi tạo giải thế nào']) {
+    assert.equal(r(q)?.key, undefined, q);
+  }
+});
+
+test('câu hỏi về kết quả chạy hay RunPoints của chính người hỏi được nhận là tác vụ, câu hỏi chung thì không', () => {
+  for (const q of ['kết quả chạy của tôi thế nào', 'thành tích của mình ở giải Huế', 'kq của e sao rồi ad', 'chip time của tôi bao nhiêu',
+    'thời gian về đích của mình là bao nhiêu', 'kiểm tra giúp mình kết quả giải Huế', 'kiểm tra giúp kết quả của BIB A-001']) {
+    assert.deepEqual(r(q), { key: 'results' }, q);
+  }
+  for (const q of ['RunPoints của tôi còn bao nhiêu', 'điểm thưởng của mình được bao nhiêu rồi', 'tôi có bao nhiêu điểm', 'xem điểm của tôi',
+    'e còn mấy runpoint vậy ad', 'xu của tôi dùng được không', 'ví của tôi có bao nhiêu điểm']) {
+    assert.deepEqual(r(q), { key: 'runpoints' }, q);
+  }
+  // Câu hỏi chung không nhắc tới dữ liệu của chính người hỏi thì vẫn đi tới bài tri thức (nửa luyện q21, q22).
+  // "Điểm" đứng sau chữ khác là từ khác ("địa điểm", "quan điểm"); "kết quả xét duyệt" không phải kết quả chạy.
+  for (const q of ['khi nào có kết quả chạy', 'bao h có kq giải v ad', 'RunPoints là gì', 'điểm thưởng dùng thế nào',
+    'kết quả xét duyệt quyền tổ chức của tôi', 'địa điểm của tôi ở đâu', 'quan điểm của tôi là chạy chậm thôi', 'điểm xuất phát của tôi ở đâu']) {
     assert.equal(r(q)?.key, undefined, q);
   }
 });
@@ -166,10 +184,12 @@ async function makeEvent(raceDate, name, status = 'REGISTRATION_OPEN') {
   const category = await EventCategory.create({ eventId: event._id, code: '21K', name: 'Half Marathon 21K', distance: 21, price: 500000, quotaTotal: 100 });
   return { event, category };
 }
-const makeTicket = (userId, { event, category }, bibNumber, qrToken, status = 'CONFIRMED') => Registration.create({
+// `extra` thêm trường riêng cho từng test, ví dụ finishResult của vé đã chạy xong.
+const makeTicket = (userId, { event, category }, bibNumber, qrToken, status = 'CONFIRMED', extra = {}) => Registration.create({
   userId, eventId: event._id, categoryId: category._id, bibNumber, qrToken, status,
   runnerProfile: { fullName: 'Người Chạy', email: 'runner@test.local', phone: '0900000000' },
   payment: { bookingId: new mongoose.Types.ObjectId(), paidAmount: 500000 },
+  ...extra,
 });
 let orderSeq = 0;
 const makeHold = (userId, { event, category }, expiresAt, status = 'HOLD') => Booking.create({
@@ -470,9 +490,107 @@ test('yêu cầu hỗ trợ: người chưa gửi yêu cầu nào được mời
   assert.deepEqual(own.actions, [SUPPORT]);
 });
 
+// ---- Task 7.7: kết quả chạy và RunPoints
+before(async () => {
+  const hue = await makeEvent(at(-60 * DAY), 'Huế Heritage Marathon', 'COMPLETED');
+  const danang = await makeEvent(at(-20 * DAY), 'Đà Nẵng International River Run 2030', 'COMPLETED');
+  const quyNhon = await makeEvent(at(-100 * DAY), 'Quy Nhơn Beach Run', 'COMPLETED');
+  // Giải bị quản trị viên ẩn: trang kết quả của nó trả 404, nên bot vẫn báo thời gian nhưng không đưa nút.
+  const hidden = await makeEvent(at(-10 * DAY), 'Giải Bị Ẩn', 'COMPLETED');
+  await Event.updateOne({ _id: hidden.event._id }, { 'moderation.state': 'HIDDEN' });
+  // Giải bị chuyển sang CANCELLED sau khi đã có kết quả: trang kết quả cũng trả 404.
+  const cancelledLater = await makeEvent(at(-40 * DAY), 'Giải Hủy Sau Khi Chạy', 'CANCELLED');
+  const upcoming = await makeEvent(at(15 * DAY), 'Giải Sắp Chạy');
+  Object.assign(data, {
+    resultA: await harness.createUser(), resultB: await harness.createUser(), noResult: await harness.createUser(),
+    resultTwin: await harness.createUser(), resultHidden: await harness.createUser(),
+    pointsA: await harness.createUser(), pointsB: await harness.createUser(), zeroPoints: await harness.createUser(), noPoints: await harness.createUser(),
+    resultSlugs: { hue: hue.event.slug, danang: danang.event.slug },
+  });
+  // Tạo theo thứ tự khác ngày chạy, nên chỉ khi sắp theo ngày chạy thì danh sách mới đúng. overallRank có trong
+  // schema nhưng saveResult không bao giờ ghi, nên bot không được hiện nó.
+  await makeTicket(data.resultA.id, hue, 'R-HUE', 'qr-secret-RH', 'CONFIRMED', { finishResult: { chipTime: '1:52:10', gunTime: '1:53:02', overallRank: 7 } });
+  await makeTicket(data.resultA.id, quyNhon, 'R-QN', 'qr-secret-RQ', 'KIT_COLLECTED', { finishResult: { chipTime: '2:05:00', gunTime: '2:06:15' } });
+  // Gun time sai định dạng (dữ liệu cũ) thì không hiện.
+  await makeTicket(data.resultA.id, danang, 'R-DN', 'qr-secret-RD', 'CHECKED_IN', { finishResult: { chipTime: '0:48:30', gunTime: 'chưa rõ' } });
+  await makeTicket(data.resultA.id, hidden, 'R-AN', 'qr-secret-RA', 'CONFIRMED', { finishResult: { chipTime: '0:30:00' } });
+  // Không tính, giống trang kết quả: chip time sai định dạng, vé đã hủy, vé chưa có kết quả.
+  await makeTicket(data.resultA.id, danang, 'R-DNF', 'qr-secret-RX', 'CONFIRMED', { finishResult: { chipTime: 'DNF' } });
+  await makeTicket(data.resultA.id, hue, 'R-CXL', 'qr-secret-RC', 'CANCELLED', { finishResult: { chipTime: '1:10:00' } });
+  await makeTicket(data.resultA.id, upcoming, 'R-UP', 'qr-secret-RU');
+  await makeTicket(data.resultB.id, danang, 'R-B01', 'qr-secret-RB', 'CONFIRMED', { finishResult: { chipTime: '0:41:00', gunTime: '0:41:30' } });
+  await makeTicket(data.noResult.id, upcoming, 'R-N01', 'qr-secret-RN');
+  // Hai vé cùng một giải (hai cự ly), và một người chỉ có kết quả ở giải bị ẩn.
+  await makeTicket(data.resultTwin.id, danang, 'R-T01', 'qr-secret-T1', 'CONFIRMED', { finishResult: { chipTime: '0:50:00' } });
+  await makeTicket(data.resultTwin.id, danang, 'R-T02', 'qr-secret-T2', 'CONFIRMED', { finishResult: { chipTime: '1:55:00' } });
+  await makeTicket(data.resultHidden.id, hidden, 'R-H01', 'qr-secret-H1', 'CONFIRMED', { finishResult: { chipTime: '0:35:00' } });
+  await makeTicket(data.resultHidden.id, cancelledLater, 'R-H02', 'qr-secret-H2', 'CONFIRMED', { finishResult: { chipTime: '0:45:00' } });
+  await RunPoints.create({ userId: data.pointsA.id, balance: 1250, lifetimeEarned: 1300, history: [{ type: 'EARNED', amount: 1300, reason: 'Booking RUN-BI-MAT' }] });
+  await RunPoints.create({ userId: data.pointsB.id, balance: 999, lifetimeEarned: 999 });
+  await RunPoints.create({ userId: data.zeroPoints.id, balance: 0, lifetimeEarned: 40 });
+});
+
+test('kết quả: hiện chip time và gun time của 3 giải gần nhất, không hiện thứ hạng, có nút tới trang kết quả của giải', async () => {
+  const own = await ask('kết quả chạy của tôi', data.resultA.id);
+  assert.equal(own.reply, [
+    'Bạn có 4 kết quả chạy, đây là 3 kết quả gần nhất:',
+    '- 31/12/2030 · Giải Bị Ẩn (Half Marathon 21K) · chip time 0:30:00',
+    '- 21/12/2030 · Đà Nẵng International River Run 2030 (Half Marathon 21K) · chip time 0:48:30',
+    '- 11/11/2030 · Huế Heritage Marathon (Half Marathon 21K) · chip time 1:52:10 · gun time 1:53:02',
+    'Thứ hạng của bạn nằm ở trang kết quả của từng giải, bạn bấm nút "Kết quả" của giải đó bên dưới để xem nhé.',
+  ].join('\n'));
+  assert.deepEqual(own.actions, [
+    { label: 'Kết quả Đà Nẵng International River Run…', url: `/events/${data.resultSlugs.danang}/results` },
+    { label: 'Kết quả Huế Heritage Marathon', url: `/events/${data.resultSlugs.hue}/results` },
+  ]);
+  assert.doesNotMatch(JSON.stringify(own), /qr-secret|R-B01|0:41:00|runner@test/);
+});
+
+test('kết quả: hai vé cùng một giải chỉ có một nút; giải bị ẩn hay bị hủy không có nút và không nhắc xem thứ hạng', async () => {
+  const twin = await ask('kết quả của tôi', data.resultTwin.id);
+  assert.equal(twin.reply.split('\n')[0], 'Bạn có 2 kết quả chạy:'); assert.match(twin.reply, /0:50:00/); assert.match(twin.reply, /1:55:00/);
+  assert.deepEqual(twin.actions, [{ label: 'Kết quả Đà Nẵng International River Run…', url: `/events/${data.resultSlugs.danang}/results` }]);
+  const hidden = await ask('kết quả của tôi', data.resultHidden.id);
+  assert.equal(hidden.reply, [
+    'Bạn có 2 kết quả chạy:',
+    '- 31/12/2030 · Giải Bị Ẩn (Half Marathon 21K) · chip time 0:35:00',
+    '- 1/12/2030 · Giải Hủy Sau Khi Chạy (Half Marathon 21K) · chip time 0:45:00',
+  ].join('\n'));
+  assert.deepEqual(hidden.actions, [{ label: 'Vé và thành tích', url: '/account' }]);
+});
+
+test('kết quả: A gõ BIB của B vẫn chỉ thấy kết quả của A', async () => {
+  const own = await ask('kiểm tra giúp kết quả của BIB R-B01', data.resultA.id);
+  assert.match(own.reply, /0:48:30/); assert.doesNotMatch(JSON.stringify(own), /0:41:00|0:41:30|R-B01/);
+});
+
+test('kết quả: người chưa có kết quả nào được báo như vậy', async () => {
+  for (const who of [data.noResult, data.empty]) {
+    const own = await ask('thành tích của tôi', who.id);
+    assert.equal(own.reply, 'Bạn chưa có kết quả chạy nào. Kết quả chỉ hiện sau khi ban tổ chức nhập thời gian về đích cho vé của bạn.');
+    assert.deepEqual(own.actions, [{ label: 'Vé và thành tích', url: '/account' }]);
+  }
+});
+
+test('RunPoints: hiện đúng số điểm của người hỏi và cách dùng điểm', async () => {
+  const own = await ask('RunPoints của tôi còn bao nhiêu', data.pointsA.id);
+  assert.equal(own.reply, 'Bạn đang có 1.250 RunPoints. Khi đăng ký giải, mỗi điểm giảm 1.000đ, tối đa một nửa giá trị đơn.');
+  assert.deepEqual(own.actions, [{ label: 'Ví của tôi', url: '/account/wallet' }]);
+  assert.doesNotMatch(JSON.stringify(own), /999|1\.300|RUN-BI-MAT/);
+});
+
+test('RunPoints: người chưa có điểm được chỉ cách tích điểm, bot không tự tạo bản ghi điểm', async () => {
+  for (const who of [data.zeroPoints, data.noPoints]) {
+    const own = await ask('tôi có bao nhiêu điểm', who.id);
+    assert.equal(own.reply, 'Bạn chưa có RunPoints nào. Mỗi 50.000đ bạn thanh toán cho vé được cộng 1 điểm, và điểm dùng để giảm giá khi đăng ký giải sau.');
+    assert.deepEqual(own.actions, [{ label: 'Ví của tôi', url: '/account/wallet' }]);
+  }
+  assert.equal(await RunPoints.countDocuments({ userId: data.noPoints.id }), 0);
+});
+
 // ---- Bot chỉ đọc (spec 5.1): hỏi mọi tác vụ, qua cả responder lẫn route HTTP, rồi kiểm database không đổi.
 test('chạy mọi tác vụ không ghi gì vào database và mọi truy vấn đều có maxTimeMS', async () => {
-  const models = [Registration, Booking, Wallet, PaymentRequest, SupportTicket];
+  const models = [Registration, Booking, Wallet, PaymentRequest, SupportTicket, RunPoints];
   // Số tài liệu và updatedAt lớn nhất của từng collection: một lệnh ghi bất kỳ sẽ làm đổi ít nhất một trong hai.
   const snapshot = () => Promise.all(models.map(async Model => {
     const newest = await Model.findOne().sort({ updatedAt: -1 }).select('updatedAt').lean();
@@ -484,8 +602,8 @@ test('chạy mọi tác vụ không ghi gì vào database và mọi truy vấn �
   const listen = event => commands.push({ name: event.commandName, collection: event.command[event.commandName], maxTimeMS: event.command.maxTimeMS });
   client.on('commandStarted', listen);
   try {
-    const questions = ['vé của tôi', 'đơn của tôi', 'ví của tôi', 'yêu cầu hỗ trợ của tôi', 'của tôi sao rồi'];
-    for (const who of [data.a, data.holdF, data.holdG, data.walletA, data.crowded, data.noWallet, data.ticketA, data.noTicket]) {
+    const questions = ['vé của tôi', 'đơn của tôi', 'ví của tôi', 'yêu cầu hỗ trợ của tôi', 'kết quả chạy của tôi', 'RunPoints của tôi', 'của tôi sao rồi'];
+    for (const who of [data.a, data.holdF, data.holdG, data.walletA, data.crowded, data.noWallet, data.ticketA, data.noTicket, data.resultA, data.pointsA, data.noPoints]) {
       for (const question of questions) await ask(question, who.id);
     }
     for (const question of questions) {

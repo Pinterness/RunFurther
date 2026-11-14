@@ -7,8 +7,9 @@ const Booking = require('../models/Booking');
 const Wallet = require('../models/Wallet');
 const PaymentRequest = require('../models/PaymentRequest');
 const SupportTicket = require('../models/SupportTicket');
+const RunPoints = require('../models/RunPoints');
 const { vnd } = require('./topupService');
-const { toActions } = require('../../lib/supportActions.cjs');
+const { toActions, actionLabel } = require('../../lib/supportActions.cjs');
 const { calendarDate } = require('../../lib/runnerValidation.cjs');
 const { normalizeSupportText } = require('./supportKnowledge');
 
@@ -24,6 +25,10 @@ const TASKS = {
   holds: { label: 'đơn đang giữ chỗ', action: { label: 'Xem đơn chờ thanh toán', url: '/account' } },
   wallet: { label: 'số dư ví và lệnh nạp', action: { label: 'Ví của tôi', url: '/account/wallet' } },
   supportTickets: { label: 'yêu cầu hỗ trợ', action: { label: 'Yêu cầu hỗ trợ của tôi', view: 'tickets' } },
+  // Không có trang nào liệt kê thời gian chạy của riêng người dùng. Trang /account hiện số giải đã hoàn thành và quãng
+  // đường đã chạy, và chân trang gọi trang đó là "Vé & thành tích". Trang ví hiện số RunPoints.
+  results: { label: 'kết quả chạy', action: { label: 'Vé và thành tích', url: '/account' } },
+  runpoints: { label: 'điểm RunPoints', action: { label: 'Ví của tôi', url: '/account/wallet' } },
 };
 // Nút mở tab "Nhân viên hỗ trợ" trong khung chat, nơi có form gửi yêu cầu mới.
 const SUPPORT_ACTION = { label: 'Gửi yêu cầu hỗ trợ', view: 'tickets' };
@@ -33,9 +38,20 @@ const SUPPORT_ACTION = { label: 'Gửi yêu cầu hỗ trợ', view: 'tickets' }
 // hoặc "kiểm tra giúp". Mẫu chạy trên câu đã bỏ dấu, nơi "vé"/"về", "ví"/"vì"/"vị" và "đơn"/"cô đơn"/"đơn vị"
 // trông giống nhau, nên chữ "vi" hay "don" đứng một mình không bao giờ đủ để nhận là tác vụ.
 const OWN = '(?:toi|minh|em|e)';
+const RESULT_WORDS = '(?:ket qua|kq|thanh tich|chip time|gun time|thoi gian (?:chay|ve dich|hoan thanh))';
+const POINT_WORDS = '(?:runpoints?|run points?)';
+// Mẫu được thử theo thứ tự, mẫu khớp trước thắng:
+// - kết quả đứng trước vé, để "kiểm tra giúp kết quả của BIB …" là câu hỏi kết quả chứ không phải câu hỏi vé;
+// - RunPoints đứng trước ví, để "ví của tôi có bao nhiêu điểm" là câu hỏi điểm.
+// "Điểm" đứng một mình chỉ tính khi đứng đầu câu hoặc sau "số", "xem", "check", "kiểm tra", "tổng", vì nó còn nằm
+// trong "địa điểm", "quan điểm"; "kết quả" phải đi liền "của tôi" để "kết quả xét duyệt của tôi" không bị kéo vào.
 const PATTERNS = [
+  ['results', new RegExp(`\\b${RESULT_WORDS}(?: chay| thi dau| giai)? cua ${OWN}\\b|\\bkiem tra giup\\b.*\\b(?:ket qua|kq|thanh tich|chip time)\\b`)],
   ['tickets', new RegExp(`\\bve cua ${OWN}\\b|\\bkiem tra ve\\b|\\btrang thai ve cua\\b|\\btoi da mua\\b|\\bbib cua ${OWN}\\b|\\bkiem tra giup\\b.*\\bbib\\b`)],
   ['holds', new RegExp(`\\bdon (?:hang |giu cho |dat cho )?cua ${OWN}\\b|\\bkiem tra don\\b|\\btrang thai don\\b|\\bkiem tra giup\\b.*\\bdon (?:hang|giu cho|dat cho)\\b|\\b${OWN} co don (?:nao|dang)\\b`)],
+  ['runpoints', new RegExp(`\\b(?:${POINT_WORDS}|xu) cua ${OWN}\\b|\\bdiem (?:thuong|tich luy|runpoints?) cua ${OWN}\\b`
+    + `|(?:^|\\b(?:so|xem|check|kiem tra|tong) )diem cua ${OWN}\\b|\\b${OWN} (?:co|con|dang co|con lai) (?:bao nhieu|may) (?:diem|xu|${POINT_WORDS})\\b`
+    + `|\\b(?:check|kiem tra)(?: giup)?(?: ${OWN})? (?:diem thuong|${POINT_WORDS})\\b`)],
   ['wallet', new RegExp(`(?<!\\bdon )\\bvi cua ${OWN}\\b|\\b(?:so du|sd)(?: vi)? cua ${OWN}\\b|\\b(?:check|kiem tra) (?:so du|sd)\\b|\\blenh nap (?:tien )?cua ${OWN}\\b`)],
   ['supportTickets', new RegExp(`\\b(?:yeu cau|ticket|phieu) ho tro cua ${OWN}\\b`)],
 ];
@@ -116,10 +132,22 @@ const nameOf = row => `${row.eventId?.name || 'Giải chạy'}${row.categoryId?.
 // Câu trả lời dạng danh sách: số lượng đứng đầu, nên khi chỉ hiện 3 dòng thì người đọc biết ngay còn bao nhiêu
 // ("Bạn có 4 vé…, đây là 3 vé…"). Các câu trong `notes` đứng ngay sau danh sách, và dòng cuối chỉ nút để xem
 // phần còn lại. Nhãn nút là động từ ("Xem đơn chờ thanh toán"), nên câu viết "bấm …" chứ không viết "xem trong …".
+// Không có `button` (không trang nào liệt kê phần còn lại, như kết quả chạy) thì bỏ dòng cuối đó.
 function listReply(rows, { what, first, rest, button, notes = [] }, line) {
   const heading = rows.length > LIMITS.shown ? `Bạn có ${rows.length} ${what}, đây là ${LIMITS.shown} ${first}:` : `Bạn có ${rows.length} ${what}:`;
-  const more = rows.length > LIMITS.shown ? [`${rest} còn lại bạn bấm "${button}" để xem nhé.`] : [];
+  const more = rows.length > LIMITS.shown && button ? [`${rest} còn lại bạn bấm "${button}" để xem nhé.`] : [];
   return [heading, ...rows.slice(0, LIMITS.shown).map(line), ...notes, ...more];
+}
+
+// Kết quả chạy dùng đúng điều kiện của trang kết quả công khai (listResults trong eventController): vé còn hiệu lực
+// có chip time dạng giờ:phút:giây. Trang /events/<slug>/results chỉ mở được khi giải ở trạng thái công khai và không
+// bị quản trị viên ẩn hay tạm ngừng (eventPolicy.availableEvent); giải khác thì trang trả 404 nên bot không đưa nút.
+const RESULT_STATUSES = ['CONFIRMED', 'CHECKED_IN', 'KIT_COLLECTED'];
+const RESULT_TIME = '^\\d{1,3}:[0-5]\\d:[0-5]\\d$';
+const PUBLIC_EVENT_STATUSES = ['PUBLISHED', 'REGISTRATION_OPEN', 'REGISTRATION_CLOSED', 'COMPLETED'];
+function resultsPage(event) {
+  const open = event && PUBLIC_EVENT_STATUSES.includes(event.status) && !['HIDDEN', 'SUSPENDED'].includes(event.moderation?.state);
+  return open && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(event.slug ?? '') ? `/events/${event.slug}/results` : null;
 }
 
 // Reader nào cũng lọc theo userId của token, chỉ chọn những trường nó hiện ra, và có giới hạn số dòng lẫn thời gian.
@@ -237,6 +265,50 @@ const readers = {
       `- "${oneLine(row.subject)}"`, REQUEST_LABELS[row.status], `cập nhật lúc ${vietnamClock(row.updatedAt)} ngày ${vietnamDate(row.updatedAt)}`,
     ].join(' · '));
     return { reply: lines.join('\n'), actions: [TASKS.supportTickets.action] };
+  },
+
+  // Bot hiện chip time và gun time, không hiện thứ hạng: saveResult (managementController) chỉ ghi chipTime và gunTime,
+  // còn hạng do trang kết quả tính lúc hiện (listResults), nên overallRank trong database luôn trống. Muốn xem hạng
+  // thì người dùng bấm nút sang trang kết quả của giải.
+  async results(userId) {
+    const rows = await Registration.find({ userId, status: { $in: RESULT_STATUSES }, 'finishResult.chipTime': { $regex: RESULT_TIME } })
+      .select('eventId categoryId finishResult.chipTime finishResult.gunTime')
+      .populate(populated('eventId', 'name slug status moderation.state dateInfo.raceDate')).populate(populated('categoryId', 'name'))
+      .sort({ createdAt: -1 }).limit(LIMITS.privateRows).maxTimeMS(LIMITS.queryMs).lean();
+    if (!rows.length) {
+      return { reply: 'Bạn chưa có kết quả chạy nào. Kết quả chỉ hiện sau khi ban tổ chức nhập thời gian về đích cho vé của bạn.', actions: [TASKS.results.action] };
+    }
+    // Giải chạy gần nhất đứng đầu; giải đã bị xóa (không còn ngày chạy) đứng cuối.
+    const raceTime = row => new Date(row.eventId?.dateInfo?.raceDate ?? 0).getTime() || 0;
+    const recent = rows.sort((x, y) => raceTime(y) - raceTime(x));
+    // Mỗi giải đang hiện có trang kết quả mở được thì có một nút; Map theo url nên hai vé cùng giải chỉ ra một nút.
+    const pages = new Map();
+    for (const row of recent.slice(0, LIMITS.shown)) {
+      const url = resultsPage(row.eventId);
+      if (url) pages.set(url, { label: actionLabel('Kết quả ' + row.eventId.name), url });
+    }
+    const actions = toActions([...pages.values()]);
+    const notes = actions.length ? ['Thứ hạng của bạn nằm ở trang kết quả của từng giải, bạn bấm nút "Kết quả" của giải đó bên dưới để xem nhé.'] : [];
+    const lines = listReply(recent, { what: 'kết quả chạy', first: 'kết quả gần nhất', notes }, row => '- ' + [
+      raceTime(row) ? vietnamDate(row.eventId.dateInfo.raceDate) : null, nameOf(row), 'chip time ' + row.finishResult.chipTime,
+      // saveResult chỉ nhận gunTime đúng dạng giờ:phút:giây, và gunTime có thể bỏ trống.
+      new RegExp(RESULT_TIME).test(row.finishResult.gunTime ?? '') ? 'gun time ' + row.finishResult.gunTime : null,
+    ].filter(Boolean).join(' · '));
+    return { reply: lines.join('\n'), actions: actions.length ? actions : [TASKS.results.action] };
+  },
+
+  // Chỉ đọc số điểm, không đọc lịch sử tích và dùng điểm. Người chưa có bản ghi điểm thì coi là 0 điểm: bản ghi được
+  // tạo khi người dùng mở trang có gọi GET /wallet hoặc khi được cộng điểm, bot không tự tạo.
+  // Luật điểm lấy từ code: mỗi 50.000đ thanh toán cho vé được 1 điểm (completeBooking trong bookingService); mỗi điểm
+  // giảm 1.000đ và giảm tối đa một nửa giá trị đơn (createBookingHold trong bookingController).
+  async runpoints(userId) {
+    const points = await RunPoints.findOne({ userId }).select('balance').maxTimeMS(LIMITS.queryMs).lean();
+    const balance = Math.floor(Number(points?.balance) || 0);
+    const actions = [TASKS.runpoints.action];
+    if (balance <= 0) {
+      return { reply: 'Bạn chưa có RunPoints nào. Mỗi 50.000đ bạn thanh toán cho vé được cộng 1 điểm, và điểm dùng để giảm giá khi đăng ký giải sau.', actions };
+    }
+    return { reply: `Bạn đang có ${balance.toLocaleString('vi-VN')} RunPoints. Khi đăng ký giải, mỗi điểm giảm 1.000đ, tối đa một nửa giá trị đơn.`, actions };
   },
 };
 
