@@ -8,6 +8,7 @@ const Registration = require('../src/backend/models/Registration');
 const Booking = require('../src/backend/models/Booking');
 const Wallet = require('../src/backend/models/Wallet');
 const PaymentRequest = require('../src/backend/models/PaymentRequest');
+const SupportTicket = require('../src/backend/models/SupportTicket');
 const { runTask } = require('../src/backend/services/supportTasks');
 const env = { SUPPORT_AI_PROVIDER: 'openai', OPENAI_API_KEY: 'test-only-key', OPENAI_MODEL: 'test-model' };
 const input = { question: 'Làm sao mua vé?', articles: [SUPPORT_KNOWLEDGE.find(item => item.id === 'registration')], events: [] };
@@ -68,7 +69,8 @@ function queryRows(rows, captured) {
 
 // Spec 5.1 dòng :67. Kiểm mọi truy vấn của mọi reader tác vụ thêm trong P07, kể cả truy vấn riêng của populate.
 test('mọi truy vấn tác vụ lọc theo userId của token, có giới hạn dòng và maxTimeMS, không chọn trường riêng tư', async () => {
-  const PRIVATE = /qrToken|runnerInfo|runnerProfile|identityCard|medicalHistory|transferCode|bank|payment|orderCode|requestKey|reviewNote/;
+  // messages: bot chỉ đọc tiêu đề và trạng thái của yêu cầu hỗ trợ, không đọc nội dung tin nhắn.
+  const PRIVATE = /qrToken|runnerInfo|runnerProfile|identityCard|medicalHistory|transferCode|bank|payment|orderCode|requestKey|reviewNote|messages/;
   const now = new Date('2026-11-13T03:00:00Z');
   const queries = [];
   const stub = (Model, method, rowsFor) => {
@@ -80,13 +82,15 @@ test('mọi truy vấn tác vụ lọc theo userId của token, có giới hạn
   const restore = [
     stub(Registration, 'find', () => []), stub(Booking, 'find', () => [hold]),
     stub(PaymentRequest, 'find', () => []), stub(PaymentRequest, 'countDocuments', () => 0), stub(Wallet, 'findOne', () => null),
+    stub(SupportTicket, 'find', () => []),
   ];
   try {
-    for (const key of ['tickets', 'holds', 'wallet']) await runTask(key, 'token-user', { now });
+    for (const key of ['tickets', 'holds', 'wallet', 'supportTickets']) await runTask(key, 'token-user', { now });
   } finally { restore.forEach(undo => undo()); }
   assert.deepEqual(queries.map(q => q.model + '.' + q.method), [
     'Registration.find', 'Booking.find', 'PaymentRequest.find',
     'Wallet.findOne', 'PaymentRequest.find', 'PaymentRequest.find', 'PaymentRequest.countDocuments',
+    'SupportTicket.find',
   ]);
   for (const q of queries) {
     const name = q.model + '.' + q.method;
@@ -105,6 +109,7 @@ test('mọi truy vấn tác vụ lọc theo userId của token, có giới hạn
   assert.deepEqual(queries[4].filter, { userId: 'token-user', kind: 'TOPUP', status: 'PENDING', $or: [{ expiresAt: { $gt: now } }, { expiresAt: null }] });
   assert.deepEqual(queries[5].filter, { userId: 'token-user', kind: 'TOPUP', status: 'PENDING', expiresAt: { $lte: now } });
   assert.deepEqual(queries[6].filter, queries[5].filter);
+  assert.deepEqual([queries[7].filter, queries[7].sort], [{ userId: 'token-user' }, { updatedAt: -1 }]);
 });
 
 test('mã nạp tiền gõ trong câu hỏi không bao giờ được gửi cho AI', async () => {

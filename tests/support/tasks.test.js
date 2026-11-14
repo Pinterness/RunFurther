@@ -14,12 +14,14 @@ const Registration = require('../../src/backend/models/Registration');
 const Booking = require('../../src/backend/models/Booking');
 const Wallet = require('../../src/backend/models/Wallet');
 const PaymentRequest = require('../../src/backend/models/PaymentRequest');
+const SupportTicket = require('../../src/backend/models/SupportTicket');
 const { seedArticles, normalizeSupportText } = require('../../src/backend/services/supportKnowledge');
 const { createSupportResponder } = require('../../src/backend/services/supportAiService');
 const { routeTask, toActions, createTaskRunner } = require('../../src/backend/services/supportTasks');
 const { createBackendHarness } = require('../helpers/backendHarness');
 
-const harness = createBackendHarness({ app, dbName: 'runfurther_support_tasks' });
+// Bật theo dõi lệnh MongoDB để test cuối file chứng minh được các tác vụ chỉ gửi lệnh đọc.
+const harness = createBackendHarness({ app, dbName: 'runfurther_support_tasks', monitorCommands: true });
 before(harness.start);
 after(harness.stop);
 
@@ -390,4 +392,78 @@ test('route chat chỉ đọc dữ liệu của chủ token, dù body gửi kèm
   assert.equal(own.status, 200); assert.match(own.body.reply, /150\.000đ/); assert.doesNotMatch(JSON.stringify(own.body), /777\.000đ|888\.000đ/);
   const guest = await harness.request('/support/chat', { method: 'POST', body: { message: 'ví của tôi', userId: data.walletB.id } });
   assert.equal(guest.status, 200); assert.match(guest.body.reply, /cần đăng nhập/); assert.doesNotMatch(JSON.stringify(guest.body), /777\.000đ|888\.000đ/);
+});
+
+// ---- Task 7.5: yêu cầu hỗ trợ
+// Đặt sẵn updatedAt cho từng yêu cầu: lưu với { timestamps: false } để Mongoose không ghi đè bằng giờ thật.
+const makeSupportTicket = (userId, subject, status, updatedAt) => new SupportTicket({
+  userId, subject, status, createdAt: at(-7 * DAY), updatedAt,
+  messages: [{ role: 'customer', authorId: userId, content: 'Nội dung riêng của yêu cầu ' + subject }],
+}).save({ timestamps: false });
+
+before(async () => {
+  Object.assign(data, { ticketA: await harness.createUser(), ticketB: await harness.createUser(), noTicket: await harness.createUser() });
+  // Tạo theo thứ tự khác thứ tự cập nhật, nên chỉ khi sắp theo updatedAt thì danh sách mới đúng.
+  await makeSupportTicket(data.ticketA.id, 'Hoàn tiền giải bị hủy', 'CLOSED', at(-2 * DAY));
+  await makeSupportTicket(data.ticketA.id, 'Sai tên trên BIB', 'OPEN', at(-5 * DAY));
+  // Tiêu đề do người dùng gõ có thể chứa xuống dòng: câu trả lời phải giữ mỗi yêu cầu trên một dòng.
+  await makeSupportTicket(data.ticketA.id, 'Không nhận được\nemail xác nhận', 'ANSWERED', at(-1 * HOUR));
+  await makeSupportTicket(data.ticketA.id, 'Đổi cự ly 21K sang 10K', 'OPEN', at(-3 * HOUR));
+  await makeSupportTicket(data.ticketB.id, 'Yêu cầu của người B', 'OPEN', at(-1 * HOUR));
+});
+
+test('yêu cầu hỗ trợ: hiện 3 yêu cầu mới cập nhật nhất với nhãn trạng thái như khung chat', async () => {
+  const own = await ask('yêu cầu hỗ trợ của tôi', data.ticketA.id);
+  assert.equal(own.reply, [
+    'Bạn có 4 yêu cầu hỗ trợ, đây là 3 yêu cầu mới cập nhật nhất:',
+    '- "Không nhận được email xác nhận" · Đã phản hồi · cập nhật lúc 09:00 ngày 10/1/2031',
+    '- "Đổi cự ly 21K sang 10K" · Chờ phản hồi · cập nhật lúc 07:00 ngày 10/1/2031',
+    '- "Hoàn tiền giải bị hủy" · Đã đóng · cập nhật lúc 10:00 ngày 8/1/2031',
+    'Yêu cầu còn lại bạn bấm "Yêu cầu hỗ trợ của tôi" để xem nhé.',
+  ].join('\n'));
+  assert.deepEqual(own.actions, [{ label: 'Yêu cầu hỗ trợ của tôi', view: 'tickets' }]);
+  // Bot chỉ đọc tiêu đề và trạng thái, không đọc nội dung tin nhắn trong yêu cầu.
+  assert.doesNotMatch(JSON.stringify(own), /Nội dung riêng/);
+});
+
+test('yêu cầu hỗ trợ: A không thấy yêu cầu của B', async () => {
+  const own = await ask('ticket hỗ trợ của mình', data.ticketA.id);
+  assert.match(own.reply, /Đổi cự ly/); assert.doesNotMatch(JSON.stringify(own), /người B/);
+});
+
+test('yêu cầu hỗ trợ: người chưa gửi yêu cầu nào được mời gửi yêu cầu mới', async () => {
+  const own = await ask('yêu cầu hỗ trợ của tôi', data.noTicket.id);
+  assert.equal(own.reply, 'Bạn chưa gửi yêu cầu hỗ trợ nào. Nếu cần nhân viên giúp, bạn bấm "Gửi yêu cầu hỗ trợ" để gửi yêu cầu mới.');
+  assert.deepEqual(own.actions, [SUPPORT]);
+});
+
+// ---- Bot chỉ đọc (spec 5.1): hỏi mọi tác vụ, qua cả responder lẫn route HTTP, rồi kiểm database không đổi.
+test('chạy mọi tác vụ không ghi gì vào database và mọi truy vấn đều có maxTimeMS', async () => {
+  const models = [Registration, Booking, Wallet, PaymentRequest, SupportTicket];
+  // Số tài liệu và updatedAt lớn nhất của từng collection: một lệnh ghi bất kỳ sẽ làm đổi ít nhất một trong hai.
+  const snapshot = () => Promise.all(models.map(async Model => {
+    const newest = await Model.findOne().sort({ updatedAt: -1 }).select('updatedAt').lean();
+    return [Model.modelName, await Model.countDocuments(), newest?.updatedAt?.toISOString() ?? null];
+  }));
+  const before = await snapshot();
+  const commands = [];
+  const client = mongoose.connection.getClient();
+  const listen = event => commands.push({ name: event.commandName, collection: event.command[event.commandName], maxTimeMS: event.command.maxTimeMS });
+  client.on('commandStarted', listen);
+  try {
+    const questions = ['vé của tôi', 'đơn của tôi', 'ví của tôi', 'yêu cầu hỗ trợ của tôi', 'của tôi sao rồi'];
+    for (const who of [data.a, data.holdF, data.holdG, data.walletA, data.crowded, data.noWallet, data.ticketA, data.noTicket]) {
+      for (const question of questions) await ask(question, who.id);
+    }
+    for (const question of questions) {
+      assert.equal((await harness.request('/support/chat', { method: 'POST', as: data.walletA, body: { message: question } })).status, 200);
+    }
+  } finally { client.off('commandStarted', listen); }
+  assert.deepEqual(await snapshot(), before);
+  const writes = commands.filter(command => ['insert', 'update', 'delete', 'findAndModify', 'bulkWrite', 'create', 'drop'].includes(command.name));
+  assert.deepEqual(writes, [], 'a task must only read');
+  // Lệnh đọc của tác vụ (kể cả truy vấn phụ của populate và lệnh đếm) đều phải có giới hạn thời gian.
+  const reads = commands.filter(command => ['find', 'aggregate'].includes(command.name) && command.collection !== 'users');
+  assert.ok(reads.length > 0);
+  assert.deepEqual(reads.filter(command => command.maxTimeMS !== 1500), [], 'every task read has maxTimeMS 1500');
 });

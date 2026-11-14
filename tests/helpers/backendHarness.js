@@ -14,9 +14,11 @@ const BANK_DIRECTORY_URL = 'https://api.vietqr.io/v2/banks';
  * @param {object} options Harness options.
  * @param {import('express').Express} options.app Express app under test.
  * @param {string} options.dbName Database name inside the in-memory replica set.
+ * @param {boolean} [options.monitorCommands] Bật theo dõi lệnh MongoDB (sự kiện commandStarted của driver), để test
+ *   kiểm được những lệnh nào đã được gửi đi, ví dụ chứng minh một chức năng chỉ đọc chứ không ghi.
  * @returns {{ start: Function, stop: Function, request: Function, createUser: Function }} Helpers.
  */
-function createBackendHarness({ app, dbName }) {
+function createBackendHarness({ app, dbName, monitorCommands = false }) {
   const state = { replSet: null, server: null, baseUrl: '', nativeFetch: global.fetch, users: 0 };
 
   // The bank directory is served from the bundled snapshot so tests never call VietQR.
@@ -31,7 +33,7 @@ function createBackendHarness({ app, dbName }) {
   async function start() {
     global.fetch = stubBankDirectory;
     state.replSet = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
-    await mongoose.connect(state.replSet.getUri(dbName));
+    await mongoose.connect(state.replSet.getUri(dbName), { monitorCommands });
     await Promise.all(Object.values(mongoose.models).map((model) => model.init()));
     state.server = app.listen(0, '127.0.0.1');
     await new Promise((resolve) => state.server.once('listening', resolve));

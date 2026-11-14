@@ -6,6 +6,7 @@ const Registration = require('../models/Registration');
 const Booking = require('../models/Booking');
 const Wallet = require('../models/Wallet');
 const PaymentRequest = require('../models/PaymentRequest');
+const SupportTicket = require('../models/SupportTicket');
 const { vnd } = require('./topupService');
 const { internalPath } = require('../../lib/internalPath.cjs');
 const { calendarDate } = require('../../lib/runnerValidation.cjs');
@@ -122,6 +123,10 @@ const vietnamClock = value => new Date(value).toLocaleTimeString('vi-VN', { ...V
 // populate là bước Mongoose chạy thêm một truy vấn để lấy bản ghi mà eventId hay categoryId trỏ tới (tên giải,
 // tên cự ly). Truy vấn phụ này không tự nhận giới hạn thời gian của truy vấn chính, nên phải đặt lại maxTimeMS.
 const populated = (path, select) => ({ path, select, options: { maxTimeMS: LIMITS.queryMs } });
+// Chữ giống tab "Nhân viên hỗ trợ" trong khung chat (SupportChat.jsx:11).
+const REQUEST_LABELS = { OPEN: 'Chờ phản hồi', ANSWERED: 'Đã phản hồi', CLOSED: 'Đã đóng' };
+// Chữ do người dùng gõ (ví dụ tiêu đề yêu cầu) có thể chứa xuống dòng; gộp lại để mỗi mục vẫn nằm trên một dòng.
+const oneLine = value => String(value ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
 // "Huế Heritage Run (Half Marathon 21K)"; giải đã bị xóa thì ghi "Giải chạy".
 const nameOf = row => `${row.eventId?.name || 'Giải chạy'}${row.categoryId?.name ? ` (${row.categoryId.name})` : ''}`;
 // Câu trả lời dạng danh sách: số lượng đứng đầu, nên khi chỉ hiện 3 dòng thì người đọc biết ngay còn bao nhiêu
@@ -234,6 +239,20 @@ const readers = {
     // Cùng quy tắc với topupService: ví nào không ACTIVE (bị tạm khóa hay đã đóng) thì không được nạp tiền.
     if (locked) parts.push(`Ví của bạn đang bị khóa nên chưa thể nạp tiền. Bạn bấm "${SUPPORT_ACTION.label}" nếu cần mở lại nhé.`);
     return { reply: parts.join('\n'), actions: expiredCount || locked ? [TASKS.wallet.action, SUPPORT_ACTION] : [TASKS.wallet.action] };
+  },
+
+  // Bot chỉ đọc tiêu đề, trạng thái và giờ cập nhật của yêu cầu; không đọc nội dung tin nhắn (messages) bên trong.
+  // Yêu cầu vừa được nhân viên trả lời có updatedAt mới nhất, nên được xếp lên đầu.
+  async supportTickets(userId) {
+    const rows = await SupportTicket.find({ userId }).select('subject status updatedAt')
+      .sort({ updatedAt: -1 }).limit(LIMITS.privateRows).maxTimeMS(LIMITS.queryMs).lean();
+    if (!rows.length) {
+      return { reply: `Bạn chưa gửi yêu cầu hỗ trợ nào. Nếu cần nhân viên giúp, bạn bấm "${SUPPORT_ACTION.label}" để gửi yêu cầu mới.`, actions: [SUPPORT_ACTION] };
+    }
+    const lines = listReply(rows, { what: 'yêu cầu hỗ trợ', first: 'yêu cầu mới cập nhật nhất', rest: 'Yêu cầu', button: TASKS.supportTickets.action.label }, row => [
+      `- "${oneLine(row.subject)}"`, REQUEST_LABELS[row.status], `cập nhật lúc ${vietnamClock(row.updatedAt)} ngày ${vietnamDate(row.updatedAt)}`,
+    ].join(' · '));
+    return { reply: lines.join('\n'), actions: [TASKS.supportTickets.action] };
   },
 };
 
