@@ -18,6 +18,7 @@ const SupportTicket = require('../../src/backend/models/SupportTicket');
 const { seedArticles, normalizeSupportText } = require('../../src/backend/services/supportKnowledge');
 const { createSupportResponder } = require('../../src/backend/services/supportAiService');
 const { routeTask, toActions, createTaskRunner } = require('../../src/backend/services/supportTasks');
+const { actionLabel } = require('../../src/lib/supportActions.cjs');
 const { createBackendHarness } = require('../helpers/backendHarness');
 
 // Bật theo dõi lệnh MongoDB để test cuối file chứng minh được các tác vụ chỉ gửi lệnh đọc.
@@ -104,6 +105,38 @@ test('toActions chỉ giữ tối đa 3 nút trỏ vào trang nội bộ hoặc 
   assert.deepEqual(toActions([{ label: 'x'.repeat(41), url: '/account' }, { label: '', url: '/account' }, { url: '/account' }, null, { label: 'Ví', url: '/account/wallet', extra: 'drop' }]),
     [{ label: 'Ví', url: '/account/wallet' }]);
   assert.deepEqual(toActions('not a list'), []);
+});
+
+test('chủ đề giải: câu trả lời có tối đa 3 nút dẫn tới trang giải nội bộ, tên dài được cắt còn 40 ký tự', async () => {
+  const event = (name, url) => ({ name, url, city: 'Huế', date: '01/02/2031', registrationOpen: true, categories: [] });
+  const events = [
+    event('Giải chạy bộ Marathon Quốc tế Di sản Cố đô Huế mở rộng 2031', '/events/marathon-hue-2031'),
+    event('Giải ở trang ngoài', 'https://x.example/giai'),
+    event('Đà Lạt Ultra Trail Vượt Đèo Prenn 2031 Đêm Sương', '/events/da-lat-ultra-trail'),
+    event('Hà Nội 10K', '/events/ha-noi-10k'),
+    event('Vũng Tàu Night Run', '/events/vung-tau-night-run'),
+  ];
+  // Cắt ở ký tự 39 rồi thêm "…" cho đủ 40; khoảng trắng ngay trước chỗ cắt bị bỏ. Nút giữ nguyên khi AI trả lời.
+  const expected = [
+    { label: 'Giải chạy bộ Marathon Quốc tế Di sản Cố…', url: '/events/marathon-hue-2031' },
+    { label: 'Đà Lạt Ultra Trail Vượt Đèo Prenn 2031…', url: '/events/da-lat-ultra-trail' },
+    { label: 'Hà Nội 10K', url: '/events/ha-noi-10k' },
+  ];
+  for (const [generateReply, mode] of [[null, 'guide'], [async () => 'Trợ lý AI trả lời về các giải.', 'ai']]) {
+    const answer = createSupportResponder({ findArticles: async () => seedArticles(), findEvents: async () => events, generateReply, runTask: mustNotRun });
+    const result = await answer({ message: 'Có giải nào sắp diễn ra?' });
+    assert.equal(result.mode, mode);
+    assert.deepEqual(result.actions, expected);
+  }
+  const noEvents = createSupportResponder({ findArticles: async () => seedArticles(), findEvents: async () => [], generateReply: null, runTask: mustNotRun });
+  assert.equal((await noEvents({ message: 'Có giải nào sắp diễn ra?' })).actions, undefined);
+});
+
+test('actionLabel không để sót nửa emoji khi chỗ cắt rơi vào giữa emoji', () => {
+  // Emoji 🏃 chiếm hai ký tự JavaScript ở vị trí 38 và 39; cắt ở 39 sẽ còn nửa đầu, nửa đó phải bị bỏ cùng khoảng trắng trước nó.
+  assert.equal(actionLabel('Sài Gòn Night Run mùa lễ hội cuối năm 🏃 2031'), 'Sài Gòn Night Run mùa lễ hội cuối năm…');
+  assert.equal(actionLabel('  Hà Nội 10K  '), 'Hà Nội 10K');
+  assert.equal(actionLabel(undefined), '');
 });
 
 

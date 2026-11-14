@@ -5,7 +5,8 @@ const { availableEvent } = require('./eventPolicy');
 const { escapeRegex, httpError } = require('../lib/errors');
 const { SUPPORT_MESSAGE_LIMIT, rankArticles, normalizeSupportText } = require('./supportKnowledge');
 const { loadPublishedArticles } = require('./supportKnowledgeStore');
-const { routeTask, toActions, guestAnswer, failedAnswer, unclearAnswer, runTask: defaultTaskRunner } = require('./supportTasks');
+const { routeTask, guestAnswer, failedAnswer, unclearAnswer, runTask: defaultTaskRunner } = require('./supportTasks');
+const { toActions, actionLabel } = require('../../lib/supportActions.cjs');
 
 const PUBLIC_STATUSES = ['PUBLISHED', 'REGISTRATION_OPEN', 'REGISTRATION_CLOSED', 'COMPLETED'];
 const LIMITS = { events: 5, categories: 40, queryMs: 1500, replyCharacters: 4000 };
@@ -142,6 +143,8 @@ function createSupportResponder({ findArticles = loadPublishedArticles, findEven
           const details = events.map(event => `${event.name} — ${event.city || 'Chờ địa điểm'} — ${event.date}. ${event.registrationOpen ? 'Đang trong thời gian đăng ký.' : 'Xem thời gian đăng ký tại trang giải.'} ${event.categories.map(category => `${category.code || category.distance + ' km'}${category.price === null ? '' : ': ' + category.price.toLocaleString('vi-VN') + 'đ'}`).join(' / ')}`);
           result.reply = 'Thông tin công khai hiện có:\n' + details.join('\n') + '\n\nGiá và số chỗ cần kiểm tra lại trên trang giải trước khi tạo đơn.';
           result.sources = events.map(event => ({ title: event.name, url: event.url }));
+          // Mỗi giải thêm một nút mở trang của giải đó; toActions giữ 3 giải đầu danh sách có link nội bộ.
+          result.actions = toActions(events.map(event => ({ label: actionLabel(event.name), url: event.url })));
         } else result.reply = 'Chưa tìm thấy giải công khai phù hợp trong dữ liệu hiện tại. Bạn có thể mở danh sách giải để thay đổi địa điểm hoặc kiểm tra lại sau.';
       } catch {
         result.reply = 'Hiện chưa tải được thông tin giải. Bạn hãy mở danh sách giải để thử lại; mình chưa thể xác nhận lịch hoặc giá vé lúc này.';

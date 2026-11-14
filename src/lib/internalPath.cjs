@@ -1,6 +1,6 @@
 // Một quy tắc chung cho câu hỏi "link này có nằm trong RunFurther không?": chỉ nhận đường dẫn nội bộ cùng website
 // như /account, không bao giờ nhận //host, dấu \ hay khoảng trắng. Hàm được dùng ở khung chat (trình duyệt),
-// ở model SupportArticle (server) và ở toActions của trợ lý.
+// ở model SupportArticle (server) và ở toActions trong supportActions.cjs (lọc nút của trợ lý).
 function internalPath(value) {
   if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//') || /[\\\u0000- ]/.test(value)) return null;
   try {

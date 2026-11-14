@@ -8,7 +8,7 @@ const Wallet = require('../models/Wallet');
 const PaymentRequest = require('../models/PaymentRequest');
 const SupportTicket = require('../models/SupportTicket');
 const { vnd } = require('./topupService');
-const { internalPath } = require('../../lib/internalPath.cjs');
+const { toActions } = require('../../lib/supportActions.cjs');
 const { calendarDate } = require('../../lib/runnerValidation.cjs');
 const { normalizeSupportText } = require('./supportKnowledge');
 
@@ -53,22 +53,6 @@ const taskForEval = question => {
   const route = routeTask(normalizeSupportText(question));
   return route?.key ? 'task:' + route.key : null;
 };
-
-// Lọc nút trước khi gửi cho giao diện: tối đa 3 nút, mỗi nút là { label, url } với url nội bộ, hoặc
-// { label, view: 'tickets' } để mở tab hỗ trợ trong khung chat. Nút khác dạng này thì bị bỏ.
-function toActions(list) {
-  if (!Array.isArray(list)) return [];
-  const actions = [];
-  for (const item of list) {
-    if (actions.length === 3) break;
-    const label = typeof item?.label === 'string' ? item.label.trim() : '';
-    if (!label || label.length > 40) continue;
-    if (item.view === 'tickets') { actions.push({ label, view: 'tickets' }); continue; }
-    const url = internalPath(item.url);
-    if (url !== null) actions.push({ label, url });
-  }
-  return actions;
-}
 
 // Câu chữ theo các lần soát ngôn ngữ ngày 13-11: bot xưng "mình", gọi "bạn", câu đầu trả lời thẳng câu hỏi,
 // và mỗi lời dặn "bấm …" đều gọi đúng tên một nút có thật bên dưới câu trả lời.

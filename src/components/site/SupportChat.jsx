@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { MessageCircle, X } from 'lucide-react';
 import { api } from '../../lib/clientApi';
 import { internalPath } from '../../lib/internalPath.cjs';
+import { toActions } from '../../lib/supportActions.cjs';
 import './support-chat.css';
 
 const initialPrompts = ['Làm sao để đăng ký giải?', 'Tôi đã chuyển khoản nhưng chưa có vé.', 'Cách nhận race kit?'];
@@ -38,7 +39,7 @@ export default function SupportChat() {
   const [selectedTicket, setSelectedTicket] = useState(null), [ticketLoading, setTicketLoading] = useState(false);
   const [ticketBusy, setTicketBusy] = useState(false), [ticketError, setTicketError] = useState('');
   const [subject, setSubject] = useState(''), [ticketDraft, setTicketDraft] = useState(''), [replyDraft, setReplyDraft] = useState('');
-  const trigger = useRef(null), heading = useRef(null), transcript = useRef(null), ticketTranscript = useRef(null);
+  const trigger = useRef(null), heading = useRef(null), transcript = useRef(null), ticketTranscript = useRef(null), ticketTab = useRef(null);
   const mounted = useRef(true), epoch = useRef(0), requests = useRef(new Set());
   const chatRequest = useRef(null), ticketMutation = useRef(null), detailRequest = useRef(null), listRequest = useRef(null);
   const selectedId = useRef(''), lastAuth = useRef(null), syncAuth = useRef(null), nextMessageId = useRef(0);
@@ -103,8 +104,10 @@ export default function SupportChat() {
       if (!current(request) || request.controller.signal.aborted) return;
       if (typeof data.reply !== 'string' || !data.reply.trim()) throw new Error('Chưa nhận được câu trả lời. Bạn thử lại nhé.');
       const replyMode = data.mode === 'ai' ? 'ai' : 'guide';
-      const sources = (Array.isArray(data.sources) ? data.sources : []).slice(0, 5).map(source => ({ title: String(source?.title || 'Xem hướng dẫn'), url: internalPath(source?.url) })).filter(source => source.url);
-      setMessages(items => [...items, { id: ++nextMessageId.current, role: 'assistant', content: data.reply, mode: replyMode, sources }]);
+      // Nút được lọc lại bằng đúng luật của server. Nguồn trùng link với một nút thì không hiện thêm lần nữa.
+      const actions = toActions(data.actions);
+      const sources = (Array.isArray(data.sources) ? data.sources : []).slice(0, 5).map(source => ({ title: String(source?.title || 'Xem hướng dẫn'), url: internalPath(source?.url) })).filter(source => source.url && !actions.some(action => action.url === source.url));
+      setMessages(items => [...items, { id: ++nextMessageId.current, role: 'assistant', content: data.reply, mode: replyMode, actions, sources }]);
       setMode(replyMode);
       const next = (Array.isArray(data.suggestions) ? data.suggestions : []).filter(item => typeof item === 'string' && item.trim() && item.length <= 2000).slice(0, 3);
       setSuggestions(next.length ? next : initialPrompts);
@@ -181,6 +184,9 @@ export default function SupportChat() {
     } finally { finish(request); if (ticketMutation.current === request) { ticketMutation.current = null; if (current(request)) setTicketBusy(false); } }
   }
   function startTicket() { setTicketView('new'); setTicketError(''); }
+  // Nút "Yêu cầu hỗ trợ của tôi" hay "Gửi yêu cầu hỗ trợ" trong câu trả lời: mở danh sách yêu cầu, nơi có nút gửi yêu cầu mới.
+  // Nút vừa bấm biến mất cùng cuộc trò chuyện, nên chuyển focus sang tab "Nhân viên hỗ trợ" để bàn phím không bị lạc.
+  function openTickets() { setView('tickets'); setTicketView('list'); setTicketError(''); ticketTab.current?.focus(); }
   const lastQuestion = [...messages].reverse().find(item => item.role === 'user')?.content;
 
   return <div className="support-widget" data-support-widget data-open={open} onWheel={event => event.stopPropagation()} onTouchMove={event => event.stopPropagation()}>
@@ -189,12 +195,12 @@ export default function SupportChat() {
     </button>
     {open && <section id="support-panel" className="support-panel" role="dialog" aria-labelledby="support-heading">
       <header className="support-header"><div><p>RUNFURTHER / LUÔN ĐỒNG HÀNH</p><h2 id="support-heading" ref={heading} tabIndex={-1}>Bạn cần giúp gì?</h2></div><button className="support-close" type="button" aria-label="Đóng hỗ trợ" onClick={close}><X size={19} aria-hidden="true" /></button></header>
-      <nav className="support-tabs" aria-label="Hình thức hỗ trợ"><button type="button" aria-pressed={view === 'assistant'} onClick={() => setView('assistant')}>Trợ lý nhanh</button><button type="button" aria-pressed={view === 'tickets'} onClick={() => setView('tickets')}>Nhân viên hỗ trợ</button></nav>
+      <nav className="support-tabs" aria-label="Hình thức hỗ trợ"><button type="button" aria-pressed={view === 'assistant'} onClick={() => setView('assistant')}>Trợ lý nhanh</button><button ref={ticketTab} type="button" aria-pressed={view === 'tickets'} onClick={() => setView('tickets')}>Nhân viên hỗ trợ</button></nav>
       {view === 'assistant' ? <>
         <div className="support-mode"><span className="support-mode-dot" />{mode === 'ai' ? 'Trợ lý AI' : 'Hướng dẫn tự động'}<span>Đăng ký · Vé · Ngày chạy</span></div>
         <div className="support-transcript" ref={transcript} role="log" aria-label="Cuộc trò chuyện với trợ lý" aria-live="polite" aria-relevant="additions text" tabIndex={0}>
           {!messages.length && <div className="support-welcome"><span>ĐỒNG HÀNH TỪ BƯỚC ĐẦU.</span><h3>Mọi câu hỏi đều có<br />một điểm bắt đầu.</h3><p>Tôi giúp bạn tìm hướng dẫn về đăng ký giải, vé, chuyển khoản và race kit.</p></div>}
-          {messages.map(message => <article key={message.id} className={'support-message support-message-' + message.role}><small>{message.role === 'user' ? 'Bạn' : message.mode === 'ai' ? 'Trợ lý AI' : 'Hướng dẫn tự động'}</small><p>{message.content}</p>{message.sources?.length > 0 && <ul className="support-sources" aria-label="Nguồn tham khảo">{message.sources.map((source, index) => <li key={source.url + index}><Link href={source.url} onClick={close}>{source.title}<span aria-hidden="true"> ↗</span></Link></li>)}</ul>}</article>)}
+          {messages.map(message => <article key={message.id} className={'support-message support-message-' + message.role}><small>{message.role === 'user' ? 'Bạn' : message.mode === 'ai' ? 'Trợ lý AI' : 'Hướng dẫn tự động'}</small><p>{message.content}</p>{message.actions?.length > 0 && <div className="support-actions" role="group" aria-label="Thao tác nhanh">{message.actions.map((action, index) => action.view === 'tickets' ? <button key={'tickets' + index} type="button" onClick={openTickets}>{action.label}<span aria-hidden="true">→</span></button> : <Link key={action.url + index} href={action.url} onNavigate={close}>{action.label}<span aria-hidden="true">↗</span></Link>)}</div>}{message.sources?.length > 0 && <ul className="support-sources" aria-label="Nguồn tham khảo">{message.sources.map((source, index) => <li key={source.url + index}><Link href={source.url} onClick={close}>{source.title}<span aria-hidden="true"> ↗</span></Link></li>)}</ul>}</article>)}
           {chatBusy && <div className="support-typing" role="status"><span aria-hidden="true"><i /><i /><i /></span>Đang tìm câu trả lời…</div>}
           {failedChat && <div className="support-error" role="alert"><p>{failedChat.error}</p><button type="button" onClick={() => sendChat(failedChat.message, failedChat)}>Thử lại</button></div>}
           {!chatBusy && <div className="support-prompts" aria-label="Câu hỏi gợi ý">{suggestions.map((prompt, index) => <button key={index} type="button" onClick={() => sendChat(prompt)}>{prompt}<span aria-hidden="true">↗</span></button>)}</div>}

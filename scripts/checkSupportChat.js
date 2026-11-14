@@ -9,7 +9,7 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     const page = await browser.newPage({ viewport: { width: 1440, height: 950 } });
     const errors = [], chatBodies = [], ticketWrites = [];
     page.on('pageerror', error => errors.push(error.message));
-    let failChat = true, longReply = false, holdChat = false, releaseChat, ticket = null, failCreate = true, detailReads = 0;
+    let failChat = true, longReply = false, holdChat = false, releaseChat, ticket = null, failCreate = true, detailReads = 0, chatActions = null;
     const now = '2030-06-01T09:30:00.000Z';
     const unsafeReply = 'Bạn có thể tra cứu BIB. <img src=x onerror="window.chatInjected=true">';
     await page.route('**/api/**', async route => {
@@ -25,7 +25,7 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
         assert.ok(body.history.reduce((sum, item) => sum + item.content.length, 0) <= 16000, 'Long conversations remain inside the backend history budget');
         if (failChat) return route.fulfill({ status: 503, json: { message: 'Trợ lý đang bận. Bạn thử lại nhé.' } });
         if (holdChat) await new Promise(resolve => { releaseChat = resolve; });
-        return reply({ reply: holdChat ? 'PHẢN HỒI RIÊNG TƯ CŨ' : longReply ? 'Hướng dẫn ' + chatBodies.length + '. ' + 'Thông tin mẫu. '.repeat(240) : unsafeReply, mode: 'guide', suggestions: ['Tìm cự ly phù hợp'], sources: [
+        return reply({ reply: holdChat ? 'PHẢN HỒI RIÊNG TƯ CŨ' : longReply ? 'Hướng dẫn ' + chatBodies.length + '. ' + 'Thông tin mẫu. '.repeat(240) : unsafeReply, mode: 'guide', suggestions: ['Tìm cự ly phù hợp'], ...(chatActions ? { actions: chatActions } : {}), sources: [
           { title: 'Tra cứu BIB', url: '/lookup' }, { title: 'External', url: 'https://outside.example.test' },
           { title: 'Protocol relative', url: '//outside.example.test' }, { title: 'Script', url: 'javascript:alert(1)' },
           { title: 'Backslash', url: '/\\outside.example.test' },
@@ -84,6 +84,22 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     }
     assert.ok(chatBodies.at(-1).history.reduce((sum, item) => sum + item.content.length, 0) <= 16000);
 
+    // Nút của câu trả lời: chỉ hiện nút trỏ vào trang nội bộ hoặc vào tab hỗ trợ; bấm nút tab thì chuyển sang "Nhân viên hỗ trợ".
+    chatActions = [{ label: 'Ví của tôi', url: '/account/wallet' }, { label: 'Lạ', url: 'https://x.example' }, { label: 'Yêu cầu hỗ trợ của tôi', view: 'tickets' }];
+    await question.fill('Ví của tôi còn bao nhiêu?');
+    await question.press('Enter');
+    await expect(widget.locator('.support-message-assistant')).toHaveCount(8);
+    const firstActions = widget.locator('.support-message-assistant').last().locator('.support-actions');
+    await expect(firstActions.locator('a, button')).toHaveCount(2);
+    await expect(firstActions.getByRole('link', { name: 'Ví của tôi' })).toHaveAttribute('href', '/account/wallet');
+    await expect(firstActions.getByText('Lạ', { exact: true })).toHaveCount(0);
+    await expect(widget.locator('a[href^="https://x.example"]')).toHaveCount(0);
+    await firstActions.getByRole('button', { name: 'Yêu cầu hỗ trợ của tôi' }).click();
+    await expect(widget.getByRole('button', { name: 'Nhân viên hỗ trợ', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect(widget.getByRole('button', { name: 'Nhân viên hỗ trợ', exact: true })).toBeFocused();
+    await expect(widget.locator('.support-ticket-guest')).toBeVisible();
+    chatActions = null;
+
     await widget.getByRole('button', { name: 'Nhân viên hỗ trợ', exact: true }).click();
     await expect(widget.locator('.support-ticket-guest')).toBeVisible();
     await expect(widget.getByRole('link', { name: 'Đăng nhập để gửi yêu cầu' })).toHaveAttribute('href', '/login?next=%2Flookup');
@@ -125,6 +141,16 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await widget.getByRole('button', { name: 'Cập nhật', exact: true }).click();
     await expect(widget.locator('.support-closed')).toBeVisible();
     await expect(widget.getByLabel('Bổ sung thông tin')).toHaveCount(0);
+
+    // Đang xem chi tiết một yêu cầu mà bấm nút tab hỗ trợ trong câu trả lời thì về danh sách yêu cầu, không kẹt ở chi tiết cũ.
+    await widget.getByRole('button', { name: 'Trợ lý nhanh', exact: true }).click();
+    chatActions = [{ label: 'Yêu cầu hỗ trợ của tôi', view: 'tickets' }];
+    await question.fill('Yêu cầu hỗ trợ của tôi');
+    await question.press('Enter');
+    await widget.locator('.support-message-assistant').last().getByRole('button', { name: 'Yêu cầu hỗ trợ của tôi' }).click();
+    await expect(widget.locator('.support-ticket-list')).toBeVisible();
+    await expect(widget.locator('.support-ticket-title')).toHaveCount(0);
+    chatActions = null;
 
     // Authentication changes abort old requests and erase private conversation state.
     await widget.getByRole('button', { name: 'Trợ lý nhanh', exact: true }).click();
@@ -176,7 +202,19 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     fs.mkdirSync('artifacts', { recursive: true });
     await launcher.click();
     await page.screenshot({ path: 'artifacts/support-chat-mobile.png' });
+
+    // Nguồn trùng địa chỉ với một nút thì không hiện lại; bấm nút dẫn trang thì sang đúng trang đó và khung chat đóng lại.
+    chatActions = [{ label: 'Tra cứu BIB', url: '/lookup' }, { label: 'Ví của tôi', url: '/account/wallet' }];
+    await question.fill('Ví của tôi còn bao nhiêu?');
+    await question.press('Enter');
+    await expect(widget.locator('.support-message-assistant')).toHaveCount(2);
+    const lastAnswer = widget.locator('.support-message-assistant').last();
+    await expect(lastAnswer.locator('.support-actions a')).toHaveCount(2);
+    await expect(lastAnswer.locator('.support-sources')).toHaveCount(0);
+    await lastAnswer.getByRole('link', { name: 'Ví của tôi' }).click();
+    await expect(page).toHaveURL(/\/account\/wallet$/);
+    await expect(panel).toHaveCount(0);
     assert.deepEqual(errors, []);
-    console.log('PASS: guest chat/retry, bounded history, text-only answers/internal links, auth reset/stale response guard, human ticket create/detail/reply/closed, mobile fit, isolated wheel and Escape focus (API fixtures only).');
+    console.log('PASS: guest chat/retry, bounded history, text-only answers/internal links, action buttons (internal links + support tab, duplicate sources hidden), auth reset/stale response guard, human ticket create/detail/reply/closed, mobile fit, isolated wheel and Escape focus (API fixtures only).');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
