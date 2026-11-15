@@ -292,3 +292,23 @@ test('mỗi lúc chỉ gửi tối đa 4 request tới AI, request thứ 5 bị 
   pending.forEach(resolve => resolve(success('Hướng dẫn đã xác thực.')));
   assert.ok((await Promise.all(requests)).every(value => value === 'Hướng dẫn đã xác thực.'));
 });
+
+// Sau lần chấm AI ngày 16-11 (q40 tự xếp giải 20/12 vào "tháng này", q45 tự thêm nguyên nhân, 3 câu có dấu **):
+// chỉ dẫn hệ thống thêm ba luật, và adapter dọn dấu Markdown vì khung chat hiển thị chữ thường.
+test('chỉ dẫn gửi Gemini cấm tự xếp giải vào khoảng thời gian, cấm thêm nguyên nhân ngoài bài và cấm Markdown', async () => {
+  let system;
+  const adapter = createChatAdapter({ env, fetchImpl: async (_url, options) => { system = JSON.parse(options.body).messages[0].content; return success('ok'); } });
+  await adapter(input);
+  assert.match(system, /Không tự suy ra một giải thuộc hôm nay, tuần này, tháng này/);
+  assert.match(system, /Không thêm nguyên nhân, điều kiện hay ngoại lệ không có trong supportArticles/);
+  assert.match(system, /văn bản thuần, không dùng Markdown/);
+  // "chữ thường" còn có nghĩa là chữ không viết hoa: lần thử 16-11 trên nửa luyện, Gemini viết thường toàn bộ câu trả lời.
+  assert.doesNotMatch(system, /chữ thường/);
+  assert.match(system, /giữ chữ hoa đúng chính tả/);
+});
+
+test('adapter bỏ dấu Markdown trong câu trả lời: chữ đậm, tiêu đề và gạch đầu dòng bằng dấu sao', async () => {
+  const reply = '## Điều kiện\n**Vé** phải đã xác nhận.\n* Giá tối đa __110%__.\n  * Tin còn đăng thì không check-in.\nĐiểm 5 * 2 vẫn giữ.';
+  const adapter = createChatAdapter({ env, fetchImpl: async () => success(reply) });
+  assert.equal(await adapter(input), 'Điều kiện\nVé phải đã xác nhận.\n- Giá tối đa 110%.\n  - Tin còn đăng thì không check-in.\nĐiểm 5 * 2 vẫn giữ.');
+});
