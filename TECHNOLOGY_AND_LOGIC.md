@@ -343,7 +343,7 @@ Tất cả endpoint dưới đây dùng tiền tố `/api/support`, trả `Cache
 
 | Endpoint | Quyền và hành vi |
 | --- | --- |
-| `POST /chat` | Công khai; nếu có Bearer token thì xác thực token, không hạ token sai thành khách. Trả `{ reply, mode, sources, suggestions }`. |
+| `POST /chat` | Công khai; nếu có Bearer token thì xác thực token, không hạ token sai thành khách. Trả `{ reply, mode, sources, suggestions }`, kèm `actions` (tối đa 3 nút) khi câu trả lời có nút bấm. |
 | `POST /tickets` | Người đăng nhập tạo yêu cầu; server tự gán chủ và vai trò tin nhắn `customer`. |
 | `GET /tickets`, `GET /tickets/:ticketId` | Người đăng nhập chỉ xem yêu cầu của mình; truy cập ID của người khác trả 404. |
 | `POST /tickets/:ticketId/messages` | Chủ yêu cầu bổ sung nội dung nếu chưa đóng/chưa đủ 100 tin nhắn. |
@@ -371,7 +371,7 @@ Tất cả endpoint dưới đây dùng tiền tố `/api/support`, trả `Cache
 
 - Câu hỏi hiện tại tối đa 2.000 ký tự xuyên suốt controller/service/provider; không cắt mất phần sau 1.200 ký tự. Lịch sử đầu vào tối đa 10 tin, mỗi tin 4.000 ký tự, tổng 16.000 ký tự. Role ngoài `user` / `assistant` bị từ chối.
 - Truy vấn giải công khai dùng cùng `availableEvent` với API giải, loại `HIDDEN` / `SUSPENDED` và chỉ nhận trạng thái `PUBLISHED`, `REGISTRATION_OPEN`, `REGISTRATION_CLOSED`, `COMPLETED`. Tối đa 5 giải, 40 cự ly, mỗi truy vấn `maxTimeMS=1500`; chỉ chọn tên, slug, lịch, thành phố và giá/cự ly, không chọn ngân hàng/chủ giải.
-- Kiểm tra vé cá nhân đòi hỏi ID người dùng đã xác thực. Chỉ đọc tối đa 20 trạng thái vé và 20 trạng thái/hạn đơn gần nhất, lọc đúng `userId`; không lấy mã QR, BIB, mã đơn, hồ sơ cá nhân hay thông tin ngân hàng. Tóm tắt này luôn trả nội bộ trước khi gọi AI; không kết luận đã thanh toán nếu truy vấn lỗi.
+- Câu hỏi về dữ liệu riêng (vé, đơn giữ chỗ, ví, yêu cầu hỗ trợ) đi theo luồng tác vụ ở phần **Bot làm tác vụ cơ bản** bên dưới: cần ID người dùng đã xác thực, và luôn được trả lời nội bộ trước khi có bất kỳ dữ liệu nào được tạo cho AI.
 - Provider chỉ nhận câu hỏi hiện tại cùng hướng dẫn phù hợp và dữ liệu giải công khai đã chọn. Không gửi lịch sử chat, dữ liệu vé riêng tư hoặc nội dung hộp thư hỗ trợ. Câu hỏi nhận diện được email/số điện thoại/mã nhạy cảm được giữ ở chế độ hướng dẫn; đây là bộ lọc quy tắc, không phải nhận diện hoàn chỉnh mọi dữ liệu cá nhân trong văn bản tự do.
 - Nội dung chat nhanh chỉ ở state giao diện, không được lưu thành cuộc hội thoại trong MongoDB. Đổi phiên đăng nhập xóa state và hủy request cũ để tránh phản hồi tài khoản trước đi vào tài khoản mới. Câu hỏi gửi qua AI khi bật provider vẫn được xử lý theo chính sách của provider.
 - Rate limit theo IP trong bộ nhớ từng tiến trình: chat 12/phút, tạo yêu cầu 6/phút; bổ sung/phản hồi/đóng/mở lại dùng chung bộ giới hạn 30/phút. Nếu triển khai nhiều instance cần kho giới hạn và điều phối đồng thời dùng chung; giới hạn hiện tại chưa phải hạn mức chi phí toàn nền tảng.
@@ -399,11 +399,38 @@ Tất cả endpoint dưới đây dùng tiền tố `/api/support`, trả `Cache
 - Nội dung admin nhập hiển thị bằng text của React, không dùng `dangerouslySetInnerHTML`, nên `<script>` hiện đúng là chữ.
 - Giao diện khóa các nút ghi trong lúc đang lưu, không mở bài khác khi còn thay đổi chưa lưu, chỉ cho xuất bản khi form không còn thay đổi chưa lưu, không cho lưu khi ô "Ưu tiên" để trống, và hỏi xác nhận trong hộp thoại trước khi khôi phục.
 
+**Bot làm tác vụ cơ bản (P07, 14/11/2026)**
+
+- Người đã đăng nhập hỏi về dữ liệu của chính mình, ví dụ "vé của tôi", "đơn giữ chỗ của tôi", "số dư ví của tôi", "yêu cầu hỗ trợ của tôi", "kết quả chạy của tôi" hay "RunPoints của tôi", thì bot đọc database và trả lời. Code nằm ở `src/backend/services/supportTasks.js`.
+- Nhận câu tác vụ: `routeTask` dò các mẫu cố định trên câu đã bỏ dấu. Sau khi bỏ dấu, nhiều chữ trông giống nhau ("vé"/"về", "ví"/"vì", "đơn"/"đơn vị"), nên những chữ đó phải đi cùng chữ sở hữu ("của tôi", "của mình", "của em") hoặc "kiểm tra giúp" thì mới tính là tác vụ. "Kiểm tra vé" và "kiểm tra đơn" chỉ tính khi ngay sau là hết câu, một lời nhờ ("giúp", "nhé", "của tôi"…) hay một mã có chữ số, để "kiểm tra về việc hoàn tiền" hay "kiểm tra đơn vị tổ chức" không bị kéo vào; "kiểm tra giúp … kết quả" cũng chỉ tính khi kết quả đó là của giải chạy. Câu có chữ sở hữu mà không nói rõ tác vụ và không khớp bài tri thức nào thì nhận câu hỏi lại kèm 3 nút: Vé của tôi, Ví của tôi, Yêu cầu hỗ trợ của tôi.
+- Quyền: `userId` chỉ lấy từ token, không lấy từ câu hỏi hay body. Khách chưa đăng nhập nhận lời mời đăng nhập kèm nút "Đăng nhập", và không truy vấn nào chạy. Câu tác vụ được trả lời xong ngay trong `supportAiService.js`, trước khi tạo bất kỳ dữ liệu nào gửi cho AI, nên luôn có `mode: guide` và không bao giờ tới nhà cung cấp AI.
+- Mỗi truy vấn lọc theo `userId`, đọc tối đa 20 dòng và có `maxTimeMS=1500`, kể cả truy vấn phụ của populate. Câu trả lời hiện tối đa 3 dòng và nói rõ tổng số; khi truy vấn đã đọc đủ 20 dòng thì bot không biết tổng thật nên nói "từ 20 … trở lên". Ngày giờ hiển thị theo giờ Việt Nam, dù máy chủ đặt múi giờ nào.
+
+| Tác vụ | Bot đọc và trả lời | Không bao giờ chọn |
+| --- | --- | --- |
+| `tickets` | Vé `CONFIRMED` / `CHECKED_IN` / `KIT_COLLECTED` / `PENDING_TRANSFER` của các giải chưa qua, sắp theo ngày chạy: ngày, tên giải, cự ly, BIB (chưa có thì "BIB đang cấp") và trạng thái theo đúng chữ của thẻ vé. Giải bị hủy thì ghi "Giải đã bị hủy". | `qrToken`, `runnerInfo` |
+| `holds` | Đơn `HOLD` còn trong giờ giữ chỗ cùng giờ hết hạn. Bot đọc thêm lệnh chuyển khoản tiền vé đang chờ hoặc bị từ chối, để không giục người đã chuyển tiền trả lần nữa. Đơn đã báo chuyển khoản mà hết giờ giữ chỗ thì bot dặn đừng đăng ký hay chuyển tiền lại, và bấm "Gửi yêu cầu hỗ trợ". | `orderCode`, `requestKey`, thông tin ngân hàng |
+| `wallet` | Số dư, ví có bị khóa không, lệnh nạp đang chờ (số tiền, giờ tạo) và các lệnh nạp đã quá hạn. Chưa có ví thì bot chỉ cách tạo; bot không tự tạo ví. | `transferCode`, thông tin ngân hàng |
+| `supportTickets` | Tiêu đề, trạng thái và giờ cập nhật của các yêu cầu hỗ trợ, nhãn trạng thái giống tab "Nhân viên hỗ trợ". | Nội dung tin nhắn (`messages`) |
+| `results` | Vé `CONFIRMED` / `CHECKED_IN` / `KIT_COLLECTED` có chip time đúng dạng giờ:phút:giây, cùng điều kiện với trang kết quả công khai: 3 giải chạy gần nhất với ngày, tên giải, cự ly, chip time và gun time. Bot không hiện thứ hạng: `saveResult` chỉ ghi chip time và gun time, còn hạng do trang kết quả tính lúc hiện. Mỗi giải còn mở trang kết quả có một nút "Kết quả …"; giải bị ẩn, tạm ngừng hay bị hủy thì không có nút vì trang đó trả 404. | `qrToken`, `runnerProfile`, BIB |
+| `runpoints` | Số RunPoints và cách dùng: mỗi điểm giảm 1.000đ khi đăng ký giải, tối đa một nửa giá trị đơn. Chưa có điểm thì bot chỉ cách tích: mỗi 50.000đ thanh toán cho vé được 1 điểm. Bot không tự tạo bản ghi điểm. | Lịch sử tích và dùng điểm (`history`) |
+
+- Chỉ đọc: `tests/support/tasks.test.js` hỏi đủ các tác vụ, cả qua route HTTP, rồi kiểm ba điều. Thứ nhất, số bản ghi và giờ cập nhật mới nhất của 6 collection không đổi. Thứ hai, không có lệnh `insert` / `update` / `delete` / `findAndModify` nào được gửi lên MongoDB; test theo dõi lệnh bằng tùy chọn `monitorCommands` của harness. Thứ ba, mọi lệnh đọc của tác vụ đều có `maxTimeMS` 1500.
+- Đọc lỗi thì bot xin lỗi rồi đưa nút xem trực tiếp (trang tương ứng, hoặc danh sách yêu cầu với tác vụ yêu cầu hỗ trợ), kèm nút "Gửi yêu cầu hỗ trợ" mở form gửi yêu cầu mới. Bot không đoán dữ liệu.
+- Câu hỏi có mã nạp ví dạng `NAP-XXXX-XXXX`, kể cả viết có khoảng trắng hay gạch nối, được giữ ở chế độ hướng dẫn và không tới AI. Cái giá là vài câu không dấu như "nap ngay sang vi" cũng bị giữ lại; câu đó vẫn nhận câu trả lời soạn sẵn.
+
+**Nút bấm dưới câu trả lời (P07)**
+
+- `actions` gồm tối đa 3 nút. Mỗi nút có dạng `{ label, url }` với link nội bộ, hoặc `{ label, view }` để mở tab hỗ trợ trong khung chat, với `view` là `tickets` (danh sách yêu cầu) hoặc `new-ticket` (form gửi yêu cầu mới). Luật lọc nằm ở `src/lib/supportActions.cjs` và được dùng chung cho server lẫn khung chat: nhãn dài 1–40 ký tự, link phải qua `internalPath`, nút khác hai dạng này bị bỏ.
+- Câu trả lời về lịch giải có một nút cho mỗi giải trong 3 giải đầu danh sách để mở trang của giải đó. Tên giải dài được cắt còn 40 ký tự, kết thúc bằng "…".
+- `SupportChat.jsx` lọc lại `actions` bằng cùng luật đó trước khi vẽ. Nút có `url` là `Link` của Next, và khung chat đóng lại trong `onNavigate`, tức là khi trang được chuyển ngay trong tab đang mở. Theo tài liệu Next, `onNavigate` không chạy khi người dùng Ctrl/Cmd + bấm để mở tab mới, nên lúc đó khung chat vẫn mở. Nút có `view` chuyển sang tab "Nhân viên hỗ trợ" và đưa focus tới tab đó: `tickets` mở danh sách yêu cầu, `new-ticket` mở thẳng form gửi yêu cầu mới, nơi có nút "Dùng câu hỏi gần nhất" để chép câu vừa hỏi bot. Nguồn nào trùng link với một nút thì không hiện lại ở "Nguồn tham khảo".
+
 **Kiểm tra**
 
 - `npm run test:support`: đạt 63/63 tại lần cập nhật P05, gồm `tests/support.test.js`, `tests/support-service.test.js` và `tests/support/*.test.js`. Riêng `tests/support/knowledge-admin.test.js` kiểm quyền, vỏ JSON, hai lần lưu cùng lúc (một bên nhận 409), lịch sử 20 bản, xuất bản và gỡ, khôi phục, và xem thử không ghi gì, không gọi AI kể cả khi AI đang bật.
 - `npm run test:support-knowledge-ui`: kịch bản Chrome với API giả cho tab Tri thức trợ lý; cần web đang chạy. API giả theo đúng vỏ JSON của các route trên và cũng trả 409 khi `version` lệch.
 - Provider được kiểm tra cấu hình bắt buộc, body Responses, đọc nhiều output, timeout/lỗi/phản hồi quá dài, tối đa 4 lời gọi đồng thời, câu hỏi đủ 2.000 ký tự và dữ liệu nhạy cảm ở cuối câu. Không gọi API AI hoặc giao dịch thật.
+- P07 (14/11/2026): `npm run test:support` đạt 102/102. `npm run test:support-chat` (kịch bản Chrome với API giả, cần web đang chạy) kiểm thêm các nút: chỉ nút nội bộ và nút tab hỗ trợ được hiện; bấm nút tab thì về danh sách yêu cầu và focus nằm ở tab; nguồn trùng nút bị ẩn; bấm nút dẫn trang thì sang đúng trang và khung chat đóng.
 - `npm run test:support-ui`: kịch bản Chrome/API fixtures cho hộp thư hỗ trợ; cần web đang chạy. Kết quả kiểm tra giao diện được xác nhận riêng khi chạy lệnh này, không suy ra từ kiểm tra backend.
 
 Tham chiếu adapter: [OpenAI Text generation](https://developers.openai.com/api/docs/guides/text), [Responses API migration](https://developers.openai.com/api/docs/guides/migrate-to-responses).

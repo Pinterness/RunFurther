@@ -34,6 +34,10 @@ body:has(.immersive-journey[data-enhanced=true]) .support-widget:not([data-open=
 .support-sources { display:flex; flex-wrap:wrap; gap:7px; list-style:none; padding:12px 0 0; margin:12px 0 0; border-top:1px solid var(--border); }
 .support-sources a { display:inline-block; font-size:10px; font-weight:600; color:var(--accent-strong); text-decoration:underline; text-underline-offset:3px; }
 .support-sources a:hover { color:var(--forest-deep); }
+.support-actions { display:flex; flex-wrap:wrap; gap:7px; margin-top:12px; }
+.support-actions a,.support-actions button { display:inline-flex; align-items:center; gap:8px; min-height:34px; max-width:100%; padding:7px 12px; border:1px solid var(--border); border-radius:var(--radius-control); background:var(--surface); color:var(--forest); font-size:11px; font-weight:600; line-height:1.4; text-align:left; text-decoration:none; }
+.support-actions span { flex-shrink:0; color:var(--accent-strong); }
+.support-actions a:hover,.support-actions button:hover { border-color:#9ba78e; background:var(--surface-muted); }
 .support-prompts { display:flex; flex-direction:column; align-items:flex-start; gap:7px; margin:4px 0 10px; }
 .support-prompts button { display:flex; align-items:center; justify-content:space-between; gap:14px; width:100%; text-align:left; border:1px solid var(--border); border-radius:var(--radius-control); padding:10px 12px; background:var(--surface); font-size:11px; line-height:1.5; color:var(--forest); }
 .support-prompts button>span { color:var(--accent-strong); font-size:14px; flex-shrink:0; }

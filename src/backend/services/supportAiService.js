@@ -1,15 +1,15 @@
 const mongoose = require('mongoose');
 const Event = require('../models/Event');
 const EventCategory = require('../models/EventCategory');
-const Registration = require('../models/Registration');
-const Booking = require('../models/Booking');
 const { availableEvent } = require('./eventPolicy');
 const { escapeRegex, httpError } = require('../lib/errors');
 const { SUPPORT_MESSAGE_LIMIT, rankArticles, normalizeSupportText } = require('./supportKnowledge');
 const { loadPublishedArticles } = require('./supportKnowledgeStore');
+const { routeTask, guestAnswer, failedAnswer, unclearAnswer, runTask: defaultTaskRunner } = require('./supportTasks');
+const { toActions, actionLabel } = require('../../lib/supportActions.cjs');
 
 const PUBLIC_STATUSES = ['PUBLISHED', 'REGISTRATION_OPEN', 'REGISTRATION_CLOSED', 'COMPLETED'];
-const LIMITS = { events: 5, categories: 40, privateRows: 20, queryMs: 1500, replyCharacters: 4000 };
+const LIMITS = { events: 5, categories: 40, queryMs: 1500, replyCharacters: 4000 };
 const FALLBACK = 'Mình chưa có thông tin đã xác thực để trả lời câu hỏi này. Bạn có thể gửi yêu cầu cho bộ phận hỗ trợ trong cuộc trò chuyện này, hoặc chọn một chủ đề bên dưới.';
 const DEFAULT_SUGGESTIONS = ['Làm sao mua vé giải chạy?', 'Chuyển khoản rồi sao chưa có vé?', 'Kiểm tra vé của tôi'];
 const plain = (value, limit = 200) => (typeof value === 'string' ? value : '').replace(/[\u0000-\u001f<>]/g, ' ').trim().slice(0, limit);
@@ -49,35 +49,16 @@ async function retrievePublicEvents({ message, page }) {
   }));
 }
 
-async function retrieveAccountStatus(userId) {
-  // The authenticated caller supplies userId. No identifier from a chat message
-  // or page path is ever used as an ownership filter. No populate or PII fields.
-  const [tickets, bookings] = await Promise.all([
-    Registration.find({ userId }).select('-_id status').sort({ createdAt: -1 })
-      .limit(LIMITS.privateRows).maxTimeMS(LIMITS.queryMs).lean(),
-    Booking.find({ userId }).select('-_id status expiresAt').sort({ createdAt: -1 })
-      .limit(LIMITS.privateRows).maxTimeMS(LIMITS.queryMs).lean(),
-  ]);
-  return { tickets, bookings };
-}
-
-const privateQuestion = query => /ve cua toi|don cua toi|don hang cua toi|kiem tra ve|kiem tra don|trang thai don|trang thai ve cua|toi da mua/.test(query);
-const sensitiveQuestion = message => /[\w.+-]+@[\w.-]+\.[a-z]{2,}|\b(?:\+?\d[\s.-]?){9,}\b|\b(?:sk-|RF-|RUN[0-9a-f]{8}|eyJ)[a-z0-9_-]+/i.test(message)
+// Mã nạp tiền (NAP + 8 ký tự, CODE_PATTERN của topupService) cũng riêng tư như mã đơn (RUN…). Sao kê ngân hàng có
+// thể in mã có khoảng trắng hay gạch nối ("NAP K7M2-Q9XA"), và người dùng chép nguyên như vậy, nên mẫu chấp nhận cả hai.
+// Cái giá: vài câu không dấu như "nap ngay sang vi" cũng khớp mẫu và chỉ nhận câu soạn sẵn thay vì câu của AI. Chặn nhầm
+// như vậy vẫn hơn để lọt mã riêng tư ra ngoài.
+const sensitiveQuestion = message => /[\w.+-]+@[\w.-]+\.[a-z]{2,}|\b(?:\+?\d[\s.-]?){9,}\b|\b(?:sk-|RF-|RUN[0-9a-f]{8}|eyJ)[a-z0-9_-]+|\bNAP[\s-]?[2-9A-HJ-NP-Z]{4}[\s-]?[2-9A-HJ-NP-Z]{4}\b/i.test(message)
   || /mat khau|otp|cccd|cmnd|so tai khoan|ma don|qr token|qr ve|the ngan hang/.test(normalizeSupportText(message));
 
-function formatPrivateSummary(data) {
-  const tickets = Array.isArray(data?.tickets) ? data.tickets.slice(0, LIMITS.privateRows) : [];
-  const bookings = Array.isArray(data?.bookings) ? data.bookings.slice(0, LIMITS.privateRows) : [];
-  const valid = tickets.filter(ticket => ['CONFIRMED', 'CHECKED_IN', 'KIT_COLLECTED'].includes(ticket.status)).length;
-  const pending = tickets.filter(ticket => ticket.status === 'PENDING_TRANSFER').length;
-  const held = bookings.filter(booking => booking.status === 'HOLD' && new Date(booking.expiresAt) > new Date()).length;
-  const expired = bookings.filter(booking => booking.status === 'EXPIRED' || booking.status === 'HOLD' && new Date(booking.expiresAt) <= new Date()).length;
-  if (!tickets.length && !bookings.length) return 'Mình chưa tìm thấy vé hoặc đơn giữ chỗ trong tài khoản đang đăng nhập. Nếu đã chuyển khoản, hãy kiểm tra tài khoản bạn dùng lúc đặt vé và gửi yêu cầu hỗ trợ để được hướng dẫn đối soát với chủ giải.';
-  return `Trong tối đa ${LIMITS.privateRows} vé và ${LIMITS.privateRows} đơn gần nhất của tài khoản đang đăng nhập: ${valid} vé đang có hiệu lực, ${pending} vé đang đăng chuyển nhượng, ${held} đơn còn thời gian giữ chỗ và ${expired} đơn hết hạn. Mở Vé của tôi để xem đầy đủ chi tiết. Tóm tắt này được kiểm tra trực tiếp trong hệ thống; không có dữ liệu vé được gửi đến dịch vụ AI.`;
-}
-
-// Only this fixed Responses endpoint can receive a request. There are no model
-// tools, database actions, arbitrary URLs, conversation IDs or client keys.
+// Chỉ gửi request tới một địa chỉ cố định là API Responses của OpenAI. Request không khai báo công cụ (tool) nào,
+// nên model không đụng được database hay gọi URL; request cũng không gửi mã hội thoại. Khóa API do server tự
+// lấy từ biến môi trường, trình duyệt không bao giờ gửi khóa.
 function createOpenAIAdapter({ env = process.env, fetchImpl = (...args) => fetch(...args), timeoutMs = 15000 } = {}) {
   let inFlight = 0;
   return async function generateReply({ question, articles, events }) {
@@ -119,7 +100,9 @@ function createOpenAIAdapter({ env = process.env, fetchImpl = (...args) => fetch
   };
 }
 
-function createSupportResponder({ findArticles = loadPublishedArticles, findEvents = retrievePublicEvents, findAccountStatus = retrieveAccountStatus, generateReply = createOpenAIAdapter() } = {}) {
+// `now` là đồng hồ đưa cho các reader (hàm đọc dữ liệu của từng tác vụ), dùng để biết "hôm nay", số phút còn lại
+// và lệnh nạp quá hạn. Test truyền vào một thời điểm cố định.
+function createSupportResponder({ findArticles = loadPublishedArticles, findEvents = retrievePublicEvents, runTask = defaultTaskRunner, generateReply = createOpenAIAdapter(), now = () => new Date() } = {}) {
   return async function answerSupport({ message, history = [], userId = null, page = '/' } = {}) {
     if (typeof message !== 'string' || !message.trim() || message.length > SUPPORT_MESSAGE_LIMIT) {
       throw httpError(400, `Tin nhắn phải có từ 1 đến ${SUPPORT_MESSAGE_LIMIT} ký tự.`);
@@ -127,23 +110,28 @@ function createSupportResponder({ findArticles = loadPublishedArticles, findEven
     const question = message.trim();
     const query = normalizeSupportText(question);
     const result = { reply: FALLBACK, mode: 'guide', sources: [], suggestions: [...DEFAULT_SUGGESTIONS] };
-    if (privateQuestion(query)) {
-      result.sources = [{ title: 'Vé của tôi', url: '/account' }];
-      if (!userId || !mongoose.isValidObjectId(userId)) {
-        result.reply = 'Bạn cần đăng nhập để kiểm tra trạng thái vé của chính mình. Mở Vé của tôi sau khi đăng nhập; trợ lý không tra cứu đơn riêng tư bằng email, số điện thoại hoặc mã do người khác gửi.';
-        result.sources.unshift({ title: 'Đăng nhập', url: '/login' });
-      } else {
-        try { result.reply = formatPrivateSummary(await findAccountStatus(userId)); }
-        catch { result.reply = 'Hiện chưa đọc được trạng thái vé của bạn. Bạn hãy mở Vé của tôi để tải lại, hoặc gửi yêu cầu hỗ trợ. Mình chưa thể kết luận đơn đã thanh toán hay chưa.'; }
+    const route = routeTask(query);
+    if (route?.key) {
+      // userId chỉ lấy từ token đã xác thực: dù người hỏi gõ BIB hay mã đơn của người khác, bot vẫn chỉ đọc dữ liệu của chủ token.
+      let answer;
+      if (!userId || !mongoose.isValidObjectId(userId)) answer = guestAnswer(route.key);
+      else {
+        try { answer = await runTask(route.key, userId, { now: now() }); }
+        catch (error) { console.error(`Support task ${route.key} failed:`, error.message); answer = failedAnswer(route.key); }
       }
-      // Deliberately return before constructing any provider input.
+      result.reply = answer.reply; result.actions = toActions(answer.actions); result.sources = [];
+      // Cố ý trả về ở đây, trước khi tạo bất kỳ dữ liệu nào gửi cho AI.
       return result;
     }
     let published;
-    // A failed knowledge read is an outage, not a question the bot cannot answer: reply with FALLBACK.
+    // Đọc bài tri thức lỗi là sự cố hệ thống: ghi log rồi trả câu FALLBACK ngay, không gọi AI.
     try { published = await findArticles(); } catch (error) { console.error('Support knowledge read failed:', error.message); return result; }
     const articles = rankArticles(published, question, history);
-    if (!articles.length) return result;
+    if (!articles.length) {
+      // Câu "của tôi" không nêu tác vụ và không khớp bài nào thì nhận các nút tác vụ, bot không đoán.
+      if (route?.ambiguous) Object.assign(result, unclearAnswer());
+      return result;
+    }
     result.reply = articles.map(article => article.answer).join('\n\n');
     result.sources = [...new Map(articles.flatMap(article => article.sources).map(source => [source.url, { ...source }])).values()].slice(0, 5);
     result.suggestions = [...new Set(articles.flatMap(article => article.suggestions))].slice(0, 3);
@@ -155,6 +143,8 @@ function createSupportResponder({ findArticles = loadPublishedArticles, findEven
           const details = events.map(event => `${event.name} — ${event.city || 'Chờ địa điểm'} — ${event.date}. ${event.registrationOpen ? 'Đang trong thời gian đăng ký.' : 'Xem thời gian đăng ký tại trang giải.'} ${event.categories.map(category => `${category.code || category.distance + ' km'}${category.price === null ? '' : ': ' + category.price.toLocaleString('vi-VN') + 'đ'}`).join(' / ')}`);
           result.reply = 'Thông tin công khai hiện có:\n' + details.join('\n') + '\n\nGiá và số chỗ cần kiểm tra lại trên trang giải trước khi tạo đơn.';
           result.sources = events.map(event => ({ title: event.name, url: event.url }));
+          // Mỗi giải thêm một nút mở trang của giải đó; toActions giữ 3 giải đầu danh sách có link nội bộ.
+          result.actions = toActions(events.map(event => ({ label: actionLabel(event.name), url: event.url })));
         } else result.reply = 'Chưa tìm thấy giải công khai phù hợp trong dữ liệu hiện tại. Bạn có thể mở danh sách giải để thay đổi địa điểm hoặc kiểm tra lại sau.';
       } catch {
         result.reply = 'Hiện chưa tải được thông tin giải. Bạn hãy mở danh sách giải để thử lại; mình chưa thể xác nhận lịch hoặc giá vé lúc này.';
@@ -167,11 +157,11 @@ function createSupportResponder({ findArticles = loadPublishedArticles, findEven
         if (typeof aiReply === 'string' && aiReply.trim() && aiReply.length <= LIMITS.replyCharacters) {
           result.reply = aiReply.trim(); result.mode = 'ai';
         }
-      } catch { /* The local guide remains available when the provider fails. */ }
+      } catch { /* AI lỗi thì vẫn còn câu trả lời soạn sẵn. */ }
     }
     return result;
   };
 }
 
 const answerSupport = createSupportResponder();
-module.exports = { answerSupport, createSupportResponder, createOpenAIAdapter, publicEventFilter, retrievePublicEvents, retrieveAccountStatus };
+module.exports = { answerSupport, createSupportResponder, createOpenAIAdapter, publicEventFilter, retrievePublicEvents };
