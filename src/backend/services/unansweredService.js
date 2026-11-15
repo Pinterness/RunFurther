@@ -50,9 +50,10 @@ async function recordUnanswered(question, { kind = 'NO_ANSWER', articleKeys = []
   } }]);
   if (existing.matchedCount) return 'counted';
 
-  // Bước 2: câu mới. Hàng chờ đã đủ 500 câu OPEN thì bỏ qua. Đây là giới hạn mềm: nhiều câu mới tới cùng lúc có
-  // thể làm vượt một chút.
-  if (await UnansweredQuestion.countDocuments({ status: 'OPEN' }).maxTimeMS(1500) >= UNANSWERED_OPEN_LIMIT) return 'skipped';
+  // Bước 2: câu mới. Loại câu này đã đủ 500 câu OPEN thì bỏ qua. Mỗi loại có giới hạn riêng: nút "Chưa đúng" cho
+  // khách gửi, nên nếu dùng chung giới hạn, ai đó gửi đầy hàng chờ sẽ chặn luôn những câu bot thật sự chưa trả lời
+  // được. Đây là giới hạn mềm: nhiều câu mới tới cùng lúc có thể làm vượt một chút.
+  if (await UnansweredQuestion.countDocuments({ status: 'OPEN', kind }).maxTimeMS(1500) >= UNANSWERED_OPEN_LIMIT) return 'skipped';
 
   // Upsert dùng $inc cho cả lúc tạo lẫn lúc cộng. Truy vấn khớp đúng các trường của unique index, nên khi hai request
   // cùng chèn, MongoDB tự thử lại request thua thành một lần cộng: ba request đồng thời cho ra count = 3.

@@ -119,6 +119,14 @@ test('đủ 500 câu OPEN thì câu mới bị bỏ qua nhưng câu đã có v�
   assert.equal(await recordUnanswered('một câu hoàn toàn mới'), 'created');
 });
 
+test('mỗi loại câu có giới hạn 500 riêng: 500 câu "Chưa đúng" đang mở không chặn câu bot chưa trả lời được', async () => {
+  // Nút "Chưa đúng" cho khách gửi, nên ai đó có thể gửi đầy hàng chờ; câu NO_ANSWER thật vẫn phải được ghi (code-review P06).
+  const now = new Date();
+  await UnansweredQuestion.insertMany(Array.from({ length: 500 }, (_, i) => ({ kind: 'WRONG_ANSWER', normalized: 'bao sai ' + i, sample: 'báo sai ' + i, count: 1, status: 'OPEN', articleKeys: ['hold'], firstAskedAt: now, lastAskedAt: now })));
+  assert.equal(await recordUnanswered('đổi cự ly được không'), 'created');
+  assert.equal(await recordUnanswered('một câu báo sai mới', { kind: 'WRONG_ANSWER', articleKeys: ['hold'] }), 'skipped');
+});
+
 test('câu RESOLVED bị hỏi lại thì mở lại thành OPEN; câu IGNORED thì giữ nguyên', async () => {
   await recordUnanswered('đổi cự ly được không'); await recordUnanswered('xin voucher giảm giá');
   await UnansweredQuestion.updateOne({ normalized: 'doi cu ly duoc khong' }, { status: 'RESOLVED' });

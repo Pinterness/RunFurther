@@ -113,7 +113,8 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await expect(rated.getByRole('alert')).toHaveCount(0);
     const expectedFeedback = { question: 'Giữ chỗ được bao lâu?', articleKeys: ['hold', 'payment'] };
     assert.deepEqual(feedbackBodies, [expectedFeedback, expectedFeedback]);
-    // Câu có thông tin riêng tư thì server không lưu, và khung chat nói đúng như vậy thay vì cảm ơn.
+    // Server không lưu câu (câu nhạy cảm, quá ngắn, hay hàng chờ đã đầy) thì khung chat nói đúng như vậy thay vì cảm ơn.
+    // Server chỉ trả recorded: false mà không nói lý do, nên khung chat không được đoán là vì thông tin riêng tư.
     feedbackRecorded = false;
     await question.fill('Email tôi là a@b.test, giữ chỗ bao lâu?');
     await question.press('Enter');
@@ -121,6 +122,7 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     const unrecorded = widget.locator('.support-message-assistant').nth(8);
     await unrecorded.getByRole('button', { name: 'Chưa đúng', exact: true }).click();
     await expect(unrecorded.getByRole('status')).toContainText('không được lưu');
+    await expect(unrecorded.getByRole('status')).not.toContainText('riêng tư');
     // Câu trả lời trước vẫn giữ lời cảm ơn của nó.
     await expect(rated.getByRole('status')).toHaveText('Cảm ơn bạn. Admin sẽ xem lại câu trả lời này.');
     fs.mkdirSync('artifacts', { recursive: true });

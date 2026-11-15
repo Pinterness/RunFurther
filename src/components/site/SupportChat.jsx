@@ -28,7 +28,8 @@ function boundedHistory(messages) {
 }
 // Key các bài server đã dùng để trả lời (nút "Chưa đúng"). Chỉ giữ key đúng dạng mã bài, tối đa 2 như server nhận.
 const feedbackKeys = keys => (Array.isArray(keys) ? keys : []).filter(key => typeof key === 'string' && /^[a-z0-9][a-z0-9-]{1,59}$/.test(key)).slice(0, 2);
-const feedbackNotes = { recorded: 'Cảm ơn bạn. Admin sẽ xem lại câu trả lời này.', skipped: 'Câu hỏi có thông tin riêng tư nên không được lưu. Bạn có thể gửi yêu cầu cho nhân viên hỗ trợ.' };
+// Server chỉ trả recorded: false mà không nói lý do (câu nhạy cảm, quá ngắn hay hàng chờ đã đầy), nên câu báo không đoán lý do.
+const feedbackNotes = { recorded: 'Cảm ơn bạn. Admin sẽ xem lại câu trả lời này.', skipped: 'Câu hỏi này không được lưu vào hàng chờ. Nếu cần, bạn có thể gửi yêu cầu cho nhân viên hỗ trợ.' };
 
 export default function SupportChat() {
   const pathname = usePathname();
