@@ -35,6 +35,7 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     const queue = [
       { _id: 'question-1', kind: 'NO_ANSWER', sample: LONG_SAMPLE, count: 5, status: 'OPEN', articleKeys: [], firstAskedAt: '2026-11-10T02:00:00.000Z', lastAskedAt: '2026-11-14T09:20:00.000Z' },
       { _id: 'question-2', kind: 'NO_ANSWER', sample: UNSAFE_SAMPLE, count: 2, status: 'OPEN', articleKeys: [], firstAskedAt: '2026-11-12T02:00:00.000Z', lastAskedAt: '2026-11-13T01:00:00.000Z' },
+      { _id: 'question-3', kind: 'NO_ANSWER', sample: 'đăng ký hộ bạn cùng câu lạc bộ được không', count: 1, status: 'OPEN', articleKeys: [], firstAskedAt: '2026-11-12T10:00:00.000Z', lastAskedAt: '2026-11-12T10:00:00.000Z' },
     ];
     const queueWrites = [];
     let failIgnore = true;
@@ -232,7 +233,7 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
 
     // 8. Hàng chờ hiện câu mẫu và số lần hỏi, theo đúng thứ tự server trả. Câu có thẻ HTML vẫn chỉ là chữ.
     const queueSection = tab.locator('.knowledge-queue'), queueRows = queueSection.locator('.knowledge-queue-row');
-    await expect(queueRows).toHaveCount(2);
+    await expect(queueRows).toHaveCount(3);
     await expect(queueRows.nth(0)).toContainText(LONG_SAMPLE);
     await expect(queueRows.nth(0)).toContainText('Hỏi 5 lần');
     await expect(queueRows.nth(0)).toContainText('16:20 14/11/2026');
@@ -269,10 +270,18 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await saveButton.click();
     await expect(status).toHaveText('Đã tạo bài nháp. Bot chỉ dùng bài sau khi bạn bấm Xuất bản.');
     assert.deepEqual(writes.at(-1), { method: 'POST', path: KNOWLEDGE, body: { key: 'doi-size-ao', title: LONG_SAMPLE.slice(0, 120), terms: ['đổi size áo', 'chọn nhầm size'], answer: 'Bạn đổi size áo trong mục hồ sơ người chạy trước ngày đóng đăng ký.', sources: [], suggestions: [], priority: 0, fromQuestionId: 'question-1' } });
-    await expect(queueRows).toHaveCount(1);
+    await expect(queueRows).toHaveCount(2);
     await expect(editor.locator('.knowledge-from-question')).toHaveCount(0);
 
-    // 10. "Bỏ qua" gửi POST …/ignore. Lỗi thì báo và giữ câu; thử lại thành công thì câu rời hàng chờ.
+    // 10. "Đã xử lý": admin đã sửa một bài có sẵn để trả lời câu này, nên câu rời hàng chờ mà không cần tạo bài mới.
+    // Câu đánh dấu như vậy sẽ tự mở lại nếu sau đó bot vẫn không trả lời được (khác với "Bỏ qua").
+    await expect(queueSection).toContainText('tự mở lại');
+    await queueRows.filter({ hasText: 'đăng ký hộ bạn' }).getByRole('button', { name: 'Đã xử lý', exact: true }).click();
+    await expect(queueRows).toHaveCount(1);
+    await expect(queueRows.filter({ hasText: 'đăng ký hộ bạn' })).toHaveCount(0);
+    assert.deepEqual(queueWrites, [{ method: 'POST', path: QUEUE + '/question-3/resolve' }]);
+
+    // 11. "Bỏ qua" gửi POST …/ignore. Lỗi thì báo và giữ câu; thử lại thành công thì câu rời hàng chờ.
     await queueRows.nth(0).getByRole('button', { name: 'Bỏ qua', exact: true }).click();
     await expect(queueSection.getByRole('alert')).toContainText('Chưa bỏ qua được câu này. Hãy thử lại.');
     await expect(queueRows).toHaveCount(1);
@@ -280,7 +289,7 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await expect(queueRows).toHaveCount(0);
     await expect(queueSection).toContainText('Chưa có câu nào');
     await expect(queueSection.getByRole('alert')).toHaveCount(0);
-    assert.deepEqual(queueWrites, [{ method: 'POST', path: QUEUE + '/question-2/ignore' }, { method: 'POST', path: QUEUE + '/question-2/ignore' }]);
+    assert.deepEqual(queueWrites.slice(1), [{ method: 'POST', path: QUEUE + '/question-2/ignore' }, { method: 'POST', path: QUEUE + '/question-2/ignore' }]);
 
     fs.mkdirSync('artifacts', { recursive: true });
     await page.screenshot({ path: 'artifacts/support-knowledge-desktop.png', fullPage: true });
@@ -293,9 +302,9 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await page.goto(base + '/admin', { waitUntil: 'networkidle' });
     await expect(page.locator('.organizer-page').getByRole('alert')).toContainText('chỉ dành cho Super Admin');
     await expect(page.getByRole('button', { name: 'Tri thức trợ lý', exact: true })).toHaveCount(0);
-    // 11. No dialog and no uncaught error anywhere in the run.
+    // 12. No dialog and no uncaught error anywhere in the run.
     assert.deepEqual(dialogs, []);
     assert.deepEqual(errors, []);
-    console.log('PASS: knowledge tab list, create as draft, preview before saving (a taken key refused), publish, 409 with reload, busy guard, empty priority refused, markup as plain text, unsaved-edit guard, history and restore by changedAt, unanswered queue (sample and count, markup as text, create article from a question with fromQuestionId, ignore with retry), mobile layout and role gate (API fixtures only).');
+    console.log('PASS: knowledge tab list, create as draft, preview before saving (a taken key refused), publish, 409 with reload, busy guard, empty priority refused, markup as plain text, unsaved-edit guard, history and restore by changedAt, unanswered queue (sample and count, markup as text, create article from a question with fromQuestionId, mark resolved after editing an existing article, ignore with retry), mobile layout and role gate (API fixtures only).');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

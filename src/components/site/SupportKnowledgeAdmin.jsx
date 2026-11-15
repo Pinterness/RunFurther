@@ -39,14 +39,15 @@ export default function SupportKnowledgeAdmin() {
   const [busy, setBusy] = useState(false), [writeError, setWriteError] = useState(null), [notice, setNotice] = useState('');
   const [question, setQuestion] = useState(''), [preview, setPreview] = useState(null), [previewBusy, setPreviewBusy] = useState(false), [previewError, setPreviewError] = useState('');
   const [historyOpen, setHistoryOpen] = useState(false), [restoring, setRestoring] = useState(null);
-  // Hàng chờ: danh sách câu OPEN, câu đang được "Bỏ qua", lỗi của nút, và câu mà bài đang soạn được tạo từ đó.
+  // Hàng chờ: danh sách câu OPEN, câu đang được xử lý bằng nút ({ id, action }), lỗi của nút, và câu mà bài đang
+  // soạn được tạo từ đó.
   const [queue, setQueue] = useState([]), [queueLoading, setQueueLoading] = useState(true), [queueError, setQueueError] = useState(''), [queueVersion, refreshQueue] = useState(0);
-  const [ignoring, setIgnoring] = useState(null), [queueActionError, setQueueActionError] = useState(''), [fromQuestion, setFromQuestion] = useState(null);
+  const [pending, setPending] = useState(null), [queueActionError, setQueueActionError] = useState(''), [fromQuestion, setFromQuestion] = useState(null);
   const [titleFocus, focusTitle] = useState(0);
-  const writeRequest = useRef(null), previewRequest = useRef(null), ignoreRequest = useRef(null), alreadyShown = useRef(null), titleInput = useRef(null);
+  const writeRequest = useRef(null), previewRequest = useRef(null), queueRequest = useRef(null), alreadyShown = useRef(null), titleInput = useRef(null);
   const isNew = selectedId === 'new', dirty = JSON.stringify(form) !== JSON.stringify(saved);
 
-  useEffect(() => () => { writeRequest.current?.abort(); previewRequest.current?.abort(); ignoreRequest.current?.abort(); }, []);
+  useEffect(() => () => { writeRequest.current?.abort(); previewRequest.current?.abort(); queueRequest.current?.abort(); }, []);
   useEffect(() => {
     const request = new AbortController();
     setQueueLoading(true); setQueueError('');
@@ -138,22 +139,27 @@ export default function SupportKnowledgeAdmin() {
     setFromQuestion({ _id: question._id, sample: question.sample });
     focusTitle(value => value + 1);
   }
-  // "Bỏ qua": câu rời hàng chờ và không hiện lại, kể cả khi có người hỏi lại. Lỗi thì giữ câu và báo để thử lại.
-  async function ignoreQuestion(question) {
-    if (ignoreRequest.current) return;
-    const request = new AbortController(); ignoreRequest.current = request;
-    setIgnoring(question._id); setQueueActionError('');
+  // Hai nút đưa câu ra khỏi hàng chờ mà không tạo bài:
+  // - "Đã xử lý" (resolve): admin đã sửa một bài có sẵn để trả lời câu này. Nếu sau đó bot vẫn không trả lời được
+  //   thì câu tự mở lại (spec T12).
+  // - "Bỏ qua" (ignore): câu không cần bài, và không hiện lại kể cả khi có người hỏi lại.
+  // Lỗi thì giữ câu và báo để thử lại.
+  async function settleQuestion(question, action) {
+    if (queueRequest.current) return;
+    const request = new AbortController(); queueRequest.current = request;
+    setPending({ id: question._id, action }); setQueueActionError('');
     try {
-      await api(queueEndpoint + '/' + encodeURIComponent(question._id) + '/ignore', { method: 'POST', signal: request.signal });
+      await api(queueEndpoint + '/' + encodeURIComponent(question._id) + '/' + action, { method: 'POST', signal: request.signal });
       if (request.signal.aborted) return;
       setQueue(rows => rows.filter(row => row._id !== question._id));
-      // Bài đang soạn từ chính câu này thì thôi gắn với nó, để lưu bài không đánh dấu một câu đã bỏ qua.
+      // Bài đang soạn từ chính câu này thì thôi gắn với nó, để lưu bài không đổi trạng thái câu thêm lần nữa.
       setFromQuestion(current => (current?._id === question._id ? null : current));
     } catch (error) { if (!request.signal.aborted) setQueueActionError(error.message); }
     finally {
-      if (ignoreRequest.current === request) { ignoreRequest.current = null; setIgnoring(null); }
+      if (queueRequest.current === request) { queueRequest.current = null; setPending(null); }
     }
   }
+  const pendingLabel = (question, action, label) => (pending?.id === question._id && pending.action === action ? 'Đang lưu...' : label);
   function togglePublished() {
     const publish = article.status !== 'PUBLISHED';
     write(articlePath(publish ? 'publish' : 'unpublish'), 'POST', { version: article.version }, publish ? 'Đã xuất bản. Bot dùng bài này ngay.' : 'Đã gỡ xuất bản. Bot thôi dùng bài này.');
@@ -224,11 +230,11 @@ export default function SupportKnowledgeAdmin() {
       </div>
     </section>
     <section className="knowledge-queue" aria-labelledby="knowledge-queue-heading" aria-busy={queueLoading}>
-      <header className="knowledge-heading"><div><p className="section-index">RUNFURTHER / VÒNG HỌC</p><h2 id="knowledge-queue-heading">Câu bot chưa trả lời được</h2><p>Những câu người dùng đã hỏi mà bot không tìm được bài, câu hỏi nhiều lần đứng trước. Câu được lưu không kèm tài khoản, các dãy từ 3 chữ số đã bị che, và tự xóa sau 30 ngày không có ai hỏi lại.</p></div>
+      <header className="knowledge-heading"><div><p className="section-index">RUNFURTHER / VÒNG HỌC</p><h2 id="knowledge-queue-heading">Câu bot chưa trả lời được</h2><p>Những câu người dùng đã hỏi mà bot không tìm được bài, câu hỏi nhiều lần đứng trước. Câu được lưu không kèm tài khoản, các dãy từ 3 chữ số đã bị che, và tự xóa sau 30 ngày không có ai hỏi lại. Bấm “Đã xử lý” khi bạn đã sửa một bài có sẵn để trả lời câu đó; nếu sau này bot vẫn không trả lời được, câu tự mở lại. Bấm “Bỏ qua” khi câu không cần bài; câu bỏ qua không hiện lại nữa.</p></div>
         <div className="knowledge-heading-actions"><button type="button" className="quiet-button" disabled={queueLoading} onClick={() => refreshQueue(value => value + 1)}>Làm mới</button></div></header>
       {queueActionError && <div className="knowledge-error knowledge-queue-alert" role="alert"><p>{queueActionError}</p></div>}
       {queueLoading && !queue.length ? <p className="knowledge-empty" role="status">Đang tải hàng chờ...</p> : queueError ? <div className="knowledge-error" role="alert"><p>{queueError}</p><button type="button" className="text-action" onClick={() => refreshQueue(value => value + 1)}>Tải lại hàng chờ</button></div> : !queue.length ? <p className="knowledge-empty knowledge-queue-empty">Chưa có câu nào bot không trả lời được.</p> : <ul className="knowledge-queue-list">{queue.map(question => <li key={question._id} className="knowledge-queue-row"><div><p className="knowledge-queue-sample">{question.sample}</p><p className="knowledge-queue-meta">Hỏi {question.count} lần · lần cuối <time dateTime={question.lastAskedAt}>{dateLabel(question.lastAskedAt)}</time></p></div>
-        <div className="knowledge-queue-actions"><button type="button" className="button-dark" disabled={busy || Boolean(ignoring)} onClick={() => createFromQuestion(question)}>Tạo bài từ câu này</button><button type="button" className="text-action" disabled={Boolean(ignoring)} onClick={() => ignoreQuestion(question)}>{ignoring === question._id ? 'Đang bỏ qua...' : 'Bỏ qua'}</button></div></li>)}</ul>}
+        <div className="knowledge-queue-actions"><button type="button" className="button-dark" disabled={busy || Boolean(pending)} onClick={() => createFromQuestion(question)}>Tạo bài từ câu này</button><button type="button" className="quiet-button" disabled={Boolean(pending)} onClick={() => settleQuestion(question, 'resolve')}>{pendingLabel(question, 'resolve', 'Đã xử lý')}</button><button type="button" className="text-action" disabled={Boolean(pending)} onClick={() => settleQuestion(question, 'ignore')}>{pendingLabel(question, 'ignore', 'Bỏ qua')}</button></div></li>)}</ul>}
     </section>
     {historyOpen && article && <Modal title={'Lịch sử: ' + article.title} busy={busy} onClose={() => { setHistoryOpen(false); setRestoring(null); }}>
       {restoring ? <div className="knowledge-restore">
