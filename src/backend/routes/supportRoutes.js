@@ -7,6 +7,8 @@ const writes = rateLimit(30);
 
 router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 router.post('/chat', rateLimit(12), (req, res, next) => req.headers.authorization ? verifyUserToken(req, res, next) : next(), support.chat);
+// Nút "Chưa đúng": đặt trước verifyUserToken để khách cũng bấm được; route không đọc token.
+router.post('/feedback', rateLimit(6), support.feedback);
 router.use(verifyUserToken);
 router.post('/tickets', rateLimit(6), support.create);
 router.get('/tickets', support.mine);

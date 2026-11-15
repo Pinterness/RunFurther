@@ -28,6 +28,12 @@ exports.chat = handle(async (req, res) => {
   res.set('Cache-Control', 'no-store').json(answer);
 });
 
+// Nút "Chưa đúng" dưới câu trả lời của trợ lý. Không đọc token: hàng chờ không lưu người hỏi.
+exports.feedback = handle(async (req, res) => {
+  const { recordFeedback } = require('../services/unansweredService');
+  res.json(await recordFeedback({ question: req.body?.question, articleKeys: req.body?.articleKeys }));
+});
+
 exports.create = handle(async (req, res) => {
   const ticket = await Ticket.create({
     userId: req.userId, subject: text(req.body.subject, 160, 'Tiêu đề'),

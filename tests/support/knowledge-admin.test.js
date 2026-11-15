@@ -219,8 +219,9 @@ test('preview answers with an unsaved draft in the chat reply shape, and the liv
   const draft = { key: 'gui-xe', title: 'Gửi xe', terms: ['gửi xe'], answer: 'Bãi gửi xe ở cổng B.', sources: [{ title: 'Trang giải', url: '/events' }], suggestions: ['Giờ mở bãi xe?'] };
   const { status, body } = await request(`${KNOWLEDGE}/preview`, { method: 'POST', as: admin, body: { question: 'cho mình gửi xe ở đâu', draft } });
   assert.equal(status, 200);
-  assert.deepEqual(Object.keys(body).sort(), ['mode', 'reply', 'sources', 'suggestions']);
-  assert.deepEqual([body.mode, body.reply, body.sources, body.suggestions], ['guide', 'Bãi gửi xe ở cổng B.', [{ title: 'Trang giải', url: '/events' }], ['Giờ mở bãi xe?']]);
+  // P06 (Task 6.5): vỏ trả lời của chat có thêm articleKeys, nên bản xem thử cũng có.
+  assert.deepEqual(Object.keys(body).sort(), ['articleKeys', 'mode', 'reply', 'sources', 'suggestions']);
+  assert.deepEqual([body.mode, body.reply, body.sources, body.suggestions, body.articleKeys], ['guide', 'Bãi gửi xe ở cổng B.', [{ title: 'Trang giải', url: '/events' }], ['Giờ mở bãi xe?'], ['gui-xe']]);
   const live = await createSupportResponder({ generateReply: null })({ message: 'cho mình gửi xe ở đâu' });
   assert.doesNotMatch(live.reply, /Bãi gửi xe/);
   assert.equal(await SupportArticle.countDocuments({ key: 'gui-xe' }), 0);

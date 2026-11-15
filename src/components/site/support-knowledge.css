@@ -68,6 +68,7 @@
 .knowledge-queue-row>div:first-child { min-width:0; }
 .knowledge-queue-sample { font-size:13px; line-height:1.7; white-space:pre-wrap; overflow-wrap:anywhere; }
 .knowledge-queue-meta { margin-top:6px; font-size:10px; color:#6b765e; line-height:1.6; }
+.knowledge-queue-kind { display:inline-flex; margin-top:8px; font-size:10px; padding:3px 8px; border-radius:4px; background:#f9e6d6; color:#9a5430; line-height:1.5; overflow-wrap:anywhere; }
 .knowledge-queue-actions { display:flex; flex-wrap:wrap; align-items:center; gap:12px; flex-shrink:0; }
 .knowledge-queue>.knowledge-empty,.knowledge-queue>.knowledge-error { border:1px solid #d8decd; border-radius:10px; }
 .knowledge-queue>.knowledge-empty { background:#fffefa; }

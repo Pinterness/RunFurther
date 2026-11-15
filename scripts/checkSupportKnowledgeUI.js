@@ -35,7 +35,8 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     const queue = [
       { _id: 'question-1', kind: 'NO_ANSWER', sample: LONG_SAMPLE, count: 5, status: 'OPEN', articleKeys: [], firstAskedAt: '2026-11-10T02:00:00.000Z', lastAskedAt: '2026-11-14T09:20:00.000Z' },
       { _id: 'question-2', kind: 'NO_ANSWER', sample: UNSAFE_SAMPLE, count: 2, status: 'OPEN', articleKeys: [], firstAskedAt: '2026-11-12T02:00:00.000Z', lastAskedAt: '2026-11-13T01:00:00.000Z' },
-      { _id: 'question-3', kind: 'NO_ANSWER', sample: 'đăng ký hộ bạn cùng câu lạc bộ được không', count: 1, status: 'OPEN', articleKeys: [], firstAskedAt: '2026-11-12T10:00:00.000Z', lastAskedAt: '2026-11-12T10:00:00.000Z' },
+      // Câu người dùng báo "Chưa đúng" (Task 6.5): bot đã trả lời bằng bài registration nhưng chưa đúng ý.
+      { _id: 'question-3', kind: 'WRONG_ANSWER', sample: 'đăng ký hộ bạn cùng câu lạc bộ được không', count: 1, status: 'OPEN', articleKeys: ['registration'], firstAskedAt: '2026-11-12T10:00:00.000Z', lastAskedAt: '2026-11-12T10:00:00.000Z' },
     ];
     const queueWrites = [];
     let failIgnore = true;
@@ -238,6 +239,9 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await expect(queueRows.nth(0)).toContainText('Hỏi 5 lần');
     await expect(queueRows.nth(0)).toContainText('16:20 14/11/2026');
     await expect(queueRows.nth(1)).toContainText(UNSAFE_SAMPLE);
+    // Câu bị báo "Chưa đúng" ghi rõ bài nào bị báo, để admin biết sửa bài nào; câu không có bài thì không có nhãn này.
+    await expect(queueRows.filter({ hasText: 'đăng ký hộ bạn' })).toContainText('Người dùng báo “Chưa đúng” cho bài: registration');
+    await expect(queueRows.filter({ hasText: 'Chưa đúng' })).toHaveCount(1);
     await expect(queueSection.locator('img')).toHaveCount(0);
     assert.equal(await page.evaluate(() => Boolean(window.queueInjected)), false);
     // Câu mẫu dài không làm trang tràn ngang ở màn hình hẹp, lúc hàng chờ còn đủ câu.

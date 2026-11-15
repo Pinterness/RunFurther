@@ -2,7 +2,8 @@
 // Hàm ghi không bao giờ nhận thông tin người hỏi: responder chỉ đưa vào câu hỏi.
 const mongoose = require('mongoose');
 const UnansweredQuestion = require('../models/UnansweredQuestion');
-const { normalizeSupportText } = require('./supportKnowledge');
+const { normalizeSupportText, SUPPORT_MESSAGE_LIMIT } = require('./supportKnowledge');
+const { loadPublishedArticles } = require('./supportKnowledgeStore');
 const { sensitiveQuestion } = require('./supportFilters');
 const { httpError } = require('../lib/errors');
 const errorCodes = require('../lib/errorCodes');
@@ -94,4 +95,28 @@ async function setUnansweredStatus(id, status) {
   return question;
 }
 
-module.exports = { UNANSWERED_OPEN_LIMIT, UNANSWERED_SAMPLE_LIMIT, UNANSWERED_TTL_SECONDS, maskDigits, recordUnanswered, listUnanswered, setUnansweredStatus };
+/**
+ * Nút "Chưa đúng" (Task 6.5): khung chat gửi lại câu hỏi cùng key các bài đã dùng để trả lời. Server không lưu cuộc
+ * trò chuyện, nên câu hỏi phải do khung chat gửi lại. Câu được ghi như câu chưa trả lời, với loại WRONG_ANSWER.
+ * @param {{ question?: unknown, articleKeys?: unknown }} body Body của request.
+ * @param {{ findArticles?: Function }} [deps] Nguồn bài đã xuất bản (mặc định đọc qua cache tri thức).
+ * @returns {Promise<{ recorded: boolean }>} false khi câu bị bỏ qua (nhạy cảm, quá ngắn, hàng chờ đã đầy).
+ */
+async function recordFeedback({ question, articleKeys } = {}, { findArticles = loadPublishedArticles } = {}) {
+  const invalid = message => httpError(400, message, errorCodes.FEEDBACK_INVALID);
+  if (typeof question !== 'string' || !question.trim() || question.length > SUPPORT_MESSAGE_LIMIT) {
+    throw invalid(`Câu hỏi phải có từ 1 đến ${SUPPORT_MESSAGE_LIMIT} ký tự.`);
+  }
+  // Một câu trả lời dùng tối đa 2 bài, nên báo "Chưa đúng" cũng chỉ nhắc tới 1–2 bài.
+  if (!Array.isArray(articleKeys) || articleKeys.length < 1 || articleKeys.length > 2
+    || !articleKeys.every(key => typeof key === 'string' && ARTICLE_KEY.test(key))) throw invalid('Danh sách bài được báo không hợp lệ.');
+  // Chỉ nhận key của bài đang xuất bản: bot chỉ trả lời bằng những bài này, nên key khác là do request bị sửa tay.
+  const published = new Set((await findArticles()).map(article => article.key));
+  if (!articleKeys.every(key => published.has(key))) {
+    throw httpError(400, 'Bài được báo không còn trên hệ thống. Hãy hỏi lại trợ lý.', errorCodes.FEEDBACK_UNKNOWN_ARTICLE);
+  }
+  const result = await recordUnanswered(question.trim(), { kind: 'WRONG_ANSWER', articleKeys: [...new Set(articleKeys)] });
+  return { recorded: result !== 'skipped' };
+}
+
+module.exports = { UNANSWERED_OPEN_LIMIT, UNANSWERED_SAMPLE_LIMIT, UNANSWERED_TTL_SECONDS, maskDigits, recordUnanswered, listUnanswered, setUnansweredStatus, recordFeedback };

@@ -10,6 +10,9 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     const errors = [], chatBodies = [], ticketWrites = [];
     page.on('pageerror', error => errors.push(error.message));
     let failChat = true, longReply = false, holdChat = false, releaseChat, ticket = null, failCreate = true, detailReads = 0, chatActions = null;
+    // Nút "Chưa đúng" (Task 6.5): key bài server gửi kèm câu trả lời, và câu trả lời giả của POST /support/feedback.
+    let chatArticleKeys = null, failFeedback = false, feedbackRecorded = true;
+    const feedbackBodies = [];
     const now = '2030-06-01T09:30:00.000Z';
     const unsafeReply = 'Bạn có thể tra cứu BIB. <img src=x onerror="window.chatInjected=true">';
     await page.route('**/api/**', async route => {
@@ -25,11 +28,16 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
         assert.ok(body.history.reduce((sum, item) => sum + item.content.length, 0) <= 16000, 'Long conversations remain inside the backend history budget');
         if (failChat) return route.fulfill({ status: 503, json: { message: 'Trợ lý đang bận. Bạn thử lại nhé.' } });
         if (holdChat) await new Promise(resolve => { releaseChat = resolve; });
-        return reply({ reply: holdChat ? 'PHẢN HỒI RIÊNG TƯ CŨ' : longReply ? 'Hướng dẫn ' + chatBodies.length + '. ' + 'Thông tin mẫu. '.repeat(240) : unsafeReply, mode: 'guide', suggestions: ['Tìm cự ly phù hợp'], ...(chatActions ? { actions: chatActions } : {}), sources: [
+        return reply({ reply: holdChat ? 'PHẢN HỒI RIÊNG TƯ CŨ' : longReply ? 'Hướng dẫn ' + chatBodies.length + '. ' + 'Thông tin mẫu. '.repeat(240) : unsafeReply, mode: 'guide', suggestions: ['Tìm cự ly phù hợp'], ...(chatActions ? { actions: chatActions } : {}), ...(chatArticleKeys ? { articleKeys: chatArticleKeys } : {}), sources: [
           { title: 'Tra cứu BIB', url: '/lookup' }, { title: 'External', url: 'https://outside.example.test' },
           { title: 'Protocol relative', url: '//outside.example.test' }, { title: 'Script', url: 'javascript:alert(1)' },
           { title: 'Backslash', url: '/\\outside.example.test' },
         ] });
+      }
+      if (path === '/support/feedback' && method === 'POST') {
+        feedbackBodies.push(request.postDataJSON());
+        if (failFeedback) return route.fulfill({ status: 503, json: { message: 'Chưa gửi được phản hồi. Bạn thử lại nhé.' } });
+        return reply({ recorded: feedbackRecorded });
       }
       if (path === '/support/tickets' && method === 'GET') return reply({ tickets: ticket ? [{ ...ticket, messages: ticket.messages.slice(-1) }] : [], total: ticket ? 1 : 0, page: 1, totalPages: ticket ? 1 : 0 });
       if (path === '/support/tickets' && method === 'POST') {
@@ -56,8 +64,8 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await expect(panel).toBeVisible();
     await expect(widget.locator('#support-heading')).toBeFocused();
     await expect(widget.getByRole('button', { name: 'Gửi câu hỏi', exact: true })).toBeDisabled();
-    // Dòng báo hàng chờ (Global Constraints của plan, Task 6.4): người dùng biết câu chưa trả lời được lưu thế nào.
-    await expect(widget.locator('.support-composer').getByText('Câu trợ lý chưa trả lời được sẽ được lưu không kèm tài khoản, đã che các dãy số, và tự xóa sau 30 ngày không có ai hỏi lại.', { exact: true })).toBeVisible();
+    // Dòng báo hàng chờ (Global Constraints của plan; Task 6.5 thay câu của Task 6.4 vì có thêm nút "Chưa đúng").
+    await expect(widget.locator('.support-composer').getByText('Câu trợ lý chưa trả lời được, hoặc câu bạn báo “Chưa đúng”, sẽ được lưu không kèm tài khoản, đã che các dãy số, và tự xóa sau 30 ngày không có ai hỏi lại.', { exact: true })).toBeVisible();
     await question.fill('Tôi cần tìm BIB của mình');
     await question.press('Enter');
     await expect(widget.getByRole('alert')).toContainText('Trợ lý đang bận');
@@ -86,11 +94,44 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     }
     assert.ok(chatBodies.at(-1).history.reduce((sum, item) => sum + item.content.length, 0) <= 16000);
 
+    // Nút "Chưa đúng" chỉ hiện dưới câu trả lời có dùng bài (server gửi articleKeys). Bấm thì gửi lại đúng câu hỏi đã
+    // tạo ra câu trả lời đó, cùng tối đa 2 key đúng dạng. Lỗi thì báo để thử lại; gửi xong thì nút đổi thành lời cảm ơn.
+    await expect(widget.getByRole('button', { name: 'Chưa đúng', exact: true })).toHaveCount(0);
+    chatArticleKeys = ['hold', 'Bad Key', 'payment', 'wallet'];
+    await question.fill('Giữ chỗ được bao lâu?');
+    await question.press('Enter');
+    await expect(widget.locator('.support-message-assistant')).toHaveCount(8);
+    // Locator của Playwright được tính lại mỗi lần dùng, nên chỉ đúng vị trí thay vì .last().
+    const rated = widget.locator('.support-message-assistant').nth(7);
+    failFeedback = true;
+    await rated.getByRole('button', { name: 'Chưa đúng', exact: true }).click();
+    await expect(rated.getByRole('alert')).toHaveText('Chưa gửi được phản hồi. Bạn thử lại nhé.');
+    failFeedback = false;
+    await rated.getByRole('button', { name: 'Chưa đúng', exact: true }).click();
+    await expect(rated.getByRole('status')).toHaveText('Cảm ơn bạn. Admin sẽ xem lại câu trả lời này.');
+    await expect(rated.getByRole('button', { name: 'Chưa đúng', exact: true })).toHaveCount(0);
+    await expect(rated.getByRole('alert')).toHaveCount(0);
+    const expectedFeedback = { question: 'Giữ chỗ được bao lâu?', articleKeys: ['hold', 'payment'] };
+    assert.deepEqual(feedbackBodies, [expectedFeedback, expectedFeedback]);
+    // Câu có thông tin riêng tư thì server không lưu, và khung chat nói đúng như vậy thay vì cảm ơn.
+    feedbackRecorded = false;
+    await question.fill('Email tôi là a@b.test, giữ chỗ bao lâu?');
+    await question.press('Enter');
+    await expect(widget.locator('.support-message-assistant')).toHaveCount(9);
+    const unrecorded = widget.locator('.support-message-assistant').nth(8);
+    await unrecorded.getByRole('button', { name: 'Chưa đúng', exact: true }).click();
+    await expect(unrecorded.getByRole('status')).toContainText('không được lưu');
+    // Câu trả lời trước vẫn giữ lời cảm ơn của nó.
+    await expect(rated.getByRole('status')).toHaveText('Cảm ơn bạn. Admin sẽ xem lại câu trả lời này.');
+    fs.mkdirSync('artifacts', { recursive: true });
+    await panel.screenshot({ path: 'artifacts/support-chat-feedback.png' });
+    chatArticleKeys = null; feedbackRecorded = true;
+
     // Nút của câu trả lời: chỉ hiện nút trỏ vào trang nội bộ hoặc vào tab hỗ trợ; bấm nút tab thì chuyển sang "Nhân viên hỗ trợ".
     chatActions = [{ label: 'Ví của tôi', url: '/account/wallet' }, { label: 'Lạ', url: 'https://x.example' }, { label: 'Yêu cầu hỗ trợ của tôi', view: 'tickets' }];
     await question.fill('Ví của tôi còn bao nhiêu?');
     await question.press('Enter');
-    await expect(widget.locator('.support-message-assistant')).toHaveCount(8);
+    await expect(widget.locator('.support-message-assistant')).toHaveCount(10);
     const firstActions = widget.locator('.support-message-assistant').last().locator('.support-actions');
     await expect(firstActions.locator('a, button')).toHaveCount(2);
     await expect(firstActions.getByRole('link', { name: 'Ví của tôi' })).toHaveAttribute('href', '/account/wallet');
@@ -229,6 +270,6 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await expect(page).toHaveURL(/\/account\/wallet$/);
     await expect(panel).toHaveCount(0);
     assert.deepEqual(errors, []);
-    console.log('PASS: unanswered-queue notice, guest chat/retry, bounded history, text-only answers/internal links, action buttons (internal links, support list and new-request form, duplicate sources hidden), auth reset/stale response guard, human ticket create/detail/reply/closed, mobile fit, isolated wheel and Escape focus (API fixtures only).');
+    console.log('PASS: unanswered-queue notice, "Chưa đúng" feedback (only on article answers, question and valid keys sent, retry on error, thanks or not-saved status), guest chat/retry, bounded history, text-only answers/internal links, action buttons (internal links, support list and new-request form, duplicate sources hidden), auth reset/stale response guard, human ticket create/detail/reply/closed, mobile fit, isolated wheel and Escape focus (API fixtures only).');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

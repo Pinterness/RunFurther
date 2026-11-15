@@ -105,7 +105,9 @@ function createSupportResponder({ findArticles = loadPublishedArticles, findEven
     }
     const question = message.trim();
     const query = normalizeSupportText(question);
-    const result = { reply: FALLBACK, mode: 'guide', sources: [], suggestions: [...DEFAULT_SUGGESTIONS] };
+    // `articleKeys`: key các bài đã dùng để trả lời, để khung chat hiện nút "Chưa đúng". Mảng rỗng khi trả FALLBACK,
+    // trả lời tác vụ hay báo lỗi, vì khi đó câu trả lời không lấy từ bài nào.
+    const result = { reply: FALLBACK, mode: 'guide', sources: [], suggestions: [...DEFAULT_SUGGESTIONS], articleKeys: [] };
     const route = routeTask(query);
     if (route?.key) {
       // userId chỉ lấy từ token đã xác thực: dù người hỏi gõ BIB hay mã đơn của người khác, bot vẫn chỉ đọc dữ liệu của chủ token.
@@ -134,6 +136,7 @@ function createSupportResponder({ findArticles = loadPublishedArticles, findEven
       return result;
     }
     result.reply = articles.map(article => article.answer).join('\n\n');
+    result.articleKeys = articles.map(article => article.key);
     result.sources = [...new Map(articles.flatMap(article => article.sources).map(source => [source.url, { ...source }])).values()].slice(0, 5);
     result.suggestions = [...new Set(articles.flatMap(article => article.suggestions))].slice(0, 3);
     let events = [];
@@ -149,6 +152,7 @@ function createSupportResponder({ findArticles = loadPublishedArticles, findEven
         } else result.reply = 'Chưa tìm thấy giải công khai phù hợp trong dữ liệu hiện tại. Bạn có thể mở danh sách giải để thay đổi địa điểm hoặc kiểm tra lại sau.';
       } catch {
         result.reply = 'Hiện chưa tải được thông tin giải. Bạn hãy mở danh sách giải để thử lại; mình chưa thể xác nhận lịch hoặc giá vé lúc này.';
+        result.articleKeys = [];
         return result;
       }
     }
