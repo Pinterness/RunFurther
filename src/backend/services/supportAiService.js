@@ -5,6 +5,7 @@ const { availableEvent } = require('./eventPolicy');
 const { escapeRegex, httpError } = require('../lib/errors');
 const { SUPPORT_MESSAGE_LIMIT, rankArticles, normalizeSupportText } = require('./supportKnowledge');
 const { loadPublishedArticles } = require('./supportKnowledgeStore');
+const { sensitiveQuestion } = require('./supportFilters');
 const { routeTask, guestAnswer, failedAnswer, unclearAnswer, runTask: defaultTaskRunner } = require('./supportTasks');
 const { toActions, actionLabel } = require('../../lib/supportActions.cjs');
 
@@ -48,13 +49,6 @@ async function retrievePublicEvents({ message, page }) {
     })),
   }));
 }
-
-// Mã nạp tiền (NAP + 8 ký tự, CODE_PATTERN của topupService) cũng riêng tư như mã đơn (RUN…). Sao kê ngân hàng có
-// thể in mã có khoảng trắng hay gạch nối ("NAP K7M2-Q9XA"), và người dùng chép nguyên như vậy, nên mẫu chấp nhận cả hai.
-// Cái giá: vài câu không dấu như "nap ngay sang vi" cũng khớp mẫu và chỉ nhận câu soạn sẵn thay vì câu của AI. Chặn nhầm
-// như vậy vẫn hơn để lọt mã riêng tư ra ngoài.
-const sensitiveQuestion = message => /[\w.+-]+@[\w.-]+\.[a-z]{2,}|\b(?:\+?\d[\s.-]?){9,}\b|\b(?:sk-|RF-|RUN[0-9a-f]{8}|eyJ)[a-z0-9_-]+|\bNAP[\s-]?[2-9A-HJ-NP-Z]{4}[\s-]?[2-9A-HJ-NP-Z]{4}\b/i.test(message)
-  || /mat khau|otp|cccd|cmnd|so tai khoan|ma don|qr token|qr ve|the ngan hang/.test(normalizeSupportText(message));
 
 // Chỉ gửi request tới một địa chỉ cố định là API Responses của OpenAI. Request không khai báo công cụ (tool) nào,
 // nên model không đụng được database hay gọi URL; request cũng không gửi mã hội thoại. Khóa API do server tự
