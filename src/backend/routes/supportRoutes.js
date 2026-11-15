@@ -7,6 +7,8 @@ const writes = rateLimit(30);
 
 router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 router.post('/chat', rateLimit(12), (req, res, next) => req.headers.authorization ? verifyUserToken(req, res, next) : next(), support.chat);
+// Nút "Chưa đúng": đặt trước verifyUserToken để khách cũng bấm được; route không đọc token.
+router.post('/feedback', rateLimit(6), support.feedback);
 router.use(verifyUserToken);
 router.post('/tickets', rateLimit(6), support.create);
 router.get('/tickets', support.mine);
@@ -28,4 +30,8 @@ router.put('/admin/knowledge/:id', writes, knowledge.update);
 router.post('/admin/knowledge/:id/publish', writes, knowledge.publish);
 router.post('/admin/knowledge/:id/unpublish', writes, knowledge.unpublish);
 router.post('/admin/knowledge/:id/restore', writes, knowledge.restore);
+// Hàng chờ câu bot chưa trả lời được: admin xem, đánh dấu đã xử lý hoặc bỏ qua. Không có route xóa: câu tự xóa theo TTL.
+router.get('/admin/unanswered', knowledge.listUnanswered);
+router.post('/admin/unanswered/:id/resolve', writes, knowledge.resolveUnanswered);
+router.post('/admin/unanswered/:id/ignore', writes, knowledge.ignoreUnanswered);
 module.exports = router;

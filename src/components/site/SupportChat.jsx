@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { MessageCircle, X } from 'lucide-react';
+import { MessageCircle, ThumbsDown, X } from 'lucide-react';
 import { api } from '../../lib/clientApi';
 import { internalPath } from '../../lib/internalPath.cjs';
 import { toActions } from '../../lib/supportActions.cjs';
@@ -26,6 +26,10 @@ function boundedHistory(messages) {
   }
   return history;
 }
+// Key các bài server đã dùng để trả lời (nút "Chưa đúng"). Chỉ giữ key đúng dạng mã bài, tối đa 2 như server nhận.
+const feedbackKeys = keys => (Array.isArray(keys) ? keys : []).filter(key => typeof key === 'string' && /^[a-z0-9][a-z0-9-]{1,59}$/.test(key)).slice(0, 2);
+// Server chỉ trả recorded: false mà không nói lý do (câu nhạy cảm, quá ngắn hay hàng chờ đã đầy), nên câu báo không đoán lý do.
+const feedbackNotes = { recorded: 'Cảm ơn bạn. Admin sẽ xem lại câu trả lời này.', skipped: 'Câu hỏi này không được lưu vào hàng chờ. Nếu cần, bạn có thể gửi yêu cầu cho nhân viên hỗ trợ.' };
 
 export default function SupportChat() {
   const pathname = usePathname();
@@ -42,7 +46,7 @@ export default function SupportChat() {
   const trigger = useRef(null), heading = useRef(null), transcript = useRef(null), ticketTranscript = useRef(null), ticketTab = useRef(null);
   const mounted = useRef(true), epoch = useRef(0), requests = useRef(new Set());
   const chatRequest = useRef(null), ticketMutation = useRef(null), detailRequest = useRef(null), listRequest = useRef(null);
-  const selectedId = useRef(''), lastAuth = useRef(null), syncAuth = useRef(null), nextMessageId = useRef(0);
+  const selectedId = useRef(''), lastAuth = useRef(null), syncAuth = useRef(null), nextMessageId = useRef(0), feedbackSending = useRef(new Set());
   selectedId.current = selectedTicket?._id || '';
 
   const begin = useCallback(() => {
@@ -107,7 +111,8 @@ export default function SupportChat() {
       // Nút được lọc lại bằng đúng luật của server. Nguồn trùng link với một nút thì không hiện thêm lần nữa.
       const actions = toActions(data.actions);
       const sources = (Array.isArray(data.sources) ? data.sources : []).slice(0, 5).map(source => ({ title: String(source?.title || 'Xem hướng dẫn'), url: internalPath(source?.url) })).filter(source => source.url && !actions.some(action => action.url === source.url));
-      setMessages(items => [...items, { id: ++nextMessageId.current, role: 'assistant', content: data.reply, mode: replyMode, actions, sources }]);
+      // Giữ câu hỏi đã tạo ra câu trả lời này, vì nút "Chưa đúng" phải gửi lại đúng câu đó (server không lưu cuộc trò chuyện).
+      setMessages(items => [...items, { id: ++nextMessageId.current, role: 'assistant', content: data.reply, mode: replyMode, actions, sources, question: text, articleKeys: feedbackKeys(data.articleKeys) }]);
       setMode(replyMode);
       const next = (Array.isArray(data.suggestions) ? data.suggestions : []).filter(item => typeof item === 'string' && item.trim() && item.length <= 2000).slice(0, 3);
       setSuggestions(next.length ? next : initialPrompts);
@@ -118,6 +123,30 @@ export default function SupportChat() {
       if (chatRequest.current === request) { chatRequest.current = null; if (current(request)) setChatBusy(false); }
     }
   }
+
+  // Nút "Chưa đúng": gửi câu hỏi và key các bài đã dùng vào hàng chờ của admin. Khách cũng bấm được. Trạng thái nằm trên
+  // chính tin nhắn: 'sending', 'recorded', 'skipped' (câu riêng tư, server không lưu) hoặc { error } để bấm lại.
+  async function sendFeedback(message) {
+    // Trạng thái 'sending' chỉ có sau lần vẽ lại, nên bấm đúp thật nhanh được chặn bằng ref.
+    if (feedbackSending.current.has(message.id) || message.feedback === 'recorded' || message.feedback === 'skipped') return;
+    const setFeedback = feedback => setMessages(items => items.map(item => (item.id === message.id ? { ...item, feedback } : item)));
+    const request = begin();
+    feedbackSending.current.add(message.id); setFeedback('sending');
+    try {
+      const data = await api('/support/feedback', { method: 'POST', body: JSON.stringify({ question: message.question, articleKeys: message.articleKeys }), signal: request.controller.signal });
+      if (!current(request) || request.controller.signal.aborted) return;
+      setFeedback(data.recorded ? 'recorded' : 'skipped');
+    } catch (error) {
+      if (current(request) && (!request.controller.signal.aborted || request.timedOut)) {
+        setFeedback({ error: error.status === 429 ? 'Bạn báo hơi nhiều trong một phút. Thử lại sau ít phút nhé.' : error.message || 'Chưa gửi được phản hồi. Bạn thử lại nhé.' });
+      }
+    } finally { finish(request); feedbackSending.current.delete(message.id); }
+  }
+  const feedbackView = message => {
+    if (!message.articleKeys?.length || !message.question) return null;
+    if (feedbackNotes[message.feedback]) return <div className="support-feedback"><p role="status">{feedbackNotes[message.feedback]}</p></div>;
+    return <div className="support-feedback"><button type="button" disabled={message.feedback === 'sending'} onClick={() => sendFeedback(message)}><ThumbsDown size={12} aria-hidden="true" />Chưa đúng</button>{message.feedback?.error && <p role="alert">{message.feedback.error}</p>}</div>;
+  };
 
   const loadTickets = useCallback(async () => {
     if (listRequest.current) { listRequest.current.controller.abort(); finish(listRequest.current); }
@@ -201,12 +230,12 @@ export default function SupportChat() {
         <div className="support-mode"><span className="support-mode-dot" />{mode === 'ai' ? 'Trợ lý AI' : 'Hướng dẫn tự động'}<span>Đăng ký · Vé · Ngày chạy</span></div>
         <div className="support-transcript" ref={transcript} role="log" aria-label="Cuộc trò chuyện với trợ lý" aria-live="polite" aria-relevant="additions text" tabIndex={0}>
           {!messages.length && <div className="support-welcome"><span>ĐỒNG HÀNH TỪ BƯỚC ĐẦU.</span><h3>Mọi câu hỏi đều có<br />một điểm bắt đầu.</h3><p>Tôi giúp bạn tìm hướng dẫn về đăng ký giải, vé, chuyển khoản và race kit.</p></div>}
-          {messages.map(message => <article key={message.id} className={'support-message support-message-' + message.role}><small>{message.role === 'user' ? 'Bạn' : message.mode === 'ai' ? 'Trợ lý AI' : 'Hướng dẫn tự động'}</small><p>{message.content}</p>{message.actions?.length > 0 && <div className="support-actions" role="group" aria-label="Thao tác nhanh">{message.actions.map((action, index) => action.view ? <button key={action.view + index} type="button" onClick={() => openTickets(action.view === 'new-ticket' ? 'new' : 'list')}>{action.label}<span aria-hidden="true">→</span></button> : <Link key={action.url + index} href={action.url} onNavigate={close}>{action.label}<span aria-hidden="true">↗</span></Link>)}</div>}{message.sources?.length > 0 && <ul className="support-sources" aria-label="Nguồn tham khảo">{message.sources.map((source, index) => <li key={source.url + index}><Link href={source.url} onClick={close}>{source.title}<span aria-hidden="true"> ↗</span></Link></li>)}</ul>}</article>)}
+          {messages.map(message => <article key={message.id} className={'support-message support-message-' + message.role}><small>{message.role === 'user' ? 'Bạn' : message.mode === 'ai' ? 'Trợ lý AI' : 'Hướng dẫn tự động'}</small><p>{message.content}</p>{message.actions?.length > 0 && <div className="support-actions" role="group" aria-label="Thao tác nhanh">{message.actions.map((action, index) => action.view ? <button key={action.view + index} type="button" onClick={() => openTickets(action.view === 'new-ticket' ? 'new' : 'list')}>{action.label}<span aria-hidden="true">→</span></button> : <Link key={action.url + index} href={action.url} onNavigate={close}>{action.label}<span aria-hidden="true">↗</span></Link>)}</div>}{message.sources?.length > 0 && <ul className="support-sources" aria-label="Nguồn tham khảo">{message.sources.map((source, index) => <li key={source.url + index}><Link href={source.url} onClick={close}>{source.title}<span aria-hidden="true"> ↗</span></Link></li>)}</ul>}{message.role === 'assistant' && feedbackView(message)}</article>)}
           {chatBusy && <div className="support-typing" role="status"><span aria-hidden="true"><i /><i /><i /></span>Đang tìm câu trả lời…</div>}
           {failedChat && <div className="support-error" role="alert"><p>{failedChat.error}</p><button type="button" onClick={() => sendChat(failedChat.message, failedChat)}>Thử lại</button></div>}
           {!chatBusy && <div className="support-prompts" aria-label="Câu hỏi gợi ý">{suggestions.map((prompt, index) => <button key={index} type="button" onClick={() => sendChat(prompt)}>{prompt}<span aria-hidden="true">↗</span></button>)}</div>}
         </div>
-        <form className="support-composer" onSubmit={event => { event.preventDefault(); sendChat(draft); }}><label htmlFor="support-message">Câu hỏi của bạn</label><div><textarea id="support-message" rows={2} value={draft} maxLength={2000} placeholder="Nhập điều bạn cần hỗ trợ…" onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (!chatBusy) sendChat(draft); } }} /><button type="submit" disabled={chatBusy || !draft.trim()} aria-label="Gửi câu hỏi">Gửi <span aria-hidden="true">↑</span></button></div><p>Enter để gửi · Shift + Enter để xuống dòng</p><p>Câu hỏi có thể được xử lý bởi dịch vụ AI khi tính năng này được bật.</p></form>
+        <form className="support-composer" onSubmit={event => { event.preventDefault(); sendChat(draft); }}><label htmlFor="support-message">Câu hỏi của bạn</label><div><textarea id="support-message" rows={2} value={draft} maxLength={2000} placeholder="Nhập điều bạn cần hỗ trợ…" onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (!chatBusy) sendChat(draft); } }} /><button type="submit" disabled={chatBusy || !draft.trim()} aria-label="Gửi câu hỏi">Gửi <span aria-hidden="true">↑</span></button></div><p>Enter để gửi · Shift + Enter để xuống dòng</p><p>Câu hỏi có thể được xử lý bởi dịch vụ AI khi tính năng này được bật.</p><p>Câu trợ lý chưa trả lời được, hoặc câu bạn báo “Chưa đúng”, sẽ được lưu không kèm tài khoản, đã che các dãy số, và tự xóa sau 30 ngày không có ai hỏi lại.</p></form>
       </> : !authenticated ? <div className="support-ticket-content support-ticket-guest"><span className="support-eyebrow">NHÂN VIÊN HỖ TRỢ</span><h3>Để chúng tôi tiếp tục<br />đồng hành cùng bạn.</h3><p>Đăng nhập để gửi yêu cầu và xem phản hồi từ nhân viên. Bạn vẫn có thể hỏi trợ lý mà không cần tài khoản.</p><Link className="button-dark" href={'/login?next=' + encodeURIComponent(pathname)} onClick={close}>Đăng nhập để gửi yêu cầu</Link><button className="support-text-button" type="button" onClick={() => setView('assistant')}>Tiếp tục với trợ lý</button></div> : <div className="support-ticket-content">
         <p className="support-ticket-note">Nhân viên phản hồi qua yêu cầu hỗ trợ; đây không phải cuộc trò chuyện trực tiếp.</p>
         {ticketError && <div className="support-error" role="alert"><p>{ticketError}</p></div>}

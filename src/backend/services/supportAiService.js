@@ -5,6 +5,8 @@ const { availableEvent } = require('./eventPolicy');
 const { escapeRegex, httpError } = require('../lib/errors');
 const { SUPPORT_MESSAGE_LIMIT, rankArticles, normalizeSupportText } = require('./supportKnowledge');
 const { loadPublishedArticles } = require('./supportKnowledgeStore');
+const { sensitiveQuestion } = require('./supportFilters');
+const { recordUnanswered } = require('./unansweredService');
 const { routeTask, guestAnswer, failedAnswer, unclearAnswer, runTask: defaultTaskRunner } = require('./supportTasks');
 const { toActions, actionLabel } = require('../../lib/supportActions.cjs');
 
@@ -48,13 +50,6 @@ async function retrievePublicEvents({ message, page }) {
     })),
   }));
 }
-
-// Mã nạp tiền (NAP + 8 ký tự, CODE_PATTERN của topupService) cũng riêng tư như mã đơn (RUN…). Sao kê ngân hàng có
-// thể in mã có khoảng trắng hay gạch nối ("NAP K7M2-Q9XA"), và người dùng chép nguyên như vậy, nên mẫu chấp nhận cả hai.
-// Cái giá: vài câu không dấu như "nap ngay sang vi" cũng khớp mẫu và chỉ nhận câu soạn sẵn thay vì câu của AI. Chặn nhầm
-// như vậy vẫn hơn để lọt mã riêng tư ra ngoài.
-const sensitiveQuestion = message => /[\w.+-]+@[\w.-]+\.[a-z]{2,}|\b(?:\+?\d[\s.-]?){9,}\b|\b(?:sk-|RF-|RUN[0-9a-f]{8}|eyJ)[a-z0-9_-]+|\bNAP[\s-]?[2-9A-HJ-NP-Z]{4}[\s-]?[2-9A-HJ-NP-Z]{4}\b/i.test(message)
-  || /mat khau|otp|cccd|cmnd|so tai khoan|ma don|qr token|qr ve|the ngan hang/.test(normalizeSupportText(message));
 
 // Chỉ gửi request tới một địa chỉ cố định là API Responses của OpenAI. Request không khai báo công cụ (tool) nào,
 // nên model không đụng được database hay gọi URL; request cũng không gửi mã hội thoại. Khóa API do server tự
@@ -102,14 +97,17 @@ function createOpenAIAdapter({ env = process.env, fetchImpl = (...args) => fetch
 
 // `now` là đồng hồ đưa cho các reader (hàm đọc dữ liệu của từng tác vụ), dùng để biết "hôm nay", số phút còn lại
 // và lệnh nạp quá hạn. Test truyền vào một thời điểm cố định.
-function createSupportResponder({ findArticles = loadPublishedArticles, findEvents = retrievePublicEvents, runTask = defaultTaskRunner, generateReply = createOpenAIAdapter(), now = () => new Date() } = {}) {
+// `recordMiss` ghi câu bot chưa trả lời được vào hàng chờ của admin; truyền null để không ghi (xem thử của admin, test).
+function createSupportResponder({ findArticles = loadPublishedArticles, findEvents = retrievePublicEvents, runTask = defaultTaskRunner, generateReply = createOpenAIAdapter(), recordMiss = recordUnanswered, now = () => new Date() } = {}) {
   return async function answerSupport({ message, history = [], userId = null, page = '/' } = {}) {
     if (typeof message !== 'string' || !message.trim() || message.length > SUPPORT_MESSAGE_LIMIT) {
       throw httpError(400, `Tin nhắn phải có từ 1 đến ${SUPPORT_MESSAGE_LIMIT} ký tự.`);
     }
     const question = message.trim();
     const query = normalizeSupportText(question);
-    const result = { reply: FALLBACK, mode: 'guide', sources: [], suggestions: [...DEFAULT_SUGGESTIONS] };
+    // `articleKeys`: key các bài đã dùng để trả lời, để khung chat hiện nút "Chưa đúng". Mảng rỗng khi trả FALLBACK,
+    // trả lời tác vụ hay báo lỗi, vì khi đó câu trả lời không lấy từ bài nào.
+    const result = { reply: FALLBACK, mode: 'guide', sources: [], suggestions: [...DEFAULT_SUGGESTIONS], articleKeys: [] };
     const route = routeTask(query);
     if (route?.key) {
       // userId chỉ lấy từ token đã xác thực: dù người hỏi gõ BIB hay mã đơn của người khác, bot vẫn chỉ đọc dữ liệu của chủ token.
@@ -128,11 +126,17 @@ function createSupportResponder({ findArticles = loadPublishedArticles, findEven
     try { published = await findArticles(); } catch (error) { console.error('Support knowledge read failed:', error.message); return result; }
     const articles = rankArticles(published, question, history);
     if (!articles.length) {
-      // Câu "của tôi" không nêu tác vụ và không khớp bài nào thì nhận các nút tác vụ, bot không đoán.
+      // Câu "của tôi" không nêu tác vụ và không khớp bài nào thì nhận các nút tác vụ, bot không đoán. Câu nhận nút đã
+      // có lối đi tiếp, nên không vào hàng chờ.
       if (route?.ambiguous) Object.assign(result, unclearAnswer());
+      else if (typeof recordMiss === 'function') {
+        // Chỉ đưa câu hỏi, không đưa userId hay trang đang mở. Ghi lỗi thì chỉ ghi log, người hỏi vẫn nhận FALLBACK.
+        try { await recordMiss(question); } catch (error) { console.error('Support unanswered record failed:', error.message); }
+      }
       return result;
     }
     result.reply = articles.map(article => article.answer).join('\n\n');
+    result.articleKeys = articles.map(article => article.key);
     result.sources = [...new Map(articles.flatMap(article => article.sources).map(source => [source.url, { ...source }])).values()].slice(0, 5);
     result.suggestions = [...new Set(articles.flatMap(article => article.suggestions))].slice(0, 3);
     let events = [];
@@ -148,6 +152,7 @@ function createSupportResponder({ findArticles = loadPublishedArticles, findEven
         } else result.reply = 'Chưa tìm thấy giải công khai phù hợp trong dữ liệu hiện tại. Bạn có thể mở danh sách giải để thay đổi địa điểm hoặc kiểm tra lại sau.';
       } catch {
         result.reply = 'Hiện chưa tải được thông tin giải. Bạn hãy mở danh sách giải để thử lại; mình chưa thể xác nhận lịch hoặc giá vé lúc này.';
+        result.articleKeys = [];
         return result;
       }
     }

@@ -38,6 +38,13 @@ body:has(.immersive-journey[data-enhanced=true]) .support-widget:not([data-open=
 .support-actions a,.support-actions button { display:inline-flex; align-items:center; gap:8px; min-height:34px; max-width:100%; padding:7px 12px; border:1px solid var(--border); border-radius:var(--radius-control); background:var(--surface); color:var(--forest); font-size:11px; font-weight:600; line-height:1.4; text-align:left; text-decoration:none; }
 .support-actions span { flex-shrink:0; color:var(--accent-strong); }
 .support-actions a:hover,.support-actions button:hover { border-color:#9ba78e; background:var(--surface-muted); }
+/* Nút "Chưa đúng" dưới câu trả lời có dùng bài (P06) */
+.support-feedback { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin-top:10px; }
+.support-feedback button { display:inline-flex; align-items:center; gap:5px; min-height:28px; padding:4px 10px; border:1px solid var(--border); border-radius:999px; background:transparent; color:var(--muted); font-size:10px; font-weight:600; }
+.support-feedback button:hover:not(:disabled) { border-color:#9ba78e; color:var(--forest); }
+.support-feedback button:disabled { opacity:.6; cursor:default; }
+.support-message .support-feedback p { font-size:10px; line-height:1.6; color:var(--muted); }
+.support-message .support-feedback p[role="alert"] { color:#963f26; }
 .support-prompts { display:flex; flex-direction:column; align-items:flex-start; gap:7px; margin:4px 0 10px; }
 .support-prompts button { display:flex; align-items:center; justify-content:space-between; gap:14px; width:100%; text-align:left; border:1px solid var(--border); border-radius:var(--radius-control); padding:10px 12px; background:var(--surface); font-size:11px; line-height:1.5; color:var(--forest); }
 .support-prompts button>span { color:var(--accent-strong); font-size:14px; flex-shrink:0; }
