@@ -597,6 +597,37 @@ test('RunPoints: người chưa có điểm được chỉ cách tích điểm, 
   assert.equal(await RunPoints.countDocuments({ userId: data.noPoints.id }), 0);
 });
 
+// ---- Người có nhiều hơn 20 dòng: mỗi truy vấn chỉ đọc tối đa 20 dòng, nên bot không biết tổng thật.
+before(async () => {
+  const upcoming = await makeEvent(at(30 * DAY), 'Giải Nhiều Vé');
+  const finished = await makeEvent(at(-30 * DAY), 'Giải Nhiều Kết Quả', 'COMPLETED');
+  Object.assign(data, {
+    manyTickets: await harness.createUser(), manyHolds: await harness.createUser(), manyTopups: await harness.createUser({ balance: 10000 }),
+    manySupport: await harness.createUser(), manyResults: await harness.createUser(),
+  });
+  for (let n = 1; n <= 21; n += 1) {
+    await makeTicket(data.manyTickets.id, upcoming, `MANY-${n}`, `qr-secret-many-${n}`);
+    await makeHold(data.manyHolds.id, upcoming, at(n * MINUTE));
+    await makeTopup(data.manyTopups.id, n * 10000, at(-n * MINUTE), at(23 * HOUR));
+    await makeSupportTicket(data.manySupport.id, `Yêu cầu số ${n}`, 'OPEN', at(-n * MINUTE));
+    await makeTicket(data.manyResults.id, finished, `DONE-${n}`, `qr-secret-done-${n}`, 'CONFIRMED', { finishResult: { chipTime: '1:00:00' } });
+  }
+});
+
+test('đọc chạm trần 20 dòng thì bot nói "từ 20 … trở lên" chứ không báo một tổng có thể sai', async () => {
+  for (const [question, who, line, heading] of [
+    ['vé của tôi', data.manyTickets, 0, 'Bạn có từ 20 vé sắp chạy trở lên, đây là 3 vé có ngày chạy gần nhất:'],
+    ['đơn của tôi', data.manyHolds, 0, 'Bạn có từ 20 đơn đang giữ chỗ trở lên, đây là 3 đơn sắp hết giờ nhất:'],
+    ['ví của tôi', data.manyTopups, 1, 'Bạn có từ 20 lệnh nạp đang chờ đối soát trở lên, đây là 3 lệnh mới nhất:'],
+    ['yêu cầu hỗ trợ của tôi', data.manySupport, 0, 'Bạn có từ 20 yêu cầu hỗ trợ trở lên, đây là 3 yêu cầu mới cập nhật nhất:'],
+    ['kết quả của tôi', data.manyResults, 0, 'Bạn có từ 20 kết quả chạy trở lên, đây là 3 kết quả gần nhất:'],
+  ]) {
+    const lines = (await ask(question, who.id)).reply.split('\n');
+    assert.equal(lines[line], heading, question);
+    assert.equal(lines.filter(text => text.startsWith('- ')).length, 3, question);
+  }
+});
+
 // ---- Bot chỉ đọc (spec 5.1): hỏi mọi tác vụ, qua cả responder lẫn route HTTP, rồi kiểm database không đổi.
 test('chạy mọi tác vụ không ghi gì vào database và mọi truy vấn đều có maxTimeMS', async () => {
   const models = [Registration, Booking, Wallet, PaymentRequest, SupportTicket, RunPoints];

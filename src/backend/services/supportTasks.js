@@ -144,11 +144,15 @@ const nameOf = row => `${row.eventId?.name || 'Giải chạy'}${row.categoryId?.
 // ("Bạn có 4 vé…, đây là 3 vé…"). Các câu trong `notes` đứng ngay sau danh sách, và dòng cuối chỉ nút để xem
 // phần còn lại. Nhãn nút là động từ ("Xem đơn chờ thanh toán"), nên câu viết "bấm …" chứ không viết "xem trong …".
 // Không có `button` (không trang nào liệt kê phần còn lại, như kết quả chạy) thì bỏ dòng cuối đó.
-function listReply(rows, { what, first, rest, button, notes = [] }, line) {
-  const heading = rows.length > LIMITS.shown ? `Bạn có ${rows.length} ${what}, đây là ${LIMITS.shown} ${first}:` : `Bạn có ${rows.length} ${what}:`;
-  const more = rows.length > LIMITS.shown && button ? [`${rest} còn lại bạn bấm "${button}" để xem nhé.`] : [];
+// `capped` nghĩa là truy vấn đã đọc đủ trần LIMITS.privateRows dòng, nên có thể còn dòng chưa đọc: khi đó bot không
+// biết tổng thật và chỉ nói "từ 20 … trở lên", thay vì báo "20" như một con số chắc chắn.
+function listReply(rows, { what, first, rest, button, notes = [], capped = false }, line) {
+  const count = capped ? `từ ${rows.length} ${what} trở lên` : `${rows.length} ${what}`;
+  const heading = rows.length > LIMITS.shown ? `Bạn có ${count}, đây là ${LIMITS.shown} ${first}:` : `Bạn có ${count}:`;
+  const more = (rows.length > LIMITS.shown || capped) && button ? [`${rest} còn lại bạn bấm "${button}" để xem nhé.`] : [];
   return [heading, ...rows.slice(0, LIMITS.shown).map(line), ...notes, ...more];
 }
+const full = rows => rows.length >= LIMITS.privateRows;
 
 // Kết quả chạy dùng đúng điều kiện của trang kết quả công khai (listResults trong eventController): vé còn hiệu lực
 // có chip time dạng giờ:phút:giây. Trang /events/<slug>/results chỉ mở được khi giải ở trạng thái công khai và không
@@ -178,7 +182,7 @@ const readers = {
     // paymentController gọi completeBooking).
     if (!upcoming.length) return { reply: 'Bạn chưa có vé sắp chạy nào. Nếu bạn vừa chuyển khoản, vé chỉ được cấp sau khi chủ giải xác nhận đã nhận tiền. Vé của các giải đã qua vẫn xem được trong "Vé của tôi".', actions };
     // Vé chưa có BIB ghi "BIB đang cấp", cùng chữ với thẻ vé ("Đang cấp").
-    const lines = listReply(upcoming, { what: 'vé sắp chạy', first: 'vé có ngày chạy gần nhất', rest: 'Vé', button: TASKS.tickets.action.label }, row => [
+    const lines = listReply(upcoming, { what: 'vé sắp chạy', first: 'vé có ngày chạy gần nhất', rest: 'Vé', button: TASKS.tickets.action.label, capped: full(rows) }, row => [
       '- ' + vietnamDate(row.eventId.dateInfo.raceDate), nameOf(row), row.bibNumber ? 'BIB ' + row.bibNumber : 'BIB đang cấp',
       // Khi ban tổ chức hủy giải, vé vẫn giữ trạng thái cũ, nên phải xét trạng thái của giải ở đây.
       row.eventId.status === 'CANCELLED' ? 'Giải đã bị hủy' : TICKET_LABELS[row.status],
@@ -217,7 +221,7 @@ const readers = {
     }
     // expireBookings đổi đơn quá giờ sang EXPIRED và trả chỗ đã giữ lại cho cự ly đó.
     const notes = ['Đơn chưa thanh toán mà quá giờ thì hết hiệu lực và chỗ được trả lại.', ...lapsedNote];
-    const lines = listReply(rows, { what: 'đơn đang giữ chỗ', first: 'đơn sắp hết giờ nhất', rest: 'Đơn', button: TASKS.holds.action.label, notes }, row => {
+    const lines = listReply(rows, { what: 'đơn đang giữ chỗ', first: 'đơn sắp hết giờ nhất', rest: 'Đơn', button: TASKS.holds.action.label, notes, capped: full(rows) }, row => {
       const transfer = transferOf.get(String(row._id));
       if (transfer === 'PENDING') return `- ${nameOf(row)}: bạn đã báo chuyển khoản, đơn đang chờ chủ giải đối soát, bạn không cần chuyển thêm.`;
       if (transfer === 'REJECTED') return `- ${nameOf(row)}: chủ giải đã từ chối khoản chuyển của đơn này, bạn đừng chuyển lại. Bạn bấm "${SUPPORT_ACTION.label}" để được hướng dẫn.`;
@@ -250,7 +254,7 @@ const readers = {
     const locked = Boolean(wallet) && wallet.status !== 'ACTIVE';
     const parts = [wallet ? `Số dư ví của bạn là ${vnd(wallet.balance)}.` : 'Bạn chưa có ví. Bạn bấm "Ví của tôi" bên dưới là ví được tạo ngay.'];
     if (waiting.length) {
-      parts.push(...listReply(waiting, { what: 'lệnh nạp đang chờ đối soát', first: 'lệnh mới nhất', rest: 'Lệnh', button: TASKS.wallet.action.label, notes: ['Số dư chỉ tăng khi lệnh được duyệt.'] },
+      parts.push(...listReply(waiting, { what: 'lệnh nạp đang chờ đối soát', first: 'lệnh mới nhất', rest: 'Lệnh', button: TASKS.wallet.action.label, notes: ['Số dư chỉ tăng khi lệnh được duyệt.'], capped: full(waiting) },
         row => `- ${vnd(row.amount)}, tạo lúc ${vietnamClock(row.createdAt)} ngày ${vietnamDate(row.createdAt)}.`));
     } else if (wallet) parts.push('Bạn không có lệnh nạp nào đang chờ đối soát.');
     // Lời dặn của trang ví cho mã đã hết hạn (TransferDetails.jsx), nhưng không in mã: người dùng xem mã trong trang ví.
@@ -272,7 +276,7 @@ const readers = {
     if (!rows.length) {
       return { reply: `Bạn chưa gửi yêu cầu hỗ trợ nào. Nếu cần nhân viên giúp, bạn bấm "${SUPPORT_ACTION.label}" để gửi yêu cầu mới.`, actions: [SUPPORT_ACTION] };
     }
-    const lines = listReply(rows, { what: 'yêu cầu hỗ trợ', first: 'yêu cầu mới cập nhật nhất', rest: 'Yêu cầu', button: TASKS.supportTickets.action.label }, row => [
+    const lines = listReply(rows, { what: 'yêu cầu hỗ trợ', first: 'yêu cầu mới cập nhật nhất', rest: 'Yêu cầu', button: TASKS.supportTickets.action.label, capped: full(rows) }, row => [
       `- "${oneLine(row.subject)}"`, REQUEST_LABELS[row.status], `cập nhật lúc ${vietnamClock(row.updatedAt)} ngày ${vietnamDate(row.updatedAt)}`,
     ].join(' · '));
     return { reply: lines.join('\n'), actions: [TASKS.supportTickets.action] };
@@ -300,7 +304,7 @@ const readers = {
     }
     const actions = toActions([...pages.values()]);
     const notes = actions.length ? ['Thứ hạng của bạn nằm ở trang kết quả của từng giải, bạn bấm nút "Kết quả" của giải đó bên dưới để xem nhé.'] : [];
-    const lines = listReply(recent, { what: 'kết quả chạy', first: 'kết quả gần nhất', notes }, row => '- ' + [
+    const lines = listReply(recent, { what: 'kết quả chạy', first: 'kết quả gần nhất', notes, capped: full(rows) }, row => '- ' + [
       raceTime(row) ? vietnamDate(row.eventId.dateInfo.raceDate) : null, nameOf(row), 'chip time ' + row.finishResult.chipTime,
       // saveResult chỉ nhận gunTime đúng dạng giờ:phút:giây, và gunTime có thể bỏ trống.
       new RegExp(RESULT_TIME).test(row.finishResult.gunTime ?? '') ? 'gun time ' + row.finishResult.gunTime : null,
