@@ -28,20 +28,46 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     const hold = articles.find(article => article.key === 'hold'), seedHoldAnswer = hold.answer;
     save(hold, { answer: 'Giữ chỗ 12 phút.' }, { fullName: 'Quản trị A' }, '2026-11-01T07:05:00.000Z');
     save(hold, { answer: 'Giữ chỗ 15 phút.' }, { fullName: 'Quản trị B' }, '2026-11-01T08:30:00.000Z');
+    // Hàng chờ câu chưa trả lời, theo vỏ JSON của GET /support/admin/unanswered (Task 6.3). Câu đầu dài hơn 120 ký tự
+    // để kiểm tiêu đề điền sẵn bị cắt; câu thứ hai có thẻ HTML để kiểm nó chỉ hiện thành chữ.
+    const LONG_SAMPLE = 'Cho mình hỏi sau khi đã đăng ký giải và thanh toán xong thì có đổi được size áo không, vì lúc đăng ký mình chọn nhầm size M mà mặc size L';
+    const UNSAFE_SAMPLE = 'xin voucher <img src=x onerror="window.queueInjected=true"> giảm giá';
+    const queue = [
+      { _id: 'question-1', kind: 'NO_ANSWER', sample: LONG_SAMPLE, count: 5, status: 'OPEN', articleKeys: [], firstAskedAt: '2026-11-10T02:00:00.000Z', lastAskedAt: '2026-11-14T09:20:00.000Z' },
+      { _id: 'question-2', kind: 'NO_ANSWER', sample: UNSAFE_SAMPLE, count: 2, status: 'OPEN', articleKeys: [], firstAskedAt: '2026-11-12T02:00:00.000Z', lastAskedAt: '2026-11-13T01:00:00.000Z' },
+    ];
+    const queueWrites = [];
+    let failIgnore = true;
 
     await page.addInitScript(() => {
       localStorage.setItem('rf_token', 'knowledge-fixture-only');
       localStorage.setItem('rf_user', JSON.stringify({ id: 'admin', fullName: 'Quản trị kiểm thử', systemRole: 'SUPER_ADMIN' }));
     });
-    const KNOWLEDGE = '/support/admin/knowledge';
+    const KNOWLEDGE = '/support/admin/knowledge', QUEUE = '/support/admin/unanswered';
     await page.route('**/api/**', async route => {
-      const request = route.request(), path = new URL(request.url()).pathname.replace(/^\/api/, ''), method = request.method();
+      const request = route.request(), url = new URL(request.url()), path = url.pathname.replace(/^\/api/, ''), method = request.method();
       const reply = (data, status = 200) => route.fulfill({ status, json: data });
       const fail = (status, message, code) => reply({ message, code }, status);
       if (path === '/auth/me') return reply({ user: { id: 'admin', fullName: 'Quản trị kiểm thử', systemRole: role } });
       if (path === '/notifications') return reply({ notifications: [] });
       if (path === '/admin/platform/applications') return reply({ applications: [] });
       if (path === '/support/tickets') return reply({ tickets: [], total: 0, page: 1, totalPages: 0 });
+      if (path === QUEUE || path.startsWith(QUEUE + '/')) {
+        assert.equal(request.headers().authorization, 'Bearer knowledge-fixture-only');
+        if (path === QUEUE && method === 'GET') {
+          assert.equal(url.searchParams.get('status') ?? 'OPEN', 'OPEN');
+          return reply({ questions: queue.filter(question => question.status === 'OPEN') });
+        }
+        queueWrites.push({ method, path });
+        const [, id, action] = path.slice(QUEUE.length).split('/'), question = queue.find(item => item._id === id);
+        if (!question) return fail(404, 'Không tìm thấy câu hỏi trong hàng chờ.', 'UNANSWERED_NOT_FOUND');
+        if (method === 'POST' && action === 'ignore') {
+          if (failIgnore) { failIgnore = false; return fail(503, 'Chưa bỏ qua được câu này. Hãy thử lại.'); }
+          question.status = 'IGNORED'; return reply({ question });
+        }
+        if (method === 'POST' && action === 'resolve') { question.status = 'RESOLVED'; return reply({ question }); }
+        return fail(404, 'Route not found');
+      }
       if (path === KNOWLEDGE || path.startsWith(KNOWLEDGE + '/')) {
         assert.equal(request.headers().authorization, 'Bearer knowledge-fixture-only');
         const body = method === 'GET' ? undefined : request.postDataJSON();
@@ -56,6 +82,9 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
           if (articles.some(article => article.key === body.key)) return fail(409, 'Mã bài đã tồn tại.', 'KNOWLEDGE_KEY_TAKEN');
           const at = now(), article = { _id: 'article-' + (articles.length + 1), key: body.key, ...Object.fromEntries(CONTENT.map(field => [field, body[field]])), status: 'DRAFT', version: 0, createdAt: at, updatedAt: at, updatedBy: admin, history: [] };
           articles.push(article);
+          // Như createArticle: bài tạo từ một câu trong hàng chờ thì câu đó thành RESOLVED.
+          const source = body.fromQuestionId && queue.find(item => item._id === body.fromQuestionId);
+          if (source) source.status = 'RESOLVED';
           return reply({ article: present(article) }, 201);
         }
         const [, id, action] = path.slice(KNOWLEDGE.length).split('/'), article = articles.find(item => item._id === id);
@@ -201,6 +230,58 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     assert.equal(writes.length, writesBeforeRestore + 1);
     assert.deepEqual(writes.at(-1), { method: 'POST', path: KNOWLEDGE + '/' + hold._id + '/restore', body: { version: 2, changedAt: seededAt } });
 
+    // 8. Hàng chờ hiện câu mẫu và số lần hỏi, theo đúng thứ tự server trả. Câu có thẻ HTML vẫn chỉ là chữ.
+    const queueSection = tab.locator('.knowledge-queue'), queueRows = queueSection.locator('.knowledge-queue-row');
+    await expect(queueRows).toHaveCount(2);
+    await expect(queueRows.nth(0)).toContainText(LONG_SAMPLE);
+    await expect(queueRows.nth(0)).toContainText('Hỏi 5 lần');
+    await expect(queueRows.nth(0)).toContainText('16:20 14/11/2026');
+    await expect(queueRows.nth(1)).toContainText(UNSAFE_SAMPLE);
+    await expect(queueSection.locator('img')).toHaveCount(0);
+    assert.equal(await page.evaluate(() => Boolean(window.queueInjected)), false);
+    // Câu mẫu dài không làm trang tràn ngang ở màn hình hẹp, lúc hàng chờ còn đủ câu.
+    fs.mkdirSync('artifacts', { recursive: true });
+    await queueSection.screenshot({ path: 'artifacts/support-knowledge-queue-desktop.png' });
+    for (const width of [768, 390, 360]) {
+      await page.setViewportSize({ width, height: 950 });
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'Unanswered queue overflow at ' + width);
+    }
+    await queueSection.screenshot({ path: 'artifacts/support-knowledge-queue-mobile.png' });
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    // Bài đang sửa dở thì "Tạo bài từ câu này" không thay nội dung trong form.
+    await answer.fill('Bản đang sửa dở.');
+    await queueRows.nth(0).getByRole('button', { name: 'Tạo bài từ câu này', exact: true }).click();
+    await expect(tab.getByRole('status').filter({ hasText: 'chưa lưu' })).toBeVisible();
+    await expect(answer).toHaveValue('Bản đang sửa dở.');
+    await editor.getByRole('button', { name: 'Hủy thay đổi', exact: true }).click();
+
+    // 9. "Tạo bài từ câu này" mở form bài mới với tiêu đề điền sẵn bằng câu mẫu (cắt còn 120 ký tự, giới hạn của
+    // tiêu đề); admin tự chọn từ khóa. Lưu thì gửi kèm fromQuestionId, và câu rời hàng chờ.
+    await queueRows.nth(0).getByRole('button', { name: 'Tạo bài từ câu này', exact: true }).click();
+    await expect(editor.locator('.knowledge-editor-heading h3')).toHaveText('Soạn bài mới');
+    await expect(editor.getByLabel('Tiêu đề')).toHaveValue(LONG_SAMPLE.slice(0, 120));
+    await expect(editor.getByLabel('Tiêu đề')).toBeFocused();
+    await expect(editor.getByLabel('Từ khóa')).toHaveValue('');
+    await expect(editor.locator('.knowledge-from-question')).toContainText(LONG_SAMPLE);
+    await editor.getByLabel('Mã bài').fill('doi-size-ao');
+    await editor.getByLabel('Từ khóa').fill('đổi size áo\nchọn nhầm size');
+    await answer.fill('Bạn đổi size áo trong mục hồ sơ người chạy trước ngày đóng đăng ký.');
+    await saveButton.click();
+    await expect(status).toHaveText('Đã tạo bài nháp. Bot chỉ dùng bài sau khi bạn bấm Xuất bản.');
+    assert.deepEqual(writes.at(-1), { method: 'POST', path: KNOWLEDGE, body: { key: 'doi-size-ao', title: LONG_SAMPLE.slice(0, 120), terms: ['đổi size áo', 'chọn nhầm size'], answer: 'Bạn đổi size áo trong mục hồ sơ người chạy trước ngày đóng đăng ký.', sources: [], suggestions: [], priority: 0, fromQuestionId: 'question-1' } });
+    await expect(queueRows).toHaveCount(1);
+    await expect(editor.locator('.knowledge-from-question')).toHaveCount(0);
+
+    // 10. "Bỏ qua" gửi POST …/ignore. Lỗi thì báo và giữ câu; thử lại thành công thì câu rời hàng chờ.
+    await queueRows.nth(0).getByRole('button', { name: 'Bỏ qua', exact: true }).click();
+    await expect(queueSection.getByRole('alert')).toContainText('Chưa bỏ qua được câu này. Hãy thử lại.');
+    await expect(queueRows).toHaveCount(1);
+    await queueRows.nth(0).getByRole('button', { name: 'Bỏ qua', exact: true }).click();
+    await expect(queueRows).toHaveCount(0);
+    await expect(queueSection).toContainText('Chưa có câu nào');
+    await expect(queueSection.getByRole('alert')).toHaveCount(0);
+    assert.deepEqual(queueWrites, [{ method: 'POST', path: QUEUE + '/question-2/ignore' }, { method: 'POST', path: QUEUE + '/question-2/ignore' }]);
+
     fs.mkdirSync('artifacts', { recursive: true });
     await page.screenshot({ path: 'artifacts/support-knowledge-desktop.png', fullPage: true });
     for (const width of [1440, 768, 390, 360]) {
@@ -212,9 +293,9 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await page.goto(base + '/admin', { waitUntil: 'networkidle' });
     await expect(page.locator('.organizer-page').getByRole('alert')).toContainText('chỉ dành cho Super Admin');
     await expect(page.getByRole('button', { name: 'Tri thức trợ lý', exact: true })).toHaveCount(0);
-    // 8. No dialog and no uncaught error anywhere in the run.
+    // 11. No dialog and no uncaught error anywhere in the run.
     assert.deepEqual(dialogs, []);
     assert.deepEqual(errors, []);
-    console.log('PASS: knowledge tab list, create as draft, preview before saving (a taken key refused), publish, 409 with reload, busy guard, empty priority refused, markup as plain text, unsaved-edit guard, history and restore by changedAt, mobile layout and role gate (API fixtures only).');
+    console.log('PASS: knowledge tab list, create as draft, preview before saving (a taken key refused), publish, 409 with reload, busy guard, empty priority refused, markup as plain text, unsaved-edit guard, history and restore by changedAt, unanswered queue (sample and count, markup as text, create article from a question with fromQuestionId, ignore with retry), mobile layout and role gate (API fixtures only).');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

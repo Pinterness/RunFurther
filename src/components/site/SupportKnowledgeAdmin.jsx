@@ -8,6 +8,9 @@ import './support-knowledge.css';
 // articles; P06 and P08 add their sections to this component. Every write names the version the page
 // holds, so the server answers 409 instead of overwriting another admin's save.
 const endpoint = '/support/admin/knowledge';
+// Hàng chờ câu bot chưa trả lời được (P06). Câu mẫu dài tới 300 ký tự, còn tiêu đề bài tối đa 120 ký tự.
+const queueEndpoint = '/support/admin/unanswered';
+const TITLE_LIMIT = 120;
 const statuses = { DRAFT: 'Nháp', PUBLISHED: 'Đã xuất bản' };
 const PREVIEW_KEY = 'ban-nhap'; // "Xem thử" needs a key before the admin has typed one
 const emptyForm = { key: '', title: '', terms: '', answer: '', sources: [], suggestions: '', priority: '0' };
@@ -36,10 +39,25 @@ export default function SupportKnowledgeAdmin() {
   const [busy, setBusy] = useState(false), [writeError, setWriteError] = useState(null), [notice, setNotice] = useState('');
   const [question, setQuestion] = useState(''), [preview, setPreview] = useState(null), [previewBusy, setPreviewBusy] = useState(false), [previewError, setPreviewError] = useState('');
   const [historyOpen, setHistoryOpen] = useState(false), [restoring, setRestoring] = useState(null);
-  const writeRequest = useRef(null), previewRequest = useRef(null), alreadyShown = useRef(null);
+  // Hàng chờ: danh sách câu OPEN, câu đang được "Bỏ qua", lỗi của nút, và câu mà bài đang soạn được tạo từ đó.
+  const [queue, setQueue] = useState([]), [queueLoading, setQueueLoading] = useState(true), [queueError, setQueueError] = useState(''), [queueVersion, refreshQueue] = useState(0);
+  const [ignoring, setIgnoring] = useState(null), [queueActionError, setQueueActionError] = useState(''), [fromQuestion, setFromQuestion] = useState(null);
+  const [titleFocus, focusTitle] = useState(0);
+  const writeRequest = useRef(null), previewRequest = useRef(null), ignoreRequest = useRef(null), alreadyShown = useRef(null), titleInput = useRef(null);
   const isNew = selectedId === 'new', dirty = JSON.stringify(form) !== JSON.stringify(saved);
 
-  useEffect(() => () => { writeRequest.current?.abort(); previewRequest.current?.abort(); }, []);
+  useEffect(() => () => { writeRequest.current?.abort(); previewRequest.current?.abort(); ignoreRequest.current?.abort(); }, []);
+  useEffect(() => {
+    const request = new AbortController();
+    setQueueLoading(true); setQueueError('');
+    api(queueEndpoint, { signal: request.signal })
+      .then(data => { if (!request.signal.aborted) setQueue(data.questions || []); })
+      .catch(error => { if (!request.signal.aborted) setQueueError(error.message); })
+      .finally(() => { if (!request.signal.aborted) setQueueLoading(false); });
+    return () => request.abort();
+  }, [queueVersion]);
+  // Sau "Tạo bài từ câu này", đưa con trỏ vào ô tiêu đề để admin thấy ngay form và sửa câu mẫu thành tiêu đề.
+  useEffect(() => { if (titleFocus) titleInput.current?.focus(); }, [titleFocus]);
   useEffect(() => {
     const request = new AbortController();
     setListLoading(true); setListError('');
@@ -78,14 +96,14 @@ export default function SupportKnowledgeAdmin() {
     if (id === selectedId || busy) return;
     if (dirty) { setNotice('Bài đang sửa có thay đổi chưa lưu. Hãy lưu hoặc bấm “Hủy thay đổi” trước khi mở bài khác.'); return; }
     previewRequest.current?.abort(); previewRequest.current = null;
-    setSelectedId(id); setWriteError(null); setNotice(''); setDetailError('');
+    setSelectedId(id); setWriteError(null); setNotice(''); setDetailError(''); setFromQuestion(null);
     setPreview(null); setPreviewError(''); setPreviewBusy(false);
     if (id === 'new') { setArticle(null); setForm(emptyForm); setSaved(emptyForm); }
   }
   const setField = (field, value) => setForm(previous => ({ ...previous, [field]: value }));
   const setSource = (index, field, value) => setForm(previous => ({ ...previous, sources: previous.sources.map((source, at) => at === index ? { ...source, [field]: value } : source) }));
 
-  async function write(path, method, body, done) {
+  async function write(path, method, body, done, after) {
     if (writeRequest.current) return;
     const request = new AbortController(); writeRequest.current = request;
     setBusy(true); setWriteError(null); setNotice('');
@@ -93,7 +111,7 @@ export default function SupportKnowledgeAdmin() {
       const result = await api(endpoint + path, { method, signal: request.signal, body: JSON.stringify(body) });
       if (request.signal.aborted) return;
       if (!result.article) throw new Error('Chưa nhận được bài sau khi lưu. Hãy tải lại bài để kiểm tra.');
-      show(result.article); setNotice(done); refreshList(value => value + 1);
+      show(result.article); setNotice(done); refreshList(value => value + 1); after?.();
     } catch (error) { if (!request.signal.aborted) setWriteError({ message: error.message, code: error.code }); }
     finally {
       if (!request.signal.aborted) setBusy(false);
@@ -103,8 +121,38 @@ export default function SupportKnowledgeAdmin() {
   const articlePath = action => '/' + encodeURIComponent(article._id) + (action ? '/' + action : '');
   function saveArticle(event) {
     event.preventDefault();
-    if (isNew) write('', 'POST', { key: form.key.trim(), ...contentOf(form) }, 'Đã tạo bài nháp. Bot chỉ dùng bài sau khi bạn bấm Xuất bản.');
-    else write(articlePath(), 'PUT', { ...contentOf(form), version: article.version }, 'Đã lưu.');
+    if (isNew) {
+      // Bài soạn từ hàng chờ gửi kèm mã câu hỏi; server đánh dấu câu đó đã xử lý, nên tải lại hàng chờ sau khi lưu.
+      const source = fromQuestion ? { fromQuestionId: fromQuestion._id } : {};
+      write('', 'POST', { key: form.key.trim(), ...contentOf(form), ...source }, 'Đã tạo bài nháp. Bot chỉ dùng bài sau khi bạn bấm Xuất bản.',
+        fromQuestion ? () => { setFromQuestion(null); refreshQueue(value => value + 1); } : undefined);
+    } else write(articlePath(), 'PUT', { ...contentOf(form), version: article.version }, 'Đã lưu.');
+  }
+  // "Tạo bài từ câu này": mở form bài mới, tiêu đề điền sẵn bằng câu mẫu; admin tự chọn từ khóa. Bài đang sửa dở
+  // thì giữ nguyên form, giống khi mở bài khác.
+  function createFromQuestion(question) {
+    if (busy) return;
+    if (dirty) { setNotice('Bài đang sửa có thay đổi chưa lưu. Hãy lưu hoặc bấm “Hủy thay đổi” trước khi mở bài khác.'); return; }
+    open('new');
+    setForm({ ...emptyForm, title: question.sample.slice(0, TITLE_LIMIT) });
+    setFromQuestion({ _id: question._id, sample: question.sample });
+    focusTitle(value => value + 1);
+  }
+  // "Bỏ qua": câu rời hàng chờ và không hiện lại, kể cả khi có người hỏi lại. Lỗi thì giữ câu và báo để thử lại.
+  async function ignoreQuestion(question) {
+    if (ignoreRequest.current) return;
+    const request = new AbortController(); ignoreRequest.current = request;
+    setIgnoring(question._id); setQueueActionError('');
+    try {
+      await api(queueEndpoint + '/' + encodeURIComponent(question._id) + '/ignore', { method: 'POST', signal: request.signal });
+      if (request.signal.aborted) return;
+      setQueue(rows => rows.filter(row => row._id !== question._id));
+      // Bài đang soạn từ chính câu này thì thôi gắn với nó, để lưu bài không đánh dấu một câu đã bỏ qua.
+      setFromQuestion(current => (current?._id === question._id ? null : current));
+    } catch (error) { if (!request.signal.aborted) setQueueActionError(error.message); }
+    finally {
+      if (ignoreRequest.current === request) { ignoreRequest.current = null; setIgnoring(null); }
+    }
   }
   function togglePublished() {
     const publish = article.status !== 'PUBLISHED';
@@ -151,15 +199,16 @@ export default function SupportKnowledgeAdmin() {
             <header className="knowledge-editor-heading"><div><span className={'knowledge-status knowledge-badge knowledge-badge-' + (isNew ? 'new' : article.status.toLowerCase())}>{isNew ? 'Bài mới' : statuses[article.status] || article.status}</span><h3>{isNew ? 'Soạn bài mới' : article.title}</h3>{!isNew && <p>{article.key} · phiên bản {article.version} · {author(article.updatedBy)} lưu lúc {dateLabel(article.updatedAt)}</p>}</div>
               {!isNew && <div className="knowledge-editor-actions"><button type="button" className="button-dark" disabled={busy || dirty} onClick={togglePublished}>{article.status === 'PUBLISHED' ? 'Gỡ xuất bản' : 'Xuất bản'}</button><button type="button" className="quiet-button" onClick={() => setHistoryOpen(true)}>Lịch sử</button></div>}</header>
             {!isNew && dirty && <p className="knowledge-hint">Lưu thay đổi trước khi xuất bản hoặc gỡ xuất bản.</p>}
+            {isNew && fromQuestion && <p className="knowledge-hint knowledge-from-question">Bài này soạn từ câu người dùng đã hỏi: “{fromQuestion.sample}”. Lưu bài thì câu được đánh dấu đã xử lý và rời hàng chờ.</p>}
             <form className="knowledge-form" onSubmit={saveArticle}>
               <div className="knowledge-field"><label htmlFor="knowledge-key">Mã bài</label><input id="knowledge-key" value={form.key} readOnly={!isNew} required maxLength={60} autoComplete="off" spellCheck={false} disabled={busy} aria-describedby="knowledge-key-hint" onChange={event => setField('key', event.target.value)} /><small id="knowledge-key-hint">{isNew ? 'Chữ thường không dấu, số và dấu gạch ngang, 2–60 ký tự, ví dụ doi-co-ao. Không đổi được sau khi tạo.' : 'Mã bài không đổi được sau khi tạo.'}</small></div>
-              <div className="knowledge-field"><label htmlFor="knowledge-title">Tiêu đề</label><input id="knowledge-title" value={form.title} required maxLength={120} disabled={busy} onChange={event => setField('title', event.target.value)} /></div>
+              <div className="knowledge-field"><label htmlFor="knowledge-title">Tiêu đề</label><input id="knowledge-title" ref={titleInput} value={form.title} required maxLength={TITLE_LIMIT} disabled={busy} onChange={event => setField('title', event.target.value)} /></div>
               <div className="knowledge-field"><label htmlFor="knowledge-terms">Từ khóa</label><textarea id="knowledge-terms" rows={4} value={form.terms} required disabled={busy} aria-describedby="knowledge-terms-hint" onChange={event => setField('terms', event.target.value)} /><small id="knowledge-terms-hint">Mỗi dòng một cụm người chạy hay gõ, mỗi cụm tối đa 60 ký tự. Đang có {termCount} / 30 cụm.</small></div>
               <div className="knowledge-field"><label htmlFor="knowledge-answer">Câu trả lời</label><textarea id="knowledge-answer" rows={6} value={form.answer} required maxLength={2000} disabled={busy} aria-describedby="knowledge-answer-hint" onChange={event => setField('answer', event.target.value)} /><small id="knowledge-answer-hint">{form.answer.length.toLocaleString('vi-VN')} / 2.000 ký tự. Người chạy thấy đúng chữ bạn gõ.</small></div>
               <fieldset className="knowledge-field knowledge-sources" disabled={busy}><legend>Nguồn</legend>{form.sources.map((source, index) => <div className="knowledge-source" key={index}><input aria-label={'Tên nguồn ' + (index + 1)} placeholder="Tên nguồn" value={source.title} maxLength={80} onChange={event => setSource(index, 'title', event.target.value)} /><input aria-label={'Đường dẫn nguồn ' + (index + 1)} placeholder="/events" value={source.url} spellCheck={false} onChange={event => setSource(index, 'url', event.target.value)} /><button type="button" className="text-action" onClick={() => setField('sources', form.sources.filter((_, at) => at !== index))}>Bỏ</button></div>)}<button type="button" className="text-action" disabled={form.sources.length >= 3} onClick={() => setField('sources', [...form.sources, { title: '', url: '' }])}>Thêm nguồn</button><small>Tối đa 3 nguồn, chỉ đường dẫn trong RunFurther như /events.</small></fieldset>
               <div className="knowledge-field"><label htmlFor="knowledge-suggestions">Câu gợi ý</label><textarea id="knowledge-suggestions" rows={3} value={form.suggestions} disabled={busy} aria-describedby="knowledge-suggestions-hint" onChange={event => setField('suggestions', event.target.value)} /><small id="knowledge-suggestions-hint">Mỗi dòng một câu, tối đa 3 câu, mỗi câu tối đa 120 ký tự.</small></div>
               <div className="knowledge-field knowledge-priority"><label htmlFor="knowledge-priority">Ưu tiên</label><input id="knowledge-priority" type="number" min={0} max={9} step={1} value={form.priority} required disabled={busy} aria-describedby="knowledge-priority-hint" onChange={event => setField('priority', event.target.value)} /><small id="knowledge-priority-hint">Từ 0 đến 9. Hai bài khớp câu hỏi như nhau thì bài ưu tiên cao hơn đứng trước.</small></div>
-              <div className="knowledge-form-actions"><button type="button" className="text-action" disabled={busy || !dirty} onClick={() => { setForm(saved); setNotice(''); setWriteError(null); }}>Hủy thay đổi</button><button type="submit" className="button-dark" disabled={busy || !dirty}>Lưu</button></div>
+              <div className="knowledge-form-actions"><button type="button" className="text-action" disabled={busy || !dirty} onClick={() => { setForm(saved); setNotice(''); setWriteError(null); if (isNew) setFromQuestion(null); }}>Hủy thay đổi</button><button type="submit" className="button-dark" disabled={busy || !dirty}>Lưu</button></div>
             </form>
             {writeError && <div className="knowledge-error" role="alert"><p>{writeError.message}</p>{writeError.code === 'KNOWLEDGE_VERSION_CONFLICT' && <>{dirty && <p>Tải lại sẽ thay nội dung bạn đang sửa bằng bản mới nhất. Hãy chép lại phần cần giữ trước.</p>}<button type="button" className="text-action" onClick={reload}>Tải lại bài</button></>}</div>}
             {detailError && <div className="knowledge-error" role="alert"><p>{detailError}</p><button type="button" className="text-action" onClick={reload}>Tải lại bài</button></div>}
@@ -173,6 +222,13 @@ export default function SupportKnowledgeAdmin() {
           </>}
         </div>
       </div>
+    </section>
+    <section className="knowledge-queue" aria-labelledby="knowledge-queue-heading" aria-busy={queueLoading}>
+      <header className="knowledge-heading"><div><p className="section-index">RUNFURTHER / VÒNG HỌC</p><h2 id="knowledge-queue-heading">Câu bot chưa trả lời được</h2><p>Những câu người dùng đã hỏi mà bot không tìm được bài, câu hỏi nhiều lần đứng trước. Câu được lưu không kèm tài khoản, các dãy từ 3 chữ số đã bị che, và tự xóa sau 30 ngày không có ai hỏi lại.</p></div>
+        <div className="knowledge-heading-actions"><button type="button" className="quiet-button" disabled={queueLoading} onClick={() => refreshQueue(value => value + 1)}>Làm mới</button></div></header>
+      {queueActionError && <div className="knowledge-error knowledge-queue-alert" role="alert"><p>{queueActionError}</p></div>}
+      {queueLoading && !queue.length ? <p className="knowledge-empty" role="status">Đang tải hàng chờ...</p> : queueError ? <div className="knowledge-error" role="alert"><p>{queueError}</p><button type="button" className="text-action" onClick={() => refreshQueue(value => value + 1)}>Tải lại hàng chờ</button></div> : !queue.length ? <p className="knowledge-empty knowledge-queue-empty">Chưa có câu nào bot không trả lời được.</p> : <ul className="knowledge-queue-list">{queue.map(question => <li key={question._id} className="knowledge-queue-row"><div><p className="knowledge-queue-sample">{question.sample}</p><p className="knowledge-queue-meta">Hỏi {question.count} lần · lần cuối <time dateTime={question.lastAskedAt}>{dateLabel(question.lastAskedAt)}</time></p></div>
+        <div className="knowledge-queue-actions"><button type="button" className="button-dark" disabled={busy || Boolean(ignoring)} onClick={() => createFromQuestion(question)}>Tạo bài từ câu này</button><button type="button" className="text-action" disabled={Boolean(ignoring)} onClick={() => ignoreQuestion(question)}>{ignoring === question._id ? 'Đang bỏ qua...' : 'Bỏ qua'}</button></div></li>)}</ul>}
     </section>
     {historyOpen && article && <Modal title={'Lịch sử: ' + article.title} busy={busy} onClose={() => { setHistoryOpen(false); setRestoring(null); }}>
       {restoring ? <div className="knowledge-restore">

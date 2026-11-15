@@ -56,6 +56,8 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await expect(panel).toBeVisible();
     await expect(widget.locator('#support-heading')).toBeFocused();
     await expect(widget.getByRole('button', { name: 'Gửi câu hỏi', exact: true })).toBeDisabled();
+    // Dòng báo hàng chờ (Global Constraints của plan, Task 6.4): người dùng biết câu chưa trả lời được lưu thế nào.
+    await expect(widget.locator('.support-composer').getByText('Câu trợ lý chưa trả lời được sẽ được lưu không kèm tài khoản, đã che các dãy số, và tự xóa sau 30 ngày không có ai hỏi lại.', { exact: true })).toBeVisible();
     await question.fill('Tôi cần tìm BIB của mình');
     await question.press('Enter');
     await expect(widget.getByRole('alert')).toContainText('Trợ lý đang bận');
@@ -227,6 +229,6 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await expect(page).toHaveURL(/\/account\/wallet$/);
     await expect(panel).toHaveCount(0);
     assert.deepEqual(errors, []);
-    console.log('PASS: guest chat/retry, bounded history, text-only answers/internal links, action buttons (internal links, support list and new-request form, duplicate sources hidden), auth reset/stale response guard, human ticket create/detail/reply/closed, mobile fit, isolated wheel and Escape focus (API fixtures only).');
+    console.log('PASS: unanswered-queue notice, guest chat/retry, bounded history, text-only answers/internal links, action buttons (internal links, support list and new-request form, duplicate sources hidden), auth reset/stale response guard, human ticket create/detail/reply/closed, mobile fit, isolated wheel and Escape focus (API fixtures only).');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
