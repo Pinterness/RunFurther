@@ -38,17 +38,25 @@ const SUPPORT_ACTION = { label: 'Gửi yêu cầu hỗ trợ', view: 'tickets' }
 // hoặc "kiểm tra giúp". Mẫu chạy trên câu đã bỏ dấu, nơi "vé"/"về", "ví"/"vì"/"vị" và "đơn"/"cô đơn"/"đơn vị"
 // trông giống nhau, nên chữ "vi" hay "don" đứng một mình không bao giờ đủ để nhận là tác vụ.
 const OWN = '(?:toi|minh|em|e)';
+// "Kiểm tra vé" và "kiểm tra về …" bỏ dấu đều thành "kiem tra ve"; "kiểm tra đơn" và "kiểm tra đơn vị" đều bắt đầu
+// bằng "kiem tra don". Vì vậy sau "kiem tra ve"/"kiem tra don" phải là hết câu, một chữ thường đi sau lời nhờ
+// xem vé hay đơn ("của", "giúp", "nhé", "BIB"…), hoặc một mã có chữ số như "RUN0B1C…", "HM21K" hay "1024" (có thể
+// kèm "mã", "số" phía trước). Còn "kiểm tra về việc hoàn tiền" thì có một chủ đề đi sau.
+const ASK_TAIL = `(?:$| (?:cua|giup|dum|ho|nha|nhe|voi|di|bib|${OWN})\\b| (?:ma |so )?[a-z]*\\d)`;
 const RESULT_WORDS = '(?:ket qua|kq|thanh tich|chip time|gun time|thoi gian (?:chay|ve dich|hoan thanh))';
 const POINT_WORDS = '(?:runpoints?|run points?)';
 // Mẫu được thử theo thứ tự, mẫu khớp trước thắng:
 // - kết quả đứng trước vé, để "kiểm tra giúp kết quả của BIB …" là câu hỏi kết quả chứ không phải câu hỏi vé;
 // - RunPoints đứng trước ví, để "ví của tôi có bao nhiêu điểm" là câu hỏi điểm.
 // "Điểm" đứng một mình chỉ tính khi đứng đầu câu hoặc sau "số", "xem", "check", "kiểm tra", "tổng", vì nó còn nằm
-// trong "địa điểm", "quan điểm"; "kết quả" phải đi liền "của tôi" để "kết quả xét duyệt của tôi" không bị kéo vào.
+// trong "địa điểm", "quan điểm". "Kết quả" phải đi liền "của tôi" để "kết quả xét duyệt của tôi" không bị kéo vào;
+// sau "kiểm tra giúp" thì "kết quả" phải nói về giải chạy (hết câu, "chạy", "giải", "BIB", "của tôi"…), để
+// "kiểm tra giúp kết quả xét duyệt" hay "kiểm tra giúp kết quả nạp tiền" cũng không bị kéo vào.
 const PATTERNS = [
-  ['results', new RegExp(`\\b${RESULT_WORDS}(?: chay| thi dau| giai)? cua ${OWN}\\b|\\bkiem tra giup\\b.*\\b(?:ket qua|kq|thanh tich|chip time)\\b`)],
-  ['tickets', new RegExp(`\\bve cua ${OWN}\\b|\\bkiem tra ve\\b|\\btrang thai ve cua\\b|\\btoi da mua\\b|\\bbib cua ${OWN}\\b|\\bkiem tra giup\\b.*\\bbib\\b`)],
-  ['holds', new RegExp(`\\bdon (?:hang |giu cho |dat cho )?cua ${OWN}\\b|\\bkiem tra don\\b|\\btrang thai don\\b|\\bkiem tra giup\\b.*\\bdon (?:hang|giu cho|dat cho)\\b|\\b${OWN} co don (?:nao|dang)\\b`)],
+  ['results', new RegExp(`\\b${RESULT_WORDS}(?: chay| thi dau| giai)? cua ${OWN}\\b`
+    + `|\\bkiem tra giup\\b.*\\b(?:thanh tich|chip time|gun time|(?:ket qua|kq)(?:$| (?:chay|thi dau|giai|bib|cua (?:${OWN}|bib)|nha|nhe|voi|di|${OWN})\\b))`)],
+  ['tickets', new RegExp(`\\bve cua ${OWN}\\b|\\bkiem tra ve(?: da mua\\b|${ASK_TAIL})|\\btrang thai ve cua\\b|\\btoi da mua\\b|\\bbib cua ${OWN}\\b|\\bkiem tra giup\\b.*\\bbib\\b`)],
+  ['holds', new RegExp(`\\bdon (?:hang |giu cho |dat cho )?cua ${OWN}\\b|\\bkiem tra don(?: (?:hang|giu cho|dat cho)\\b|${ASK_TAIL})|\\btrang thai don\\b|\\bkiem tra giup\\b.*\\bdon (?:hang|giu cho|dat cho)\\b|\\b${OWN} co don (?:nao|dang)\\b`)],
   ['runpoints', new RegExp(`\\b(?:${POINT_WORDS}|xu) cua ${OWN}\\b|\\bdiem (?:thuong|tich luy|runpoints?) cua ${OWN}\\b`
     + `|(?:^|\\b(?:so|xem|check|kiem tra|tong) )diem cua ${OWN}\\b|\\b${OWN} (?:co|con|dang co|con lai) (?:bao nhieu|may) (?:diem|xu|${POINT_WORDS})\\b`
     + `|\\b(?:check|kiem tra)(?: giup)?(?: ${OWN})? (?:diem thuong|${POINT_WORDS})\\b`)],
@@ -56,12 +64,15 @@ const PATTERNS = [
   ['supportTickets', new RegExp(`\\b(?:yeu cau|ticket|phieu) ho tro cua ${OWN}\\b`)],
 ];
 
+// Câu chưa rõ ý nhận cùng các chữ sở hữu với mẫu tác vụ: "của tôi", "của mình", "của em", "của e".
+const OWNERSHIP = new RegExp(`\\bcua ${OWN}\\b`);
+
 // `query` là câu đã chuẩn hóa (chữ thường, bỏ dấu). Trả về { key } khi nhận ra tác vụ, { ambiguous: true }
-// khi câu có "của tôi" mà không nói rõ tác vụ nào, hoặc null khi đây không phải câu tác vụ.
+// khi câu có chữ sở hữu ("của tôi"…) mà không nói rõ tác vụ nào, hoặc null khi đây không phải câu tác vụ.
 function routeTask(query) {
   const text = typeof query === 'string' ? query : '';
   for (const [key, pattern] of PATTERNS) if (pattern.test(text)) return { key };
-  return /\bcua (?:toi|minh)\b/.test(text) ? { ambiguous: true } : null;
+  return OWNERSHIP.test(text) ? { ambiguous: true } : null;
 }
 
 // Bộ câu đo chấm phần định tuyến theo dạng 'task:<key>' (spec mục 5.2).

@@ -4,11 +4,12 @@ const assert = require('node:assert/strict');
 const { createHash } = require('node:crypto');
 const { rankArticles, seedArticles } = require('../../src/backend/services/supportKnowledge');
 const { evaluateSupport, meetsBaseline } = require('../../src/backend/services/supportEval');
-const { taskForEval } = require('../../src/backend/services/supportTasks');
+const { TASK_KEYS, taskForEval } = require('../../src/backend/services/supportTasks');
 const items = require('../helpers/supportEvalSet.json');
 const baseline = require('../helpers/supportEvalBaseline.json');
 
-const TASKS = ['task:tickets', 'task:holds', 'task:wallet', 'task:supportTickets'];
+// Nhãn tác vụ hợp lệ lấy thẳng từ bảng tác vụ, nên khi thêm tác vụ (như results, runpoints ở Task 7.7) thì bộ câu đo nhận luôn.
+const TASKS = TASK_KEYS.map(key => 'task:' + key);
 const STYLES = ['co-dau', 'khong-dau', 'teencode', 'than-phien', 'ngan', 'dai-ngu-canh', 'tron-tieng-anh', 'phuong-ngu', 'xa', 'gan'];
 // SHA-256 of the kiem half (spec 5.2): once approved it is frozen, so nobody tunes it after seeing scores.
 const KIEM_SHA256 = '82626d07118419d81b70c2035be123d7882252a99d131f5d7c96e3dd6a4f6a0d';

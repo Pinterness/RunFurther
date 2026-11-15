@@ -37,6 +37,8 @@ test('routeTask dẫn câu hỏi về dữ liệu riêng tới đúng tác vụ 
   assert.deepEqual(r('Kiểm tra vé của tôi'), { key: 'tickets' }); assert.deepEqual(r('đơn của mình còn bao lâu'), { key: 'holds' });
   assert.deepEqual(r('ví của tôi còn bao nhiêu'), { key: 'wallet' }); assert.deepEqual(r('yêu cầu hỗ trợ của tôi'), { key: 'supportTickets' });
   assert.deepEqual(r('của tôi sao rồi'), { ambiguous: true }); assert.equal(r('nạp ví thế nào'), null);
+  // Mẫu tác vụ nào cũng nhận "của em", "của e", nên câu chưa rõ ý cũng phải nhận như vậy.
+  assert.deepEqual(r('thông tin của em đâu rồi'), { ambiguous: true }); assert.deepEqual(r('của e sao rồi ad'), { ambiguous: true });
 });
 
 test('có chữ sở hữu hoặc "kiểm tra giúp" thì câu hỏi về đơn giữ chỗ, BIB hay lệnh nạp được nhận là tác vụ', () => {
@@ -44,19 +46,24 @@ test('có chữ sở hữu hoặc "kiểm tra giúp" thì câu hỏi về đơn 
   assert.deepEqual(r('kiểm tra giúp mình đơn giữ chỗ còn hạn không'), { key: 'holds' });
   assert.deepEqual(r('BIB của tôi là số mấy'), { key: 'tickets' });
   assert.deepEqual(r('lệnh nạp tiền của tôi duyệt chưa'), { key: 'wallet' });
+  for (const q of ['kiểm tra vé', 'Kiểm tra vé giúp mình', 'kiểm tra vé đã mua', 'kiểm tra vé nhé', 'kiểm tra vé HM21K-0A1B2C', 'kiểm tra vé số 1024', 'kiểm tra vé BIB A-001'])assert.deepEqual(r(q), { key: 'tickets' }, q);
+  for (const q of ['kiểm tra đơn', 'kiểm tra đơn hàng', 'kiểm tra đơn giúp em', 'kiểm tra đơn RUN12AB34', 'kiểm tra đơn mã RUN12AB34']) assert.deepEqual(r(q), { key: 'holds' }, q);
 });
 
 test('chữ chỉ giống từ khóa tác vụ sau khi bỏ dấu thì không bị nhận là tác vụ', () => {
   // "vì", "vị" và "ví" bỏ dấu đều thành "vi"; "cô đơn" và "đơn vị" có chứa "don".
   for (const q of ['kiểm tra vì sao chưa nhận được email xác nhận vé', 'kiểm tra vị trí xuất phát ở đâu', 'check vị trí gửi đồ',
-    'mình cô đơn quá', 'tôi có đơn vị tổ chức chưa', 'em có đơn bị hủy thì có được hoàn tiền không', 'đơn vị của tôi tạo giải thế nào']) {
+    'mình cô đơn quá', 'tôi có đơn vị tổ chức chưa', 'em có đơn bị hủy thì có được hoàn tiền không', 'đơn vị của tôi tạo giải thế nào',
+    // "kiểm tra về …" bỏ dấu thành "kiem tra ve …", "kiểm tra đơn vị" thành "kiem tra don vi".
+    'kiểm tra về việc hoàn tiền thế nào', 'cho mình hỏi kiểm tra về lịch chạy ở đâu', 'kiểm tra đơn vị tổ chức giải']) {
     assert.equal(r(q)?.key, undefined, q);
   }
 });
 
 test('câu hỏi về kết quả chạy hay RunPoints của chính người hỏi được nhận là tác vụ, câu hỏi chung thì không', () => {
   for (const q of ['kết quả chạy của tôi thế nào', 'thành tích của mình ở giải Huế', 'kq của e sao rồi ad', 'chip time của tôi bao nhiêu',
-    'thời gian về đích của mình là bao nhiêu', 'kiểm tra giúp mình kết quả giải Huế', 'kiểm tra giúp kết quả của BIB A-001']) {
+    'thời gian về đích của mình là bao nhiêu', 'kiểm tra giúp mình kết quả giải Huế', 'kiểm tra giúp kết quả của BIB A-001',
+    'kiểm tra giúp mình kết quả', 'kiểm tra giúp em kq nhé', 'kiểm tra giúp mình chip time giải Huế']) {
     assert.deepEqual(r(q), { key: 'results' }, q);
   }
   for (const q of ['RunPoints của tôi còn bao nhiêu', 'điểm thưởng của mình được bao nhiêu rồi', 'tôi có bao nhiêu điểm', 'xem điểm của tôi',
@@ -66,7 +73,9 @@ test('câu hỏi về kết quả chạy hay RunPoints của chính người h�
   // Câu hỏi chung không nhắc tới dữ liệu của chính người hỏi thì vẫn đi tới bài tri thức (nửa luyện q21, q22).
   // "Điểm" đứng sau chữ khác là từ khác ("địa điểm", "quan điểm"); "kết quả xét duyệt" không phải kết quả chạy.
   for (const q of ['khi nào có kết quả chạy', 'bao h có kq giải v ad', 'RunPoints là gì', 'điểm thưởng dùng thế nào',
-    'kết quả xét duyệt quyền tổ chức của tôi', 'địa điểm của tôi ở đâu', 'quan điểm của tôi là chạy chậm thôi', 'điểm xuất phát của tôi ở đâu']) {
+    'kết quả xét duyệt quyền tổ chức của tôi', 'địa điểm của tôi ở đâu', 'quan điểm của tôi là chạy chậm thôi', 'điểm xuất phát của tôi ở đâu',
+    // "Kiểm tra giúp" cộng "kết quả" chỉ là tác vụ khi "kết quả" nói về giải chạy, không phải kết quả xét duyệt hay nạp tiền.
+    'kiểm tra giúp mình kết quả xét duyệt hoàn tiền', 'kiểm tra giúp kết quả nạp tiền của tôi']) {
     assert.equal(r(q)?.key, undefined, q);
   }
 });
