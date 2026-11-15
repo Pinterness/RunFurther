@@ -30,8 +30,8 @@ const TASKS = {
   results: { label: 'kết quả chạy', action: { label: 'Vé và thành tích', url: '/account' } },
   runpoints: { label: 'điểm RunPoints', action: { label: 'Ví của tôi', url: '/account/wallet' } },
 };
-// Nút mở tab "Nhân viên hỗ trợ" trong khung chat, nơi có form gửi yêu cầu mới.
-const SUPPORT_ACTION = { label: 'Gửi yêu cầu hỗ trợ', view: 'tickets' };
+// Nút mở thẳng form gửi yêu cầu mới trong tab "Nhân viên hỗ trợ" của khung chat, đúng như tên nút.
+const SUPPORT_ACTION = { label: 'Gửi yêu cầu hỗ trợ', view: 'new-ticket' };
 
 // Câu hỏi tác vụ là câu nhờ bot xem dữ liệu của chính người hỏi (spec mục 5.2). Những câu có thể chỉ là
 // câu hỏi chung, như "giữ chỗ được bao lâu" hay "số bib ở đâu", phải có chữ chỉ sở hữu ("của tôi", "của mình")
@@ -88,13 +88,13 @@ const guestAnswer = key => ({
   actions: [{ label: 'Đăng nhập', url: '/login' }],
 });
 
-// Nút của tác vụ yêu cầu hỗ trợ đã mở đúng tab hỗ trợ, nên khi đó không thêm nút "Gửi yêu cầu hỗ trợ" trỏ cùng chỗ.
+// Đọc lỗi thì đưa nút xem trực tiếp, kèm nút gửi yêu cầu hỗ trợ. Với tác vụ yêu cầu hỗ trợ, hai nút cũng mở hai
+// màn khác nhau: danh sách yêu cầu và form gửi yêu cầu mới.
 function failedAnswer(key) {
   const { label, action } = TASKS[key];
-  const sameTab = action.view === SUPPORT_ACTION.view;
   return {
-    reply: `Xin lỗi, mình chưa xem được ${label} của bạn lúc này. Bạn bấm "${action.label}" để xem trực tiếp${sameTab ? '' : `, hoặc bấm "${SUPPORT_ACTION.label}" nếu vẫn lỗi`} nhé.`,
-    actions: sameTab ? [action] : [action, SUPPORT_ACTION],
+    reply: `Xin lỗi, mình chưa xem được ${label} của bạn lúc này. Bạn bấm "${action.label}" để xem trực tiếp, hoặc bấm "${SUPPORT_ACTION.label}" nếu vẫn lỗi nhé.`,
+    actions: [action, SUPPORT_ACTION],
   };
 }
 

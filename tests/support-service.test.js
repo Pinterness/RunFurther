@@ -228,7 +228,7 @@ test('đọc dữ liệu lỗi thì bot không bịa trạng thái và không g�
   assert.ok(logged.some(line => /database unavailable/.test(line)), 'a failed task read is logged for the operator');
   assert.match(account.reply, /chưa xem được/); assert.equal(account.mode, 'guide');
   assert.doesNotMatch(account.reply, /hiệu lực|đã thanh toán|đang giữ/);
-  assert.deepEqual(account.actions, [{ label: 'Vé của tôi', url: '/account' }, { label: 'Gửi yêu cầu hỗ trợ', view: 'tickets' }]);
+  assert.deepEqual(account.actions, [{ label: 'Vé của tôi', url: '/account' }, { label: 'Gửi yêu cầu hỗ trợ', view: 'new-ticket' }]);
   const events = await answer({ message: 'Có giải nào sắp diễn ra?' });
   assert.match(events.reply, /chưa tải được thông tin giải/); assert.equal(events.mode, 'guide');
   assert.equal(providerCalls, 0);

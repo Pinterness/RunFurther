@@ -416,14 +416,14 @@ Tất cả endpoint dưới đây dùng tiền tố `/api/support`, trả `Cache
 | `runpoints` | Số RunPoints và cách dùng: mỗi điểm giảm 1.000đ khi đăng ký giải, tối đa một nửa giá trị đơn. Chưa có điểm thì bot chỉ cách tích: mỗi 50.000đ thanh toán cho vé được 1 điểm. Bot không tự tạo bản ghi điểm. | Lịch sử tích và dùng điểm (`history`) |
 
 - Chỉ đọc: `tests/support/tasks.test.js` hỏi đủ các tác vụ, cả qua route HTTP, rồi kiểm ba điều. Thứ nhất, số bản ghi và giờ cập nhật mới nhất của 6 collection không đổi. Thứ hai, không có lệnh `insert` / `update` / `delete` / `findAndModify` nào được gửi lên MongoDB; test theo dõi lệnh bằng tùy chọn `monitorCommands` của harness. Thứ ba, mọi lệnh đọc của tác vụ đều có `maxTimeMS` 1500.
-- Đọc lỗi thì bot xin lỗi rồi đưa nút mở thẳng trang tương ứng, kèm nút "Gửi yêu cầu hỗ trợ". Riêng tác vụ yêu cầu hỗ trợ chỉ có một nút, vì nút của nó đã mở đúng tab hỗ trợ. Bot không đoán dữ liệu.
+- Đọc lỗi thì bot xin lỗi rồi đưa nút xem trực tiếp (trang tương ứng, hoặc danh sách yêu cầu với tác vụ yêu cầu hỗ trợ), kèm nút "Gửi yêu cầu hỗ trợ" mở form gửi yêu cầu mới. Bot không đoán dữ liệu.
 - Câu hỏi có mã nạp ví dạng `NAP-XXXX-XXXX`, kể cả viết có khoảng trắng hay gạch nối, được giữ ở chế độ hướng dẫn và không tới AI. Cái giá là vài câu không dấu như "nap ngay sang vi" cũng bị giữ lại; câu đó vẫn nhận câu trả lời soạn sẵn.
 
 **Nút bấm dưới câu trả lời (P07)**
 
-- `actions` gồm tối đa 3 nút. Mỗi nút có dạng `{ label, url }` với link nội bộ, hoặc `{ label, view: 'tickets' }` để mở tab hỗ trợ trong khung chat. Luật lọc nằm ở `src/lib/supportActions.cjs` và được dùng chung cho server lẫn khung chat: nhãn dài 1–40 ký tự, link phải qua `internalPath`, nút khác hai dạng này bị bỏ.
+- `actions` gồm tối đa 3 nút. Mỗi nút có dạng `{ label, url }` với link nội bộ, hoặc `{ label, view }` để mở tab hỗ trợ trong khung chat, với `view` là `tickets` (danh sách yêu cầu) hoặc `new-ticket` (form gửi yêu cầu mới). Luật lọc nằm ở `src/lib/supportActions.cjs` và được dùng chung cho server lẫn khung chat: nhãn dài 1–40 ký tự, link phải qua `internalPath`, nút khác hai dạng này bị bỏ.
 - Câu trả lời về lịch giải có một nút cho mỗi giải trong 3 giải đầu danh sách để mở trang của giải đó. Tên giải dài được cắt còn 40 ký tự, kết thúc bằng "…".
-- `SupportChat.jsx` lọc lại `actions` bằng cùng luật đó trước khi vẽ. Nút có `url` là `Link` của Next, và khung chat đóng lại trong `onNavigate`, tức là khi trang được chuyển ngay trong tab đang mở. Theo tài liệu Next, `onNavigate` không chạy khi người dùng Ctrl/Cmd + bấm để mở tab mới, nên lúc đó khung chat vẫn mở. Nút `view: 'tickets'` chuyển sang tab "Nhân viên hỗ trợ", về danh sách yêu cầu (nơi có nút gửi yêu cầu mới) và đưa focus tới tab đó. Nguồn nào trùng link với một nút thì không hiện lại ở "Nguồn tham khảo".
+- `SupportChat.jsx` lọc lại `actions` bằng cùng luật đó trước khi vẽ. Nút có `url` là `Link` của Next, và khung chat đóng lại trong `onNavigate`, tức là khi trang được chuyển ngay trong tab đang mở. Theo tài liệu Next, `onNavigate` không chạy khi người dùng Ctrl/Cmd + bấm để mở tab mới, nên lúc đó khung chat vẫn mở. Nút có `view` chuyển sang tab "Nhân viên hỗ trợ" và đưa focus tới tab đó: `tickets` mở danh sách yêu cầu, `new-ticket` mở thẳng form gửi yêu cầu mới, nơi có nút "Dùng câu hỏi gần nhất" để chép câu vừa hỏi bot. Nguồn nào trùng link với một nút thì không hiện lại ở "Nguồn tham khảo".
 
 **Kiểm tra**
 

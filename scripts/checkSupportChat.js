@@ -150,6 +150,18 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await widget.locator('.support-message-assistant').last().getByRole('button', { name: 'Yêu cầu hỗ trợ của tôi' }).click();
     await expect(widget.locator('.support-ticket-list')).toBeVisible();
     await expect(widget.locator('.support-ticket-title')).toHaveCount(0);
+
+    // Nút "Gửi yêu cầu hỗ trợ" mở thẳng form gửi yêu cầu mới, đúng như tên nút, và form gợi ý dùng câu hỏi vừa hỏi bot.
+    await widget.getByRole('button', { name: 'Trợ lý nhanh', exact: true }).click();
+    chatActions = [{ label: 'Gửi yêu cầu hỗ trợ', view: 'new-ticket' }];
+    await question.fill('Ví của tôi bị khóa thì làm sao');
+    await question.press('Enter');
+    await widget.locator('.support-message-assistant').last().getByRole('button', { name: 'Gửi yêu cầu hỗ trợ' }).click();
+    await expect(widget.getByRole('button', { name: 'Nhân viên hỗ trợ', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect(widget.getByRole('button', { name: 'Nhân viên hỗ trợ', exact: true })).toBeFocused();
+    await expect(widget.getByLabel('Tiêu đề', { exact: true })).toBeVisible();
+    await expect(widget.getByRole('button', { name: 'Dùng câu hỏi gần nhất' })).toBeVisible();
+    await expect(widget.locator('.support-ticket-list')).toHaveCount(0);
     chatActions = null;
 
     // Authentication changes abort old requests and erase private conversation state.
@@ -215,6 +227,6 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await expect(page).toHaveURL(/\/account\/wallet$/);
     await expect(panel).toHaveCount(0);
     assert.deepEqual(errors, []);
-    console.log('PASS: guest chat/retry, bounded history, text-only answers/internal links, action buttons (internal links + support tab, duplicate sources hidden), auth reset/stale response guard, human ticket create/detail/reply/closed, mobile fit, isolated wheel and Escape focus (API fixtures only).');
+    console.log('PASS: guest chat/retry, bounded history, text-only answers/internal links, action buttons (internal links, support list and new-request form, duplicate sources hidden), auth reset/stale response guard, human ticket create/detail/reply/closed, mobile fit, isolated wheel and Escape focus (API fixtures only).');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

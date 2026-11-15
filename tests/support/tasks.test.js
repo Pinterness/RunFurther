@@ -117,18 +117,19 @@ test('reader trả câu rỗng bị coi là đọc lỗi', async () => {
   const answer = createSupportResponder({ findArticles: async () => seedArticles(), generateReply: null, runTask });
   const failed = await answer({ message: 'ví của tôi còn bao nhiêu', userId: USER });
   assert.equal(failed.reply, 'Xin lỗi, mình chưa xem được số dư ví và lệnh nạp của bạn lúc này. Bạn bấm "Ví của tôi" để xem trực tiếp, hoặc bấm "Gửi yêu cầu hỗ trợ" nếu vẫn lỗi nhé.');
-  assert.deepEqual(failed.actions, [{ label: 'Ví của tôi', url: '/account/wallet' }, { label: 'Gửi yêu cầu hỗ trợ', view: 'tickets' }]);
-  // Tác vụ yêu cầu hỗ trợ đã mở đúng tab hỗ trợ, nên không thêm nút thứ hai trỏ cùng chỗ.
+  assert.deepEqual(failed.actions, [{ label: 'Ví của tôi', url: '/account/wallet' }, { label: 'Gửi yêu cầu hỗ trợ', view: 'new-ticket' }]);
+  // Nút "Yêu cầu hỗ trợ của tôi" mở danh sách, còn "Gửi yêu cầu hỗ trợ" mở form gửi mới: hai nút mở hai chỗ khác nhau.
   const noTickets = createSupportResponder({ findArticles: async () => seedArticles(), generateReply: null, runTask: createTaskRunner({ readers: {} }) });
   const failedTickets = await noTickets({ message: 'yêu cầu hỗ trợ của tôi', userId: USER });
-  assert.equal(failedTickets.reply, 'Xin lỗi, mình chưa xem được yêu cầu hỗ trợ của bạn lúc này. Bạn bấm "Yêu cầu hỗ trợ của tôi" để xem trực tiếp nhé.');
-  assert.deepEqual(failedTickets.actions, [{ label: 'Yêu cầu hỗ trợ của tôi', view: 'tickets' }]);
+  assert.equal(failedTickets.reply, 'Xin lỗi, mình chưa xem được yêu cầu hỗ trợ của bạn lúc này. Bạn bấm "Yêu cầu hỗ trợ của tôi" để xem trực tiếp, hoặc bấm "Gửi yêu cầu hỗ trợ" nếu vẫn lỗi nhé.');
+  assert.deepEqual(failedTickets.actions, [{ label: 'Yêu cầu hỗ trợ của tôi', view: 'tickets' }, { label: 'Gửi yêu cầu hỗ trợ', view: 'new-ticket' }]);
 });
 
-test('toActions chỉ giữ tối đa 3 nút trỏ vào trang nội bộ hoặc tab hỗ trợ', () => {
+test('toActions chỉ giữ tối đa 3 nút trỏ vào trang nội bộ, danh sách yêu cầu hoặc form gửi yêu cầu hỗ trợ', () => {
   assert.deepEqual(toActions([{ label: 'A', url: '/account' }, { label: 'B', url: 'https://x.example' }, { label: 'C', view: 'tickets' },
     { label: 'D', view: 'admin' }, { label: 'E', url: '/events' }, { label: 'F', url: '/lookup' }]),
   [{ label: 'A', url: '/account' }, { label: 'C', view: 'tickets' }, { label: 'E', url: '/events' }]);
+  assert.deepEqual(toActions([{ label: 'G', view: 'new-ticket', url: '/admin' }, { label: 'H', view: 'detail' }]), [{ label: 'G', view: 'new-ticket' }]);
   assert.deepEqual(toActions([{ label: 'x'.repeat(41), url: '/account' }, { label: '', url: '/account' }, { url: '/account' }, null, { label: 'Ví', url: '/account/wallet', extra: 'drop' }]),
     [{ label: 'Ví', url: '/account/wallet' }]);
   assert.deepEqual(toActions('not a list'), []);
@@ -173,7 +174,7 @@ test('actionLabel không để sót nửa emoji khi chỗ cắt rơi vào giữa
 const NOW = new Date('2031-01-10T03:00:00Z');
 const MINUTE = 60 * 1000, HOUR = 60 * MINUTE, DAY = 24 * HOUR;
 const at = ms => new Date(NOW.getTime() + ms);
-const SUPPORT = { label: 'Gửi yêu cầu hỗ trợ', view: 'tickets' };
+const SUPPORT = { label: 'Gửi yêu cầu hỗ trợ', view: 'new-ticket' };
 const HOLD_FOOTER = 'Đơn chưa thanh toán mà quá giờ thì hết hiệu lực và chỗ được trả lại.';
 // Mọi câu tác vụ đi qua responder với một AI đếm số lần gọi: không tác vụ nào được phép tới AI.
 const taskAi = countingAi();
