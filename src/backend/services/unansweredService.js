@@ -1,7 +1,11 @@
-// Ghi câu vào hàng chờ của admin (spec 4.6). Hàm không bao giờ nhận thông tin người hỏi: responder chỉ đưa vào câu hỏi.
+// Hàng chờ câu chưa trả lời (spec 4.6): ghi câu vào hàng chờ, và cho Super Admin xem, đánh dấu đã xử lý hay bỏ qua.
+// Hàm ghi không bao giờ nhận thông tin người hỏi: responder chỉ đưa vào câu hỏi.
+const mongoose = require('mongoose');
 const UnansweredQuestion = require('../models/UnansweredQuestion');
 const { normalizeSupportText } = require('./supportKnowledge');
 const { sensitiveQuestion } = require('./supportFilters');
+const { httpError } = require('../lib/errors');
+const errorCodes = require('../lib/errorCodes');
 
 const UNANSWERED_OPEN_LIMIT = 500;
 const UNANSWERED_SAMPLE_LIMIT = 300;
@@ -60,4 +64,34 @@ async function recordUnanswered(question, { kind = 'NO_ANSWER', articleKeys = []
   return inserted.upsertedCount ? 'created' : 'counted';
 }
 
-module.exports = { UNANSWERED_OPEN_LIMIT, UNANSWERED_SAMPLE_LIMIT, UNANSWERED_TTL_SECONDS, maskDigits, recordUnanswered };
+// Những trường admin thấy. Không trả `normalized` (chỉ dùng để gộp câu trùng) và `__v`.
+const QUEUE_FIELDS = 'kind sample count status articleKeys firstAskedAt lastAskedAt';
+const QUEUE_STATUSES = ['OPEN', 'RESOLVED', 'IGNORED'];
+
+/**
+ * Danh sách hàng chờ cho Super Admin: câu hỏi nhiều lần đứng trước, cùng số lần thì câu hỏi gần đây đứng trước.
+ * @param {{ status?: 'OPEN' | 'RESOLVED' | 'IGNORED' }} [options] Trạng thái cần xem, mặc định OPEN.
+ * @returns {Promise<object[]>} Tối đa 100 dòng.
+ */
+async function listUnanswered({ status = 'OPEN' } = {}) {
+  // `status` đến từ query string, nên có thể là object như { $ne: 'OPEN' }. Chỉ nhận đúng ba giá trị.
+  if (!QUEUE_STATUSES.includes(status)) throw httpError(400, 'Trạng thái hàng chờ không hợp lệ.', errorCodes.UNANSWERED_INVALID);
+  return UnansweredQuestion.find({ status }).select(QUEUE_FIELDS)
+    .sort({ count: -1, lastAskedAt: -1, _id: 1 }).limit(100).maxTimeMS(1500).lean();
+}
+
+/**
+ * Đánh dấu một câu là đã xử lý (RESOLVED) hoặc bỏ qua (IGNORED).
+ * @param {string} id Mã câu trong hàng chờ.
+ * @param {'RESOLVED' | 'IGNORED'} status Trạng thái mới.
+ * @returns {Promise<object>} Câu sau khi đổi, cùng các trường như danh sách.
+ */
+async function setUnansweredStatus(id, status) {
+  if (!['RESOLVED', 'IGNORED'].includes(status)) throw httpError(400, 'Trạng thái hàng chờ không hợp lệ.', errorCodes.UNANSWERED_INVALID);
+  const question = mongoose.isObjectIdOrHexString(id)
+    && await UnansweredQuestion.findByIdAndUpdate(id, { status }, { new: true }).select(QUEUE_FIELDS).lean();
+  if (!question) throw httpError(404, 'Không tìm thấy câu hỏi trong hàng chờ.', errorCodes.UNANSWERED_NOT_FOUND);
+  return question;
+}
+
+module.exports = { UNANSWERED_OPEN_LIMIT, UNANSWERED_SAMPLE_LIMIT, UNANSWERED_TTL_SECONDS, maskDigits, recordUnanswered, listUnanswered, setUnansweredStatus };

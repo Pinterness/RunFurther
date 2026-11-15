@@ -3,6 +3,7 @@ const SupportArticle = require('../models/SupportArticle');
 const { SUPPORT_MESSAGE_LIMIT } = require('./supportKnowledge');
 const { loadPublishedArticles, clearKnowledgeCache } = require('./supportKnowledgeStore');
 const { createSupportResponder } = require('./supportAiService');
+const { setUnansweredStatus } = require('./unansweredService');
 const { httpError } = require('../lib/errors');
 const errorCodes = require('../lib/errorCodes');
 
@@ -49,13 +50,23 @@ async function getArticle(id) {
   return present(article);
 }
 
-async function createArticle(input, actorId) {
+// `fromQuestionId`: bài được tạo từ nút "Tạo bài từ câu này" của hàng chờ. Tạo bài xong thì câu đó thành RESOLVED.
+// Nếu câu đã tự xóa (TTL) trong lúc admin soạn bài thì bài vẫn được tạo, vì bài mới là thứ admin cần giữ.
+async function createArticle(input, actorId, { fromQuestionId } = {}) {
+  const fromQuestion = fromQuestionId !== undefined && fromQuestionId !== null;
+  if (fromQuestion && !mongoose.isObjectIdOrHexString(fromQuestionId)) throw invalid('Câu hỏi nguồn không hợp lệ.');
   let created;
   try {
     created = await SupportArticle.create({ ...contentOf(input), key: input?.key, status: 'DRAFT', updatedBy: actorId });
   } catch (error) {
     if (error?.code === 11000) throw httpError(409, 'Mã bài đã tồn tại.', errorCodes.KNOWLEDGE_KEY_TAKEN);
     throw asHttpError(error);
+  }
+  if (fromQuestion) {
+    try { await setUnansweredStatus(fromQuestionId, 'RESOLVED'); } catch (error) {
+      // Bài đã lưu rồi, nên lỗi ở bước này chỉ ghi log; admin vẫn bấm "Đã xử lý" được trong hàng chờ.
+      if (error?.code !== errorCodes.UNANSWERED_NOT_FOUND) console.error('Resolving unanswered question failed:', error.message);
+    }
   }
   return getArticle(created._id);
 }

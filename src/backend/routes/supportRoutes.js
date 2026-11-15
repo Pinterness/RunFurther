@@ -28,4 +28,8 @@ router.put('/admin/knowledge/:id', writes, knowledge.update);
 router.post('/admin/knowledge/:id/publish', writes, knowledge.publish);
 router.post('/admin/knowledge/:id/unpublish', writes, knowledge.unpublish);
 router.post('/admin/knowledge/:id/restore', writes, knowledge.restore);
+// Hàng chờ câu bot chưa trả lời được: admin xem, đánh dấu đã xử lý hoặc bỏ qua. Không có route xóa: câu tự xóa theo TTL.
+router.get('/admin/unanswered', knowledge.listUnanswered);
+router.post('/admin/unanswered/:id/resolve', writes, knowledge.resolveUnanswered);
+router.post('/admin/unanswered/:id/ignore', writes, knowledge.ignoreUnanswered);
 module.exports = router;
