@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../../lib/clientApi';
 import Modal from './Modal';
+import SupportAiSwitch from './SupportAiSwitch';
 import './support-knowledge.css';
 
 // "Tri thức trợ lý" tab (spec 4.10): Super Admin teaches the support bot. This section edits the knowledge
@@ -236,6 +237,7 @@ export default function SupportKnowledgeAdmin() {
       {queueLoading && !queue.length ? <p className="knowledge-empty" role="status">Đang tải hàng chờ...</p> : queueError ? <div className="knowledge-error" role="alert"><p>{queueError}</p><button type="button" className="text-action" onClick={() => refreshQueue(value => value + 1)}>Tải lại hàng chờ</button></div> : !queue.length ? <p className="knowledge-empty knowledge-queue-empty">Chưa có câu nào bot không trả lời được.</p> : <ul className="knowledge-queue-list">{queue.map(question => <li key={question._id} className="knowledge-queue-row"><div><p className="knowledge-queue-sample">{question.sample}</p>{question.kind === 'WRONG_ANSWER' && <p className="knowledge-queue-kind">Người dùng báo “Chưa đúng” cho bài: {question.articleKeys?.length ? question.articleKeys.join(', ') : 'không rõ'}</p>}<p className="knowledge-queue-meta">Hỏi {question.count} lần · lần cuối <time dateTime={question.lastAskedAt}>{dateLabel(question.lastAskedAt)}</time></p></div>
         <div className="knowledge-queue-actions"><button type="button" className="button-dark" disabled={busy || Boolean(pending)} onClick={() => createFromQuestion(question)}>Tạo bài từ câu này</button><button type="button" className="quiet-button" disabled={Boolean(pending)} onClick={() => settleQuestion(question, 'resolve')}>{pendingLabel(question, 'resolve', 'Đã xử lý')}</button><button type="button" className="text-action" disabled={Boolean(pending)} onClick={() => settleQuestion(question, 'ignore')}>{pendingLabel(question, 'ignore', 'Bỏ qua')}</button></div></li>)}</ul>}
     </section>
+    <SupportAiSwitch dateLabel={dateLabel} />
     {historyOpen && article && <Modal title={'Lịch sử: ' + article.title} busy={busy} onClose={() => { setHistoryOpen(false); setRestoring(null); }}>
       {restoring ? <div className="knowledge-restore">
         <p className="dialog-copy">Bài sẽ trở về bản do {author(restoring.changedBy)} lưu lúc {dateLabel(restoring.changedAt)}. Trạng thái “{statuses[article.status]}” giữ nguyên, và bản đang dùng được cất vào lịch sử nên vẫn khôi phục lại được.{article.status === 'PUBLISHED' && ' Bài đang xuất bản nên bot đổi câu trả lời ngay.'}{dirty && ' Thay đổi chưa lưu trong form sẽ bị bỏ.'}</p>

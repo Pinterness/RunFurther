@@ -40,6 +40,13 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     ];
     const queueWrites = [];
     let failIgnore = true;
+    // Công tắc AI, theo vỏ JSON { setting } của GET/PUT /support/admin/ai (Task 8.3). Máy chủ đầu tiên có Gemini đủ cấu hình.
+    const aiSetting = { aiEnabled: false, provider: 'gemini', model: 'gemini-3.5-flash-lite', configured: true, today: { day: '2026-11-15', used: 8, limit: 10 },
+      history: [{ aiEnabled: false, changedBy: { fullName: 'Quản trị A', email: 'a@test.local' }, changedAt: '2026-11-14T02:00:00.000Z' }] };
+    const aiWrites = [];
+    let failAiWrite = true, holdAi = null;
+    // Giữ request GET/PUT của công tắc AI cho tới khi test gọi release, để kiểm trạng thái đang tải và đang lưu.
+    const holdNextAi = () => { let release; holdAi = new Promise(resolve => { release = resolve; }); return () => { holdAi = null; release(); }; };
 
     await page.addInitScript(() => {
       localStorage.setItem('rf_token', 'knowledge-fixture-only');
@@ -54,6 +61,19 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
       if (path === '/notifications') return reply({ notifications: [] });
       if (path === '/admin/platform/applications') return reply({ applications: [] });
       if (path === '/support/tickets') return reply({ tickets: [], total: 0, page: 1, totalPages: 0 });
+      if (path === '/support/admin/ai') {
+        assert.equal(request.headers().authorization, 'Bearer knowledge-fixture-only');
+        if (holdAi) await holdAi;
+        if (method === 'GET') return reply({ setting: aiSetting });
+        if (method === 'PUT') {
+          const body = request.postDataJSON(); aiWrites.push(body);
+          if (failAiWrite) { failAiWrite = false; return fail(503, 'Chưa lưu được công tắc AI. Hãy thử lại.'); }
+          aiSetting.aiEnabled = body.aiEnabled;
+          aiSetting.history = [{ aiEnabled: body.aiEnabled, changedBy: admin, changedAt: now() }, ...aiSetting.history].slice(0, 10);
+          return reply({ setting: aiSetting });
+        }
+        return fail(404, 'Route not found');
+      }
       if (path === QUEUE || path.startsWith(QUEUE + '/')) {
         assert.equal(request.headers().authorization, 'Bearer knowledge-fixture-only');
         if (path === QUEUE && method === 'GET') {
@@ -295,6 +315,41 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await expect(queueSection.getByRole('alert')).toHaveCount(0);
     assert.deepEqual(queueWrites.slice(1), [{ method: 'POST', path: QUEUE + '/question-2/ignore' }, { method: 'POST', path: QUEUE + '/question-2/ignore' }]);
 
+    // 11. Mục "Trợ lý AI" (Task 8.6): công tắc đúng trạng thái, lượt hôm nay, lịch sử; bấm thì gửi PUT; lỗi thì báo và
+    // giữ trạng thái cũ; máy chủ ở chế độ guide thì ghi rõ "Máy chủ đang tắt AI".
+    const aiSection = tab.locator('.knowledge-ai'), aiSwitch = aiSection.getByRole('switch', { name: 'Bật AI cho trợ lý' });
+    await expect(aiSection.getByRole('heading', { name: 'Trợ lý AI' })).toBeVisible();
+    await expect(aiSwitch).toHaveAttribute('aria-checked', 'false');
+    await expect(aiSection).toContainText('Lượt hôm nay: 8 / 10');
+    await expect(aiSection).toContainText('gemini-3.5-flash-lite');
+    await expect(aiSection).not.toContainText('Máy chủ đang tắt AI');
+    const aiHistory = aiSection.locator('.knowledge-ai-history li');
+    await expect(aiHistory).toHaveCount(1);
+    await expect(aiHistory.nth(0)).toContainText('Tắt'); await expect(aiHistory.nth(0)).toContainText('Quản trị A');
+    await aiSwitch.click();
+    await expect(aiSection.getByRole('alert')).toContainText('Chưa lưu được công tắc AI. Hãy thử lại.');
+    await expect(aiSwitch).toHaveAttribute('aria-checked', 'false');
+    // Đang lưu: công tắc và nút "Làm mới" đều khóa, để không có lần tải lại nào về sau ghi đè kết quả lưu.
+    const releaseSave = holdNextAi();
+    await aiSwitch.click();
+    await expect(aiSwitch).toBeDisabled();
+    await expect(aiSection.getByRole('button', { name: 'Làm mới', exact: true })).toBeDisabled();
+    releaseSave();
+    await expect(aiSwitch).toHaveAttribute('aria-checked', 'true');
+    await expect(aiSection.getByRole('alert')).toHaveCount(0);
+    await expect(aiHistory).toHaveCount(2);
+    await expect(aiHistory.nth(0)).toContainText('Bật'); await expect(aiHistory.nth(0)).toContainText('Quản trị kiểm thử');
+    assert.deepEqual(aiWrites, [{ aiEnabled: true }, { aiEnabled: true }]);
+    Object.assign(aiSetting, { provider: 'guide', model: '', configured: false, today: { day: '2026-11-15', used: 0, limit: 0 } });
+    // Đang tải lại: công tắc khóa, để lần bấm không tính từ trạng thái cũ.
+    const releaseLoad = holdNextAi();
+    await aiSection.getByRole('button', { name: 'Làm mới', exact: true }).click();
+    await expect(aiSwitch).toBeDisabled();
+    releaseLoad();
+    await expect(aiSwitch).toBeEnabled();
+    await expect(aiSection).toContainText('Máy chủ đang tắt AI');
+    await expect(aiSection).toContainText('Lượt hôm nay: 0 / 0');
+
     fs.mkdirSync('artifacts', { recursive: true });
     await page.screenshot({ path: 'artifacts/support-knowledge-desktop.png', fullPage: true });
     for (const width of [1440, 768, 390, 360]) {
@@ -309,6 +364,6 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     // 12. No dialog and no uncaught error anywhere in the run.
     assert.deepEqual(dialogs, []);
     assert.deepEqual(errors, []);
-    console.log('PASS: knowledge tab list, create as draft, preview before saving (a taken key refused), publish, 409 with reload, busy guard, empty priority refused, markup as plain text, unsaved-edit guard, history and restore by changedAt, unanswered queue (sample and count, markup as text, create article from a question with fromQuestionId, mark resolved after editing an existing article, ignore with retry), mobile layout and role gate (API fixtures only).');
+    console.log('PASS: knowledge tab list, create as draft, preview before saving (a taken key refused), publish, 409 with reload, busy guard, empty priority refused, markup as plain text, unsaved-edit guard, history and restore by changedAt, unanswered queue (sample and count, markup as text, create article from a question with fromQuestionId, mark resolved after editing an existing article, ignore with retry), AI switch (state, quota used today, history, PUT on click, error keeps state, guide server notice), mobile layout and role gate (API fixtures only).');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

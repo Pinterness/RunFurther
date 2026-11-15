@@ -66,6 +66,9 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await expect(widget.getByRole('button', { name: 'Gửi câu hỏi', exact: true })).toBeDisabled();
     // Dòng báo hàng chờ (Global Constraints của plan; Task 6.5 thay câu của Task 6.4 vì có thêm nút "Chưa đúng").
     await expect(widget.locator('.support-composer').getByText('Câu trợ lý chưa trả lời được, hoặc câu bạn báo “Chưa đúng”, sẽ được lưu không kèm tài khoản, đã che các dãy số, và tự xóa sau 30 ngày không có ai hỏi lại.', { exact: true })).toBeVisible();
+    // Dòng báo AI (P08, Global Constraints): nói rõ ai được dùng AI, câu gì được gửi tới Google Gemini và Google được làm gì với nó.
+    await expect(widget.locator('.support-composer').getByText('Khi bạn đã đăng nhập và hồ sơ cho thấy đủ 18 tuổi, câu hỏi chung (không gồm dữ liệu vé, ví, đơn) được gửi tới Google Gemini để viết câu trả lời. Google có thể dùng nội dung này để cải thiện sản phẩm, và người của Google có thể đọc. Đừng nhập họ tên, số điện thoại, thông tin sức khỏe hay thông tin cá nhân khác vào câu hỏi.', { exact: true })).toBeVisible();
+    await expect(widget).not.toContainText('Câu hỏi có thể được xử lý bởi dịch vụ AI khi tính năng này được bật.');
     await question.fill('Tôi cần tìm BIB của mình');
     await question.press('Enter');
     await expect(widget.getByRole('alert')).toContainText('Trợ lý đang bận');
