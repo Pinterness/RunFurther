@@ -14,8 +14,9 @@ const { runTask } = require('../src/backend/services/supportTasks');
 const env = { SUPPORT_AI_PROVIDER: 'openai', OPENAI_API_KEY: 'test-only-key', OPENAI_MODEL: 'test-model' };
 const input = { question: 'Làm sao mua vé?', articles: [SUPPORT_KNOWLEDGE.find(item => item.id === 'registration')], events: [] };
 const success = text => new Response(JSON.stringify({ status: 'completed', output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text }] }] }));
-// File này không dùng database: responder (hàm nhận câu hỏi và trả câu trả lời của trợ lý) đọc 11 bài gốc thay cho MongoDB.
-const withSeed = deps => createSupportResponder({ findArticles: async () => seedArticles(), ...deps });
+// File này không dùng database: responder (hàm nhận câu hỏi và trả câu trả lời của trợ lý) đọc 11 bài gốc thay cho MongoDB,
+// và không ghi hàng chờ (recordMiss: null), vì ghi vào database không tồn tại sẽ làm Mongoose chờ khoảng 10 giây.
+const withSeed = deps => createSupportResponder({ findArticles: async () => seedArticles(), recordMiss: null, ...deps });
 
 test('câu trả lời soạn sẵn phân biệt trả tiền vé, duyệt nạp ví và chuyển nhượng BIB tự động', async () => {
   const answer = withSeed({ generateReply: null });

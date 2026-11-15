@@ -6,6 +6,7 @@ const { escapeRegex, httpError } = require('../lib/errors');
 const { SUPPORT_MESSAGE_LIMIT, rankArticles, normalizeSupportText } = require('./supportKnowledge');
 const { loadPublishedArticles } = require('./supportKnowledgeStore');
 const { sensitiveQuestion } = require('./supportFilters');
+const { recordUnanswered } = require('./unansweredService');
 const { routeTask, guestAnswer, failedAnswer, unclearAnswer, runTask: defaultTaskRunner } = require('./supportTasks');
 const { toActions, actionLabel } = require('../../lib/supportActions.cjs');
 
@@ -96,7 +97,8 @@ function createOpenAIAdapter({ env = process.env, fetchImpl = (...args) => fetch
 
 // `now` là đồng hồ đưa cho các reader (hàm đọc dữ liệu của từng tác vụ), dùng để biết "hôm nay", số phút còn lại
 // và lệnh nạp quá hạn. Test truyền vào một thời điểm cố định.
-function createSupportResponder({ findArticles = loadPublishedArticles, findEvents = retrievePublicEvents, runTask = defaultTaskRunner, generateReply = createOpenAIAdapter(), now = () => new Date() } = {}) {
+// `recordMiss` ghi câu bot chưa trả lời được vào hàng chờ của admin; truyền null để không ghi (xem thử của admin, test).
+function createSupportResponder({ findArticles = loadPublishedArticles, findEvents = retrievePublicEvents, runTask = defaultTaskRunner, generateReply = createOpenAIAdapter(), recordMiss = recordUnanswered, now = () => new Date() } = {}) {
   return async function answerSupport({ message, history = [], userId = null, page = '/' } = {}) {
     if (typeof message !== 'string' || !message.trim() || message.length > SUPPORT_MESSAGE_LIMIT) {
       throw httpError(400, `Tin nhắn phải có từ 1 đến ${SUPPORT_MESSAGE_LIMIT} ký tự.`);
@@ -122,8 +124,13 @@ function createSupportResponder({ findArticles = loadPublishedArticles, findEven
     try { published = await findArticles(); } catch (error) { console.error('Support knowledge read failed:', error.message); return result; }
     const articles = rankArticles(published, question, history);
     if (!articles.length) {
-      // Câu "của tôi" không nêu tác vụ và không khớp bài nào thì nhận các nút tác vụ, bot không đoán.
+      // Câu "của tôi" không nêu tác vụ và không khớp bài nào thì nhận các nút tác vụ, bot không đoán. Câu nhận nút đã
+      // có lối đi tiếp, nên không vào hàng chờ.
       if (route?.ambiguous) Object.assign(result, unclearAnswer());
+      else if (typeof recordMiss === 'function') {
+        // Chỉ đưa câu hỏi, không đưa userId hay trang đang mở. Ghi lỗi thì chỉ ghi log, người hỏi vẫn nhận FALLBACK.
+        try { await recordMiss(question); } catch (error) { console.error('Support unanswered record failed:', error.message); }
+      }
       return result;
     }
     result.reply = articles.map(article => article.answer).join('\n\n');

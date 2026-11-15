@@ -35,7 +35,7 @@ test('chữ "thuộc" và câu hỏi thông thường không bị bắt', () => 
 
 test('responder dùng bộ lọc mới: câu có họ tên hay sức khỏe vẫn nhận bài soạn sẵn nhưng không tới AI', async () => {
   let calls = 0;
-  const answer = createSupportResponder({ findArticles: async () => seedArticles(), generateReply: async () => { calls++; return 'Không được dùng'; } });
+  const answer = createSupportResponder({ findArticles: async () => seedArticles(), recordMiss: null, generateReply: async () => { calls++; return 'Không được dùng'; } });
   const named = await answer({ message: 'Tôi là Trần Thị B, chuyển khoản rồi sao chưa có vé' });
   assert.equal(named.mode, 'guide'); assert.match(named.reply, /EVENT_ADMIN/);
   const health = await answer({ message: 'mình bị hen suyễn thì mua vé giải chạy được không' });

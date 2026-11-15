@@ -122,7 +122,7 @@ async function previewAnswer({ question, draft } = {}) {
       ? articles.map(article => (article.key === key ? stand : article))
       : [...articles, stand];
   }
-  return createSupportResponder({ findArticles: async () => articles, generateReply: null })({ message: question });
+  return createSupportResponder({ findArticles: async () => articles, generateReply: null, recordMiss: null })({ message: question });
 }
 
 module.exports = { ARTICLE_HISTORY_LIMIT, listArticles, getArticle, createArticle, updateArticle, setArticleStatus, restoreArticle, previewAnswer };
