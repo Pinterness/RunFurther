@@ -175,13 +175,14 @@ Chế độ hướng dẫn hoạt động mà không cần khóa AI. `.env.examp
 
 ```dotenv
 SUPPORT_AI_PROVIDER=guide
-OPENAI_API_KEY=
-OPENAI_MODEL=
+SUPPORT_AI_MODEL=
+GEMINI_API_KEY=
+AI_DAILY_LIMIT=0
 ```
 
-Để bật AI, đặt `SUPPORT_AI_PROVIDER=openai`, cung cấp khóa OpenAI và tên model được tài khoản của bạn cho phép sử dụng ở môi trường **server**, rồi khởi động lại API. Không đặt khóa trong biến `NEXT_PUBLIC_*`, mã frontend hoặc commit lên Git. Không có model mặc định tự chọn; thiếu bất kỳ cấu hình nào hoặc provider lỗi thì hệ thống dùng hướng dẫn nội bộ và hiển thị đúng nhãn.
+Để bật AI, đặt `SUPPORT_AI_PROVIDER=gemini`, khóa Gemini của gói Free, tên model (ví dụ `gemini-3.5-flash-lite`) và `AI_DAILY_LIMIT` lớn hơn 0 ở môi trường **server**, rồi khởi động lại API. Không đặt khóa trong biến `NEXT_PUBLIC_*`, mã frontend hoặc commit lên Git. Không có model mặc định tự chọn; thiếu bất kỳ cấu hình nào hoặc nhà cung cấp lỗi thì hệ thống dùng hướng dẫn nội bộ và hiển thị đúng nhãn.
 
-Adapter Responses API có `store: false`, timeout 15 giây, giới hạn 700 output tokens và 4 yêu cầu đồng thời mỗi tiến trình. Chỉ câu hỏi hiện tại cùng hướng dẫn và thông tin giải công khai được đưa vào prompt; không gửi lịch sử chat, dữ liệu vé riêng tư hoặc hộp thư nhân viên. Tóm tắt vé cá nhân xử lý nội bộ từ dữ liệu đúng người đăng nhập. Chưa cấu hình khóa/model thật và chưa thử gọi AI thật trong lần triển khai này.
+Adapter gọi cổng tương thích Chat Completions của Gemini tại đúng một địa chỉ cố định, với timeout 15 giây, giới hạn 700 token đầu ra, `temperature` 0.2 và tối đa 4 yêu cầu đồng thời mỗi tiến trình. Chỉ câu hỏi hiện tại, tối đa 2 bài tri thức và 5 giải công khai được gửi đi; không gửi lịch sử chat, dữ liệu vé, ví, đơn, hồ sơ hay mã tài khoản. Câu trả lời bị cắt vì hết token, có URL hoặc HTML thì bị bỏ.
 
 Các endpoint đặt dưới `/api/support`: `POST /chat` công khai; `/tickets` và `/tickets/:id/messages` cho chủ yêu cầu; `/admin/tickets` dành riêng SUPER_ADMIN. Giới hạn tin chat 2.000 ký tự; yêu cầu hỗ trợ có tiêu đề 160 ký tự, mỗi tin 4.000 ký tự, tối đa 100 tin. Rate limit theo IP/bộ nhớ tiến trình: chat 12/phút, tạo yêu cầu 6/phút, các thao tác gửi bổ sung/phản hồi/đóng/mở lại dùng chung 30/phút. Triển khai nhiều instance cần giới hạn dùng chung.
 

@@ -24,5 +24,11 @@ services:
         value: "1"
       - key: SUPPORT_AI_PROVIDER
         value: guide
+      - key: SUPPORT_AI_MODEL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: AI_DAILY_LIMIT
+        value: "0"
       - key: WALLET_TOPUP_RATE_LIMIT
         value: "10"

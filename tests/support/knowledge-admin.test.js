@@ -12,6 +12,10 @@ const { seedSupportKnowledge } = require('../../scripts/seedSupportKnowledge');
 const { loadPublishedArticles, clearKnowledgeCache } = require('../../src/backend/services/supportKnowledgeStore');
 const { createSupportResponder } = require('../../src/backend/services/supportAiService');
 const { createArticle, updateArticle, setArticleStatus, restoreArticle, previewAnswer } = require('../../src/backend/services/supportKnowledgeAdmin');
+const PlatformSetting = require('../../src/backend/models/PlatformSetting');
+const RunnerProfile = require('../../src/backend/models/RunnerProfile');
+const AiUsage = require('../../src/backend/models/AiUsage');
+const { setAiEnabled, clearAiSettingCache } = require('../../src/backend/services/aiSettingService');
 const { createBackendHarness } = require('../helpers/backendHarness');
 
 const harness = createBackendHarness({ app, dbName: 'runfurther_support_admin' });
@@ -231,19 +235,24 @@ test('preview writes nothing and never calls the AI, even with the AI switched o
   // Switch the current AI adapter fully on and fake its provider: an answer that reached it would come back in 'ai' mode.
   const realFetch = global.fetch, aiCalls = [];
   global.fetch = async (url, options) => {
-    if (!String(url).startsWith('https://api.openai.com/')) return realFetch(url, options);
+    if (!String(url).startsWith('https://generativelanguage.googleapis.com/')) return realFetch(url, options);
     aiCalls.push(String(url));
-    return Response.json({ status: 'completed', output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Câu trả lời do AI viết.' }] }] });
+    return Response.json({ choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'Câu trả lời do AI viết.' } }] });
   };
-  const keys = ['SUPPORT_AI_PROVIDER', 'OPENAI_API_KEY', 'OPENAI_MODEL'];
+  const keys = ['SUPPORT_AI_PROVIDER', 'GEMINI_API_KEY', 'SUPPORT_AI_MODEL', 'AI_DAILY_LIMIT'];
   const savedEnv = Object.fromEntries(keys.map(key => [key, process.env[key]]));
-  Object.assign(process.env, { SUPPORT_AI_PROVIDER: 'openai', OPENAI_API_KEY: 'test-only-key', OPENAI_MODEL: 'test-model' });
-  t.after(() => {
+  Object.assign(process.env, { SUPPORT_AI_PROVIDER: 'gemini', GEMINI_API_KEY: 'test-only-key', SUPPORT_AI_MODEL: 'test-model', AI_DAILY_LIMIT: '10' });
+  // Mở trọn cổng AI (P08): công tắc bật, người hỏi đã đăng nhập và hồ sơ đủ 18 tuổi.
+  await setAiEnabled(true, admin.id);
+  await RunnerProfile.create({ userId: runner.id, dob: new Date('1990-05-01') });
+  t.after(async () => {
     global.fetch = realFetch;
     for (const key of keys) if (savedEnv[key] === undefined) delete process.env[key]; else process.env[key] = savedEnv[key];
+    await Promise.all([PlatformSetting.deleteMany({ key: 'SUPPORT_AI' }), RunnerProfile.deleteMany({ userId: runner.id }), AiUsage.deleteMany({})]);
+    clearAiSettingCache();
   });
   // Control: the ordinary chat does reach the fake provider, so the "no AI call" check below can fail.
-  const control = await createSupportResponder()({ message: 'giữ chỗ được bao lâu' });
+  const control = await createSupportResponder()({ message: 'giữ chỗ được bao lâu', userId: runner.id });
   assert.deepEqual([control.mode, aiCalls.length], ['ai', 1]);
   const articlesBefore = await SupportArticle.find().sort({ _id: 1 }).lean();
   const draft = { key: 'giu-cho-thu', title: 'Giữ chỗ thử', terms: ['giữ chỗ'], answer: 'Bản nháp về giữ chỗ.', sources: [], suggestions: [] };

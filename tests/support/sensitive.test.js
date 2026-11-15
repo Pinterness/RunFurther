@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const { sensitiveQuestion } = require('../../src/backend/services/supportFilters');
 const { createSupportResponder } = require('../../src/backend/services/supportAiService');
 const { seedArticles } = require('../../src/backend/services/supportKnowledge');
+const { createAiGate } = require('../../src/backend/services/supportAiGate');
 
 test('câu tự giới thiệu có chữ viết hoa theo sau là câu nhạy cảm', () => {
   for (const q of ['Tôi là Trần Thị B, chưa thấy vé', 'tôi là Nguyễn Văn A', 'Mình tên là Lan', 'em tên Hoa ạ', 'Mình là BTC giải', 'Tôi là Trần Thị B'.normalize('NFD')])
@@ -35,7 +36,10 @@ test('chữ "thuộc" và câu hỏi thông thường không bị bắt', () => 
 
 test('responder dùng bộ lọc mới: câu có họ tên hay sức khỏe vẫn nhận bài soạn sẵn nhưng không tới AI', async () => {
   let calls = 0;
-  const answer = createSupportResponder({ findArticles: async () => seedArticles(), recordMiss: null, generateReply: async () => { calls++; return 'Không được dùng'; } });
+  // Cổng AI thật (P08), cho qua mọi bước trừ bước nhạy cảm; người hỏi là tài khoản đủ 18 tuổi.
+  const canUseAi = createAiGate({ env: { SUPPORT_AI_PROVIDER: 'gemini', GEMINI_API_KEY: 'k', SUPPORT_AI_MODEL: 'm' }, isSwitchOn: async () => true, findDob: async () => new Date('1990-05-01'), reserve: async () => true });
+  const ask = createSupportResponder({ findArticles: async () => seedArticles(), recordMiss: null, canUseAi, generateReply: async () => { calls++; return 'Không được dùng'; } });
+  const answer = input => ask({ ...input, userId: '507f1f77bcf86cd799439011' });
   const named = await answer({ message: 'Tôi là Trần Thị B, chuyển khoản rồi sao chưa có vé' });
   assert.equal(named.mode, 'guide'); assert.match(named.reply, /EVENT_ADMIN/);
   const health = await answer({ message: 'mình bị hen suyễn thì mua vé giải chạy được không' });

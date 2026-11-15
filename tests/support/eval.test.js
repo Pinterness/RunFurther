@@ -71,3 +71,28 @@ test('seed ranking scores exactly the recorded baseline', async () => {
     for (const [name, floor] of Object.entries(baseline[split])) assert.equal(metrics[split][name], floor, `${split}.${name} improved: raise the baseline`);
   }
 });
+
+// Spec T13 / 5.4: chấm AI trên 20 câu có bài đầu tiên (theo id) của nửa kiểm; adapter nhận đúng bài expected của từng câu.
+test('selectAiItems chọn 20 câu nửa kiểm có bài, theo thứ tự id', () => {
+  const { selectAiItems } = require('../../src/backend/services/supportEval');
+  const picked = selectAiItems(items);
+  assert.equal(picked.length, 20);
+  assert.ok(picked.every(item => item.split === 'kiem' && typeof item.expected === 'string' && !item.expected.startsWith('task:')));
+  const ids = picked.map(item => item.id);
+  assert.deepEqual(ids, [...ids].sort());
+  // Đúng là 20 câu đầu: hai câu có bài còn lại của nửa kiểm đều có id lớn hơn câu cuối được chọn.
+  const rest = items.filter(item => item.split === 'kiem' && typeof item.expected === 'string' && !item.expected.startsWith('task:') && !ids.includes(item.id));
+  assert.equal(rest.length, 2);
+  assert.ok(rest.every(item => item.id > ids.at(-1)));
+  assert.deepEqual(selectAiItems(items, 3).map(item => item.id), ids.slice(0, 3));
+  // Thứ tự đầu vào không làm đổi kết quả.
+  assert.deepEqual(selectAiItems([...items].reverse()).map(item => item.id), ids);
+});
+
+test('selectAiItems chọn được câu nửa luyện để thử chỉ dẫn mà không đụng nửa kiểm', () => {
+  const { selectAiItems } = require('../../src/backend/services/supportEval');
+  const picked = selectAiItems(items, 20, 'luyen');
+  assert.equal(picked.length, 20);
+  assert.ok(picked.every(item => item.split === 'luyen' && typeof item.expected === 'string' && !item.expected.startsWith('task:')));
+  assert.deepEqual(picked.map(item => item.id), picked.map(item => item.id).sort());
+});

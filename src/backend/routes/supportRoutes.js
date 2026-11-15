@@ -3,6 +3,7 @@ const { verifyUserToken, requireSuperAdmin } = require('../middlewares/authMiddl
 const rateLimit = require('../middlewares/rateLimit');
 const support = require('../controllers/supportController');
 const knowledge = require('../controllers/supportKnowledgeController');
+const supportAi = require('../controllers/supportAiController');
 const writes = rateLimit(30);
 
 router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
@@ -34,4 +35,7 @@ router.post('/admin/knowledge/:id/restore', writes, knowledge.restore);
 router.get('/admin/unanswered', knowledge.listUnanswered);
 router.post('/admin/unanswered/:id/resolve', writes, knowledge.resolveUnanswered);
 router.post('/admin/unanswered/:id/ignore', writes, knowledge.ignoreUnanswered);
+// Công tắc AI: Super Admin bật tắt AI của trợ lý và xem lượt AI hôm nay. Biến môi trường vẫn là công tắc tổng.
+router.get('/admin/ai', supportAi.get);
+router.put('/admin/ai', writes, supportAi.update);
 module.exports = router;

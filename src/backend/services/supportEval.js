@@ -55,4 +55,14 @@ function meetsBaseline(metrics, baseline) {
   return worse;
 }
 
-module.exports = { evaluateSupport, meetsBaseline };
+// Câu dùng để chấm câu trả lời AI (spec T13, 5.4): các câu nửa kiểm có bài đúng, lấy `limit` câu đầu theo id. Chấm AI
+// đo việc Gemini viết đúng theo bài, nên mỗi câu được gửi kèm đúng bài `expected` chứ không lấy bài do bộ tìm trả về.
+// `split = 'luyen'` dùng khi thử chỉ dẫn mới, để không chỉnh chỉ dẫn theo đúng các câu sẽ dùng để đo.
+function selectAiItems(items, limit = 20, split = 'kiem') {
+  return items
+    .filter(item => item.split === split && typeof item.expected === 'string' && !item.expected.startsWith('task:'))
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .slice(0, limit);
+}
+
+module.exports = { evaluateSupport, meetsBaseline, selectAiItems };

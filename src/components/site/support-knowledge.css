@@ -73,6 +73,25 @@
 .knowledge-queue>.knowledge-empty,.knowledge-queue>.knowledge-error { border:1px solid #d8decd; border-radius:10px; }
 .knowledge-queue>.knowledge-empty { background:#fffefa; }
 .knowledge-queue>.knowledge-queue-alert { margin-bottom:12px; padding:14px 18px; }
+/* Mục "Trợ lý AI" (P08): công tắc dạng switch, lượt hôm nay, lời báo của máy chủ, lịch sử bật tắt. */
+.knowledge-ai { margin-top:48px; }
+.knowledge-ai-panel { border:1px solid #d8decd; border-radius:10px; background:#fffefa; padding:22px; }
+.knowledge-ai-row { display:flex; align-items:center; gap:18px; }
+.knowledge-ai-row>div { min-width:0; }
+.knowledge-ai-switch { position:relative; flex-shrink:0; width:52px; height:30px; border-radius:999px; border:1px solid #b9c2ab; background:#e9ece5; cursor:pointer; transition:background .2s; }
+.knowledge-ai-switch span { position:absolute; top:3px; left:3px; width:22px; height:22px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.25); transition:transform .2s; }
+.knowledge-ai-switch.is-on { background:#4f663f; border-color:#4f663f; }
+.knowledge-ai-switch.is-on span { transform:translateX(22px); }
+.knowledge-ai-switch:focus-visible { outline:2px solid #4f663f; outline-offset:3px; }
+.knowledge-ai-switch:disabled { opacity:.6; cursor:wait; }
+.knowledge-ai-state { font-size:14px; font-weight:600; }
+.knowledge-ai-notice { margin-top:16px; font-size:12px; line-height:1.7; padding:12px 14px; border-radius:6px; background:#f9e6d6; color:#9a5430; overflow-wrap:anywhere; }
+.knowledge-ai-panel>.knowledge-error { margin-top:16px; }
+.knowledge-ai-history-heading { margin-top:22px; }
+.knowledge-ai-history { list-style:none; margin:10px 0 0; padding:0; }
+.knowledge-ai-history li { display:flex; flex-wrap:wrap; gap:4px 12px; padding:8px 0; border-top:1px solid #e1e5d8; font-size:12px; }
+.knowledge-ai-history span { color:#6b765e; }
+@media(max-width:650px) { .knowledge-ai-panel { padding:18px 16px; } }
 .knowledge-admin :is(button,a):focus-visible { outline:2px solid #b86441; outline-offset:3px; }
 .knowledge-admin button:disabled { cursor:default; }
 @media(max-width:900px) { .knowledge-grid { grid-template-columns:minmax(220px,.85fr) minmax(0,1.2fr); }.knowledge-editor-heading { flex-wrap:wrap; padding:22px; }.knowledge-form { padding:22px; }.knowledge-preview { margin:12px 22px 22px; }.knowledge-write-status { padding:0 22px; }.knowledge-hint { padding:12px 22px; }.knowledge-editor>.knowledge-error { margin:0 22px 12px; } }
