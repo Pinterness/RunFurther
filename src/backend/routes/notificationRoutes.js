@@ -8,6 +8,7 @@ const Event = require('../models/Event');
 const Moderation = require('../models/EventModeration');
 const Volunteer = require('../models/VolunteerApplication');
 const EventAccount = require('../models/EventAccount');
+const { quotaAlerts } = require('../services/quotaService');
 const schema = new mongoose.Schema({ userId: { type: mongoose.Schema.Types.ObjectId, required: true }, key: { type: String, required: true }, readAt: Date });
 schema.index({ userId: 1, key: 1 }, { unique: true });
 const Receipt = mongoose.models.NotificationReceipt || mongoose.model('NotificationReceipt', schema);
@@ -36,6 +37,8 @@ async function feed(userId, systemRole) {
     const [applications, topups] = await Promise.all([Application.find({ status: 'PENDING' }).sort({ updatedAt: -1 }).limit(10).lean(), Payment.find({ kind: 'TOPUP', status: 'PENDING' }).sort({ createdAt: -1 }).limit(10).lean()]);
     for (const a of applications) items.push({ key: `review:${a._id}:${a.updatedAt.toISOString()}`, title: 'Đơn tổ chức chờ xét duyệt', detail: a.organizationName, href: '/admin', at: a.updatedAt });
     for (const p of topups) items.push({ key: `topup-review:${p._id}`, title: 'Nạp ví chờ đối soát', detail: amountWithCode(p), href: '/admin', at: p.createdAt });
+    // Cảnh báo hạn mức (dung lượng Atlas, lượt AI hôm nay) ở 70% và 90%. quotaAlerts tự bỏ đồng hồ lỗi, nên chuông không hỏng vì nó.
+    items.push(...(await quotaAlerts()));
   }
   return items.sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 30);
 }
