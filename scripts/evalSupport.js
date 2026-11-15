@@ -6,6 +6,7 @@
 //
 // Chấm câu trả lời AI (spec 5.4, T13), chỉ đọc DB, mỗi câu tốn một lượt Gemini của project chấm:
 //   node --env-file=.env.atlas.local --env-file=.env.ai.local scripts/evalSupport.js --ai --limit 20
+// Thêm --split luyen để thử chỉ dẫn mới trên nửa luyện (ghi ra cham-ai-P08-luyen.md) trước khi đo nửa kiểm.
 // .env.ai.local (bị .gitignore chặn) chứa SUPPORT_AI_PROVIDER=gemini, SUPPORT_AI_MODEL và GEMINI_API_KEY của một
 // project Google riêng cho việc chấm, không gắn tài khoản thanh toán. Mỗi câu được gửi kèm đúng bài `expected` của
 // nó; câu hỏi, bài và câu trả lời được ghi ra docs/ke-hoach/cham-ai-P08.md để chấm tay. Khóa không bao giờ được in.
@@ -60,7 +61,8 @@ async function runAiEval() {
     return response;
   };
   const adapter = createChatAdapter({ env: process.env, fetchImpl });
-  const picked = selectAiItems(items, limit), rows = [];
+  const split = process.argv.includes('--split') && process.argv[process.argv.indexOf('--split') + 1] === 'luyen' ? 'luyen' : 'kiem';
+  const picked = selectAiItems(items, limit, split), rows = [];
   let calls = 0;
   for (const item of picked) {
     const article = byKey.get(item.expected);
@@ -79,7 +81,7 @@ async function runAiEval() {
     '# Chấm câu trả lời AI · P08', '',
     `- Ngày chạy: ${vnTime(ranAt)} (giờ Việt Nam). Model: \`${config.model}\`. Database bài: \`${target.database}\`.`,
     `- Số lần gọi Gemini: ${calls} (project chấm riêng). Số câu nhận \`null\` (bot sẽ dùng guide): ${rows.filter(row => row.article && !row.reply).length}.`,
-    '- Bộ câu: các câu đầu tiên (theo id) có bài của nửa kiểm; mỗi câu gửi kèm đúng bài `expected` (spec T13). Không dùng các câu này để chỉnh từ khóa.',
+    `- Bộ câu: các câu đầu tiên (theo id) có bài của nửa ${split}; mỗi câu gửi kèm đúng bài \`expected\` (spec T13). Không dùng các câu này để chỉnh từ khóa.`,
     '- Thang chấm (spec 5.4): **Đ** đúng theo bài · **T** thiếu ý · **S** sai hoặc bịa · **L** có link hay nội dung lạ. Mức đạt: ít nhất 16/20 Đ và không câu nào S hay L.', '',
     '| # | id | Bài | Claude chấm | Bạn chốt |', '| --- | --- | --- | --- | --- |',
     ...rows.map((row, index) => `| ${index + 1} | ${row.item.id} | ${row.item.expected} |  |  |`), '',
@@ -93,8 +95,9 @@ async function runAiEval() {
   const dir = path.join(__dirname, '..', 'docs', 'ke-hoach');
   fs.mkdirSync(dir, { recursive: true });
   // Không ghi đè bản đã chấm: lần chạy sau ghi sang file có thêm thời điểm.
-  let file = path.join(dir, 'cham-ai-P08.md');
-  if (fs.existsSync(file)) file = path.join(dir, `cham-ai-P08-${ranAt.toISOString().replace(/[:.]/g, '-')}.md`);
+  const base = split === 'luyen' ? 'cham-ai-P08-luyen' : 'cham-ai-P08';
+  let file = path.join(dir, base + '.md');
+  if (fs.existsSync(file)) file = path.join(dir, `${base}-${ranAt.toISOString().replace(/[:.]/g, '-')}.md`);
   fs.writeFileSync(file, lines.join('\n'), 'utf8');
   console.log(`Đã ghi ${rows.length} câu vào ${path.relative(process.cwd(), file)}; số lần gọi Gemini: ${calls}.`);
 }

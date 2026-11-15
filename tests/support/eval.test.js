@@ -88,3 +88,11 @@ test('selectAiItems chọn 20 câu nửa kiểm có bài, theo thứ tự id', (
   // Thứ tự đầu vào không làm đổi kết quả.
   assert.deepEqual(selectAiItems([...items].reverse()).map(item => item.id), ids);
 });
+
+test('selectAiItems chọn được câu nửa luyện để thử chỉ dẫn mà không đụng nửa kiểm', () => {
+  const { selectAiItems } = require('../../src/backend/services/supportEval');
+  const picked = selectAiItems(items, 20, 'luyen');
+  assert.equal(picked.length, 20);
+  assert.ok(picked.every(item => item.split === 'luyen' && typeof item.expected === 'string' && !item.expected.startsWith('task:')));
+  assert.deepEqual(picked.map(item => item.id), picked.map(item => item.id).sort());
+});
