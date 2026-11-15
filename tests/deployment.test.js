@@ -51,11 +51,12 @@ test('CORS permits configured domains, SSR and auth preflight; per-client limits
 });
 
 test('Deployment env export retains the database, separates secrets and round-trips quoted credentials', async () => {
-  const source = { MONGODB_URI: 'mongodb+srv://fixture:p%24ss@cluster.invalid/existing?retryWrites=true&w=majority', OPENAI_API_KEY: 'do-not-copy', SEED_MONGODB_URI: 'do-not-copy' };
+  const source = { MONGODB_URI: 'mongodb+srv://fixture:p%24ss@cluster.invalid/existing?retryWrites=true&w=majority', OPENAI_API_KEY: 'do-not-copy', GEMINI_API_KEY: 'do-not-copy', SEED_MONGODB_URI: 'do-not-copy' };
   const result = await createEnvironments({ source, apiUrl: 'https://api.example.com/', webUrl: 'https://race.vercel.app/' });
   assert.deepEqual(Object.keys(result.vercel), ['NEXT_PUBLIC_API_URL']);
   assert.equal(result.render.MONGODB_URI, source.MONGODB_URI); assert.match(result.render.JWT_SECRET, /^[a-f0-9]{96}$/);
   assert.equal(result.render.CLIENT_ORIGIN, 'https://race.vercel.app'); assert.equal(result.render.OPENAI_API_KEY, undefined);
+  assert.equal(result.render.GEMINI_API_KEY, undefined);
   assert.equal(result.render.SEED_MONGODB_URI, undefined); assert.deepEqual(dotenv.parse(serialize(result.render)), result.render);
   await assert.rejects(createEnvironments({ source: { MONGODB_URI: 'mongodb://127.0.0.1/db' }, apiUrl: 'https://api.example.com', webUrl: 'https://race.vercel.app' }));
 });

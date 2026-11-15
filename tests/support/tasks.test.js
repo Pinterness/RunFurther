@@ -151,7 +151,7 @@ test('chủ đề giải: câu trả lời có tối đa 3 nút dẫn tới tran
     { label: 'Hà Nội 10K', url: '/events/ha-noi-10k' },
   ];
   for (const [generateReply, mode] of [[null, 'guide'], [async () => 'Trợ lý AI trả lời về các giải.', 'ai']]) {
-    const answer = createSupportResponder({ findArticles: async () => seedArticles(), findEvents: async () => events, generateReply, runTask: mustNotRun });
+    const answer = createSupportResponder({ findArticles: async () => seedArticles(), findEvents: async () => events, generateReply, canUseAi: async () => ({ allowed: true, reason: null }), runTask: mustNotRun });
     const result = await answer({ message: 'Có giải nào sắp diễn ra?' });
     assert.equal(result.mode, mode);
     assert.deepEqual(result.actions, expected);

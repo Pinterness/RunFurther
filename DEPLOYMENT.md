@@ -67,6 +67,17 @@ SUPPORT_AI_PROVIDER=guide
 WALLET_TOPUP_RATE_LIMIT=10
 ```
 
+**Bật AI cho trợ lý (việc C10, chỉ người giữ tài khoản Render làm được).** Chỉ làm sau khi bộ chấm 20 câu AI đạt ít nhất 16/20. Đổi và thêm bốn biến:
+
+```dotenv
+SUPPORT_AI_PROVIDER=gemini
+SUPPORT_AI_MODEL=gemini-3.5-flash-lite
+GEMINI_API_KEY=<khóa tạo trong Google AI Studio, project KHÔNG gắn tài khoản thanh toán>
+AI_DAILY_LIMIT=<khoảng một nửa số lượt mỗi ngày của model, xem trong AI Studio>
+```
+
+Khóa được gửi riêng cho người giữ Render, không dán vào nhóm chat và không commit. Lộ khóa thì xóa khóa trong AI Studio rồi tạo khóa mới. Đặt đủ biến vẫn chưa bật AI: Super Admin còn phải bật công tắc "Trợ lý AI" trong `/admin` → **Tri thức trợ lý**. Lượt ngày của Gemini hồi lúc 0 giờ giờ Thái Bình Dương (14 hoặc 15 giờ chiều giờ Việt Nam); app tự dừng ở `AI_DAILY_LIMIT` và trả lời bằng hướng dẫn.
+
 Không nhập dấu `< >`; chúng chỉ đánh dấu giá trị cần sao chép. Render tự cấp `PORT`, backend đã bind `0.0.0.0:$PORT`. Không chạy `npm run dev`, `next build` hay `npm run seed` trên service backend. [Cấu hình Web Service](https://render.com/docs/web-services), [Node version](https://render.com/docs/node-version).
 
 **Nếu log báo `Missing script: "build"`:** vào chính service Render → **Settings → Build & Deploy**, sửa Build Command thành **chỉ** `npm ci --omit=dev`, Start Command thành `npm start`; bỏ `npm run build` khỏi cả Build và Pre-Deploy Command. Root Directory để trống. Lưu rồi chọn **Manual Deploy → Clear build cache & deploy**. Biến môi trường không sửa được lỗi lệnh build. Thêm `render.yaml` vào repo không tự thay settings của service được tạo thủ công; file này được áp dụng qua Blueprint. [Các lệnh triển khai và clear cache](https://render.com/docs/deploys).
@@ -106,7 +117,7 @@ Trong **Settings → Environment Variables**, chọn **Production**:
 NEXT_PUBLIC_API_URL=https://TEN-API-THAT.onrender.com/api
 ```
 
-Đây là biến duy nhất frontend cần. **Không đưa MONGODB_URI, JWT_SECRET, OPENAI_API_KEY lên Vercel/NEXT_PUBLIC.** NODE_ENV do Vercel/Next quản lý. API URL cần HTTPS và `/api`; code chuẩn hóa dấu `/` cuối, tự thêm `/api` nếu chỉ nhập origin. Build trên Vercel từ chối thiếu biến hoặc trỏ localhost.
+Đây là biến duy nhất frontend cần. **Không đưa MONGODB_URI, JWT_SECRET, GEMINI_API_KEY lên Vercel/NEXT_PUBLIC.** NODE_ENV do Vercel/Next quản lý. API URL cần HTTPS và `/api`; code chuẩn hóa dấu `/` cuối, tự thêm `/api` nếu chỉ nhập origin. Build trên Vercel từ chối thiếu biến hoặc trỏ localhost.
 
 Deploy xong sao chép **Production Domain** chính xác (không đoán theo project name), cập nhật CLIENT_ORIGIN trên Render. Ví dụ nếu URL thật là `https://runfurther-abc.vercel.app`, đây chính là giá trị CLIENT_ORIGIN, không có `/api` hay đường dẫn trang.
 
@@ -120,7 +131,7 @@ Preview deployment có hostname khác production: mặc định không cho phép
 
 - `PORT`: Render cấp tự động.
 - `SEED_MONGODB_URI`: chỉ phục vụ seed ở database dev rỗng, không thêm trên host.
-- `OPENAI_API_KEY`, `OPENAI_MODEL`: không cần khi SUPPORT_AI_PROVIDER=guide. Chat hỗ trợ dùng bộ hướng dẫn và dữ liệu ứng dụng; không tuyên bố đây là mô hình AI sinh nội dung miễn phí. Nếu bật provider sau này, chỉ thêm khóa và model ở Render; việc sử dụng provider có thể phát sinh phí.
+- `SUPPORT_AI_MODEL`, `GEMINI_API_KEY`, `AI_DAILY_LIMIT`: không cần khi `SUPPORT_AI_PROVIDER=guide`; khi đó chat hỗ trợ chỉ dùng bài tri thức và dữ liệu ứng dụng. Chỉ dùng gói Free của Gemini; không dùng API trả phí và không gắn tài khoản thanh toán vào project của khóa, nên vượt lượt chỉ làm API trả lỗi 429 chứ không phát sinh tiền.
 - Thông tin tài khoản ngân hàng nhận vé/nạp ví: cài trong chức năng chủ giải/Super Admin; không dùng ENV thay cho dữ liệu đã cấu hình trong database.
 
 ## 6. Kiểm tra trước khi mời người dùng
