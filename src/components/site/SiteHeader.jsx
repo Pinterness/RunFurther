@@ -11,6 +11,7 @@ const navigation = [
   { href: '/', label: 'Trang chủ' },
   { href: '/events', label: 'Giải chạy' },
   { href: '/marketplace', label: 'Chuyển nhượng BIB' },
+  { href: '/community', label: 'Cộng đồng' },
   { href: '/lookup', label: 'Tra cứu' },
 ];
 
