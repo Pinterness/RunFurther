@@ -105,7 +105,8 @@ input::placeholder, textarea::placeholder { color: #69715f; }
 @keyframes menu-enter { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 @media (max-width: 1150px) {
   .app-header { padding: 18px 28px; gap: 22px; min-height: 82px; }
-  .app-nav { gap: 19px; }
+  /* Co theo bề rộng: menu có 5 mục (thêm "Cộng đồng") cộng tên người dùng dài vẫn vừa ở ~800px. */
+  .app-nav { gap: clamp(10px, 1.6vw, 19px); }
   .app-nav a { font-size: 11px; }
   .app-brand { font-size: 23px; }
   .app-user { gap: 14px; }

@@ -5,11 +5,11 @@
 .community-form h3 { margin: 0; }
 .community-consent-text { font-size: 13px; line-height: 1.8; color: #4c5546; background: #f1f2e9; border-left: 3px solid #6a8554; padding: 14px 18px; border-radius: 0 4px 4px 0; overflow-wrap: anywhere; }
 .community-field { display: grid; gap: 8px; font-size: 13px; font-weight: 600; }
-.community-field small { font-weight: 400; color: #67705f; }
+.community-field small { font-weight: 400; color: #67705f; font-size: 12px; line-height: 1.6; }
 .community-field textarea { width: 100%; resize: vertical; min-height: 84px; font: inherit; font-weight: 400; }
 .community-check { display: flex; gap: 12px; align-items: flex-start; font-size: 13px; font-weight: 600; line-height: 1.6; cursor: pointer; }
 .community-check input[type="checkbox"] { appearance: auto; width: 18px; height: 18px; min-height: 18px; flex: 0 0 18px; margin: 2px 0 0; padding: 0; accent-color: #263426; box-shadow: none; }
-.community-check small { display: block; font-weight: 400; color: #67705f; }
+.community-check small { display: block; font-weight: 400; color: #67705f; font-size: 12px; line-height: 1.6; }
 .community-agree { padding-top: 16px; border-top: 1px solid #e0e3d6; }
 .community-live { font-size: 13px; line-height: 1.8; margin-bottom: 18px; overflow-wrap: anywhere; }
 .community-live a { text-decoration: underline; font-weight: 600; }
@@ -30,7 +30,8 @@
 .community-card-name { font-size: 17px; font-weight: 650; letter-spacing: -.02em; overflow-wrap: anywhere; }
 .community-card-handle { font-size: 12px; color: #67705f; overflow-wrap: anywhere; }
 .community-card-bio { font-size: 13px; line-height: 1.7; color: #4c5546; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.community-card small { margin-top: auto; padding-top: 8px; font-size: 11px; color: #858c7d; }
+/* #6b7166 trên nền #fffefa đạt 5:1, đủ mức AA cho chữ nhỏ (màu cũ #858c7d chỉ 3,4:1). */
+.community-card small { margin-top: auto; padding-top: 8px; font-size: 12px; color: #6b7166; }
 .community-more { display: flex; justify-content: center; margin-top: 28px; }
 
 .community-back { display: inline-block; margin-bottom: 24px; }
@@ -42,10 +43,9 @@
 h1.community-missing { font-size: 28px; letter-spacing: -.035em; margin: 0 0 10px; }
 
 @media (max-width: 520px) {
-  /* Tab thứ tư "Cộng đồng" làm hàng tab của /account rộng hơn màn 400px, nên cho tab xuống dòng
-     giống hàng tab của trang ban tổ chức (.organizer-page .runner-tabs). */
-  .runner-toolbar .runner-tabs { flex-wrap: wrap; gap: 0 16px; }
-  .runner-toolbar .runner-tabs button { flex: 1 1 auto; }
+  /* Tab thứ tư "Cộng đồng" làm hàng tab của /account rộng hơn màn 400px, nên xếp bốn tab thành 2 × 2. Chỉ áp cho
+     .account-tabs: Next không gỡ CSS khi chuyển trang, nên quy tắc chung cho .runner-tabs sẽ lan sang /admin. */
+  .account-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
   .community-form { padding: 20px; }
   .community-grid { grid-template-columns: 1fr; gap: 14px; }
 }

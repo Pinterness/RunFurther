@@ -16,11 +16,15 @@ export default function CommunityPage() {
   const [profiles, setProfiles] = useState([]), [page, setPage] = useState(0), [hasMore, setHasMore] = useState(false);
   const [query, setQuery] = useState(''), [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(true), [error, setError] = useState('');
-  // Mỗi lần tải có một số thứ tự; phản hồi của lần tải cũ (ví dụ lần tìm trước) về muộn thì bỏ qua.
+  // Mỗi lần tải có một số thứ tự; phản hồi của lần tải cũ (ví dụ lần tìm trước) về muộn thì bỏ qua. Rời trang cũng
+  // tăng số này, để một lỗi 401 về muộn không kéo người dùng đang ở trang khác sang trang đăng nhập.
   const latest = useRef(0);
+  // Lần tải gần nhất, để "Thử lại" gửi lại đúng trang và từ khóa vừa hỏng.
+  const lastAttempt = useRef({ next: 1, q: '' });
 
   async function load(next, q) {
     const id = ++latest.current;
+    lastAttempt.current = { next, q };
     setLoading(true); setError('');
     try {
       const data = await api('/community/profiles?page=' + next + (q ? '&q=' + encodeURIComponent(q) : ''));
@@ -37,6 +41,7 @@ export default function CommunityPage() {
   useEffect(() => {
     if (!localStorage.getItem('rf_token')) { router.replace(loginHref('/community')); return; }
     load(1, '');
+    return () => { latest.current += 1; };
   }, []);
   function showAll() { setDraft(''); load(1, ''); }
 
@@ -59,21 +64,21 @@ export default function CommunityPage() {
         <span className="community-card-name">{profile.displayName}</span>
         <span className="community-card-handle">@{profile.handle}</span>
         {profile.bio && <span className="community-card-bio">{profile.bio}</span>}
-        <small>Tham gia {memberSinceLabel(profile.memberSince)}</small>
+        <small>Tham gia từ {memberSinceLabel(profile.memberSince)}</small>
       </Link>
     </li>)}
   </ul>;
 
   return <div className="runner-shell community-shell">
     <div className="runner-page-heading"><div><p className="section-index">CỘNG ĐỒNG RUNFURTHER</p><h1>Những người chạy cùng bạn.</h1></div><Link className="text-action" href="/account#community">Hồ sơ cộng đồng của bạn ↗</Link></div>
-    <p className="community-lead">Chỉ thành viên đã đăng nhập mới xem được trang này. Mỗi người tự bật hồ sơ của mình và tắt lúc nào cũng được.</p>
+    <p className="community-lead">Chỉ thành viên đã đăng nhập mới xem được trang này. Mỗi người tự bật hồ sơ của mình, tự chọn có hiện câu lạc bộ và thành tích hay không, và tắt lúc nào cũng được.</p>
     <form className="community-search" role="search" onSubmit={event => { event.preventDefault(); load(1, draft.trim()); }}>
       <label htmlFor="community-q">Tìm theo tên</label>
       <input id="community-q" type="search" maxLength={QUERY_MAX} placeholder="Ví dụ: Nguyễn Văn An" value={draft} onChange={event => setDraft(event.target.value)} />
       <button className="button-dark">Tìm</button>
       {query && <button type="button" className="text-action" onClick={showAll}>Xem tất cả</button>}
     </form>
-    {error && <div role="alert" className="notice notice-error">{error} <button type="button" className="text-action" onClick={() => load(1, query)}>Thử lại</button></div>}
+    {error && <div role="alert" className="notice notice-error">{error} <button type="button" className="text-action" onClick={() => load(lastAttempt.current.next, lastAttempt.current.q)}>Thử lại</button></div>}
     {content}
     {hasMore && <div className="community-more"><button type="button" className="quiet-button" onClick={() => load(page + 1, query)} disabled={loading}>{loading ? 'Đang tải...' : 'Xem thêm'}</button></div>}
   </div>;
