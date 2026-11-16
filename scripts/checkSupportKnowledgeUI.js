@@ -101,6 +101,7 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
         if (path === KNOWLEDGE) {
           if (method === 'GET') return reply({ articles: articles.map(listRow) });
           writes.push({ method, path, body });
+          if (holdWrites) await new Promise(resolve => { releaseWrite = resolve; });
           if (articles.some(article => article.key === body.key)) return fail(409, 'Mã bài đã tồn tại.', 'KNOWLEDGE_KEY_TAKEN');
           const at = now(), article = { _id: 'article-' + (articles.length + 1), key: body.key, ...Object.fromEntries(CONTENT.map(field => [field, body[field]])), status: 'DRAFT', version: 0, createdAt: at, updatedAt: at, updatedBy: admin, history: [] };
           articles.push(article);
@@ -291,7 +292,15 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await editor.getByLabel('Mã bài').fill('doi-size-ao');
     await editor.getByLabel('Từ khóa').fill('đổi size áo\nchọn nhầm size');
     await answer.fill('Bạn đổi size áo trong mục hồ sơ người chạy trước ngày đóng đăng ký.');
+    // Trong lúc bài đang lưu, mọi nút của hàng chờ bị khóa, để admin không bấm "Bỏ qua" hay "Đã xử lý" ngay trên câu
+    // đang được dùng làm bài (P09, lỗi nhẹ (c) của code-review P06).
+    holdWrites = true; releaseWrite = null;
     await saveButton.click();
+    await expect.poll(() => typeof releaseWrite).toBe('function');
+    const queueButtons = await queueSection.locator('.knowledge-queue-actions button').evaluateAll(nodes => nodes.map(node => node.textContent + ':' + node.disabled));
+    assert.equal(queueButtons.length, 9);
+    assert.deepEqual(queueButtons.filter(item => !item.endsWith(':true')), [], 'Mọi nút hàng chờ bị khóa khi đang lưu bài');
+    holdWrites = false; releaseWrite();
     await expect(status).toHaveText('Đã tạo bài nháp. Bot chỉ dùng bài sau khi bạn bấm Xuất bản.');
     assert.deepEqual(writes.at(-1), { method: 'POST', path: KNOWLEDGE, body: { key: 'doi-size-ao', title: LONG_SAMPLE.slice(0, 120), terms: ['đổi size áo', 'chọn nhầm size'], answer: 'Bạn đổi size áo trong mục hồ sơ người chạy trước ngày đóng đăng ký.', sources: [], suggestions: [], priority: 0, fromQuestionId: 'question-1' } });
     await expect(queueRows).toHaveCount(2);

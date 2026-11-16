@@ -86,12 +86,15 @@ async function listUnanswered({ status = 'OPEN' } = {}) {
  * Đánh dấu một câu là đã xử lý (RESOLVED) hoặc bỏ qua (IGNORED).
  * @param {string} id Mã câu trong hàng chờ.
  * @param {'RESOLVED' | 'IGNORED'} status Trạng thái mới.
+ * @param {{ from?: 'OPEN' }} [options] `from`: chỉ đổi khi câu đang ở trạng thái này; câu ở trạng thái khác coi như
+ *   không tìm thấy (404). Tạo bài từ một câu dùng `from: 'OPEN'`, để không đổi câu admin khác vừa bấm "Bỏ qua".
  * @returns {Promise<object>} Câu sau khi đổi, cùng các trường như danh sách.
  */
-async function setUnansweredStatus(id, status) {
+async function setUnansweredStatus(id, status, { from } = {}) {
   if (!['RESOLVED', 'IGNORED'].includes(status)) throw httpError(400, 'Trạng thái hàng chờ không hợp lệ.', errorCodes.UNANSWERED_INVALID);
+  // Điều kiện trạng thái nằm ngay trong lệnh cập nhật, nên hai admin thao tác cùng lúc cũng không ghi đè nhau.
   const question = mongoose.isObjectIdOrHexString(id)
-    && await UnansweredQuestion.findByIdAndUpdate(id, { status }, { new: true }).select(QUEUE_FIELDS).lean();
+    && await UnansweredQuestion.findOneAndUpdate({ _id: id, ...(from ? { status: from } : {}) }, { status }, { new: true }).select(QUEUE_FIELDS).lean();
   if (!question) throw httpError(404, 'Không tìm thấy câu hỏi trong hàng chờ.', errorCodes.UNANSWERED_NOT_FOUND);
   return question;
 }
