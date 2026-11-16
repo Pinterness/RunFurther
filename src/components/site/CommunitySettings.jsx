@@ -9,15 +9,25 @@ import './community.css';
 
 const BIO_MAX = 160;
 const blankForm = { bio: '', showClub: false, showResults: false };
-const formOf = profile => (profile ? { bio: profile.bio || '', showClub: Boolean(profile.showClub), showResults: Boolean(profile.showResults) } : blankForm);
+// Có hồ sơ thì form có thêm handle để đổi; lúc bật lần đầu handle luôn tự sinh từ họ tên.
+const formOf = profile => (profile ? { bio: profile.bio || '', showClub: Boolean(profile.showClub), showResults: Boolean(profile.showResults), handle: profile.handle } : blankForm);
 
-function SettingsFields({ form, setForm }) {
+// Câu cạnh ô "Hiện thành tích": cho chủ hồ sơ biết trước số liệu nào sẽ hiện (spec D1).
+function resultsPreview(results) {
+  if (!results) return 'Chưa có kết quả giải nào. Chỉ tính vé đã chạy xong có email trùng email tài khoản này.';
+  return `Sẽ hiện: ${results.completedRaces} giải đã hoàn thành, ${results.totalKm.toLocaleString('vi-VN')} km. Không có tên giải hay ngày chạy.`;
+}
+
+function SettingsFields({ form, setForm, results }) {
   return <>
+    {form.handle !== undefined && <label className="community-field" htmlFor="community-handle">Tên hồ sơ trên đường dẫn <small>/community/… gồm 3–30 chữ thường không dấu, số và dấu gạch</small>
+      <input id="community-handle" maxLength={30} autoCapitalize="none" autoComplete="off" spellCheck={false} value={form.handle} onChange={event => setForm({ ...form, handle: event.target.value })} />
+    </label>}
     <label className="community-field" htmlFor="community-bio">Lời giới thiệu <small>(không bắt buộc, tối đa {BIO_MAX} ký tự)</small>
       <textarea id="community-bio" rows={3} maxLength={BIO_MAX} value={form.bio} onChange={event => setForm({ ...form, bio: event.target.value })} />
     </label>
     <label className="community-check"><input type="checkbox" checked={form.showClub} onChange={event => setForm({ ...form, showClub: event.target.checked })} /><span>Hiện câu lạc bộ<small>Lấy từ hồ sơ người chạy của bạn.</small></span></label>
-    <label className="community-check"><input type="checkbox" checked={form.showResults} onChange={event => setForm({ ...form, showResults: event.target.checked })} /><span>Hiện thành tích<small>Chỉ là số tổng hợp: số giải đã hoàn thành, tổng km, thời gian tốt nhất. Không có tên giải hay ngày chạy.</small></span></label>
+    <label className="community-check"><input type="checkbox" checked={form.showResults} onChange={event => setForm({ ...form, showResults: event.target.checked })} /><span>Hiện thành tích<small>{resultsPreview(results)}</small></span></label>
   </>;
 }
 
@@ -63,14 +73,14 @@ export default function CommunitySettings({ onOpenRunnerProfile }) {
   else if (!profile) body = <form className="community-form" onSubmit={event => { event.preventDefault(); save({ consentVersion: data.consentText.version, ...form }, 'Đã bật hồ sơ cộng đồng. Các thành viên đã đăng nhập giờ xem được hồ sơ của bạn.'); }}>
     <h3>Bật hồ sơ cộng đồng</h3>
     <p className="community-consent-text">{data.consentText.text}</p>
-    <SettingsFields form={form} setForm={setForm} />
+    <SettingsFields form={form} setForm={setForm} results={data.results} />
     <label className="community-check community-agree"><input type="checkbox" checked={agreed} onChange={event => setAgreed(event.target.checked)} /><span>Tôi đồng ý công khai hồ sơ theo nội dung trên</span></label>
     <div className="form-bottom"><button className="button-primary" disabled={!agreed || saving}>{saving ? 'Đang bật...' : 'Bật hồ sơ'}</button></div>
   </form>;
   else body = <>
     <p className="community-live">Hồ sơ của bạn đang hiện với các thành viên đã đăng nhập tại <Link href={'/community/' + profile.handle}>/community/{profile.handle}</Link></p>
     <form className="community-form" onSubmit={event => { event.preventDefault(); save(form, 'Đã lưu hồ sơ cộng đồng.'); }}>
-      <SettingsFields form={form} setForm={setForm} />
+      <SettingsFields form={form} setForm={setForm} results={data.results} />
       <div className="form-bottom"><button className="button-primary" disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu thay đổi'}</button></div>
     </form>
     <div className="community-danger">

@@ -14,6 +14,17 @@ const RESERVED = new Set([
 ]);
 
 const trimDashes = text => text.replace(/^-+|-+$/g, '');
+// Bỏ dấu tiếng Việt và đổi về chữ thường: "Nguyễn Đức" → "nguyen duc".
+const stripMarks = text => String(text ?? '').toLowerCase().replace(/đ/g, 'd').normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+/**
+ * Chuẩn hóa chữ để so khi tìm theo tên: bỏ dấu, chữ thường, mỗi cụm ký tự lạ thành một khoảng trắng.
+ * @param {string} text Họ tên, handle hay từ khóa.
+ * @returns {string} Ví dụ "  NGUYỄN   Thị-B " → "nguyen thi b".
+ */
+function foldName(text) {
+  return stripMarks(text).replace(/[^a-z0-9]+/g, ' ').trim();
+}
 
 /**
  * Đổi họ tên thành phần gốc của handle: bỏ dấu tiếng Việt, "đ" thành "d", chữ thường, mỗi cụm ký tự lạ thành một
@@ -22,12 +33,7 @@ const trimDashes = text => text.replace(/^-+|-+$/g, '');
  * @returns {string} Phần gốc của handle, luôn khớp HANDLE_PATTERN.
  */
 function slugifyName(fullName) {
-  const ascii = String(fullName ?? '')
-    .toLowerCase()
-    .replace(/đ/g, 'd')
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '');
-  const slug = trimDashes(trimDashes(ascii.replace(/[^a-z0-9]+/g, '-')).slice(0, MAX_LENGTH));
+  const slug = trimDashes(trimDashes(stripMarks(fullName).replace(/[^a-z0-9]+/g, '-')).slice(0, MAX_LENGTH));
   if (!slug) return FALLBACK;
   return slug.length < 3 ? `${slug}-${FALLBACK}` : slug;
 }
@@ -84,4 +90,4 @@ async function createProfileWithHandle(doc, fullName) {
   throw httpError(409, 'Chưa tạo được tên hồ sơ vì đang có nhiều người trùng tên. Bạn thử lại sau ít phút.', errorCodes.COMMUNITY_HANDLE_TAKEN);
 }
 
-module.exports = { slugifyName, isReservedHandle, HANDLE_PATTERN, createProfileWithHandle };
+module.exports = { slugifyName, foldName, isReservedHandle, HANDLE_PATTERN, createProfileWithHandle };

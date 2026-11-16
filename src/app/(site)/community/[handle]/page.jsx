@@ -10,6 +10,8 @@ import { api } from '../../../../lib/clientApi';
 import { loginHref, memberSinceLabel } from '../../../../lib/communityClient';
 import '../../../../components/site/community.css';
 
+const BEST_TIME_ORDER = ['5K', '10K', '21K', '42K'];
+
 export default function CommunityProfilePage({ params }) {
   const { handle } = use(params);
   const router = useRouter();
@@ -49,6 +51,11 @@ export default function CommunityProfilePage({ params }) {
         <small>Tham gia từ {memberSinceLabel(profile.memberSince)}</small>
       </div>
     </section>
+    {profile.results && <section className="runner-metrics community-results" aria-label="Thành tích">
+      <div><span>{profile.results.completedRaces}</span><small>Giải đã hoàn thành</small></div>
+      <div><span>{profile.results.totalKm.toLocaleString('vi-VN')}<em> km</em></span><small>Quãng đường hoàn thành</small></div>
+      {BEST_TIME_ORDER.filter(key => profile.results.bestTimes?.[key]).map(key => <div key={key}><span>{profile.results.bestTimes[key]}</span><small>Tốt nhất {key}</small></div>)}
+    </section>}
     <dl className="community-details">
       <div><dt>Giới thiệu</dt><dd>{profile.bio || 'Người chạy này chưa viết lời giới thiệu.'}</dd></div>
       {profile.club && <div><dt>Câu lạc bộ</dt><dd>{profile.club}</dd></div>}

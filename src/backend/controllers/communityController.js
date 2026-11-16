@@ -17,7 +17,7 @@ exports.deleteMe = handle(async (req, res) => {
 });
 
 exports.list = handle(async (req, res) => {
-  res.json(await community.listProfiles(req.userId, { page: req.query.page }));
+  res.json(await community.listProfiles(req.userId, { page: req.query.page, q: req.query.q }));
 });
 
 exports.detail = handle(async (req, res) => {

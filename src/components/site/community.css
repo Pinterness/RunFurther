@@ -18,6 +18,10 @@
 .community-age h3 { margin-top: 0; }
 
 .community-lead { font-size: 13px; color: #67705f; line-height: 1.8; margin: -8px 0 28px; max-width: 620px; }
+.community-search { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; margin-bottom: 28px; }
+.community-search label { flex-basis: 100%; font-size: 12px; font-weight: 650; }
+.community-search input { flex: 1 1 220px; min-width: 0; max-width: 420px; }
+.community-results { margin: 28px 0 0; }
 .community-grid { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 20px; }
 .community-card { display: grid; justify-items: start; gap: 6px; height: 100%; padding: 22px; background: #fffefa; border: 1px solid #e0e3d6; border-radius: 6px; transition: transform var(--duration-normal, .2s), border-color var(--duration-fast, .15s); }
 .community-card:hover { transform: translateY(-2px); border-color: #b9c2aa; }

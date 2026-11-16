@@ -19,12 +19,12 @@ const card = (handle, displayName, bio = '') => ({ handle, displayName, avatarTh
       user: { _id: 'u1', fullName: 'Người Chạy Thử', email: 'runner@test.local', phone: '0900000000', avatarTheme: 'forest', createdAt: '2026-01-02T00:00:00.000Z' },
       profile: { gender: 'Không chia sẻ', birthday: '1995-03-10', nationality: 'Việt Nam', shirtSize: 'M', club: '', emergencyContact: '', emergencyPhone: '' },
     };
-    const me = { profile: null, eligible: false, consentText: CONSENT };
+    const me = { profile: null, eligible: false, consentText: CONSENT, results: null };
     let pages = { 1: { profiles: [], page: 1, hasMore: false } };
     const details = {
-      'nguoi-xss': { ...card('nguoi-xss', XSS, XSS), club: 'CLB Sông Hàn' },
+      'nguoi-xss': { ...card('nguoi-xss', XSS, XSS), club: 'CLB Sông Hàn', results: { completedRaces: 4, totalKm: 62.2, bestTimes: { '5K': '0:25:30', '21K': '1:50:10' } } },
     };
-    const puts = [];
+    const puts = [], searches = [];
     let deletes = 0;
 
     await page.route('**/api/**', async route => {
@@ -42,10 +42,14 @@ const card = (handle, displayName, bio = '') => ({ handle, displayName, avatarTh
       if (path === '/community/me' && method === 'PUT') {
         const body = request.postDataJSON(); puts.push(body);
         const created = !me.profile;
-        me.profile = { handle: 'nguoi-chay-thu', bio: body.bio ?? me.profile?.bio ?? '', showClub: body.showClub ?? false, showResults: body.showResults ?? false, consentVersion: 'profile-v1', consentAt: '2026-11-16T03:00:00.000Z' };
+        me.profile = { handle: body.handle ?? me.profile?.handle ?? 'nguoi-chay-thu', bio: body.bio ?? me.profile?.bio ?? '', showClub: body.showClub ?? false, showResults: body.showResults ?? false, consentVersion: 'profile-v1', consentAt: '2026-11-16T03:00:00.000Z' };
         return reply({ profile: me.profile }, created ? 201 : 200);
       }
       if (path === '/community/me' && method === 'DELETE') { deletes++; me.profile = null; return route.fulfill({ status: 204 }); }
+      if (path === '/community/profiles' && url.searchParams.get('q')) {
+        const q = url.searchParams.get('q'); searches.push(q);
+        return reply({ profiles: q === 'nguyen' ? [card('nguyen-van-a', 'Nguyễn Văn A')] : [], page: 1, hasMore: false });
+      }
       if (path === '/community/profiles') return reply(pages[url.searchParams.get('page') || '1']);
       const match = /^\/community\/profiles\/([^/]+)$/.exec(path);
       if (match) {
@@ -79,6 +83,8 @@ const card = (handle, displayName, bio = '') => ({ handle, displayName, avatarTh
     await expect(page.getByText(CONSENT.text)).toBeVisible();
     await expect(page.getByLabel('Hiện câu lạc bộ')).not.toBeChecked();
     await expect(page.getByLabel('Hiện thành tích')).not.toBeChecked();
+    // Chưa có kết quả giải nào thì báo ngay cạnh ô "Hiện thành tích" (spec D1).
+    await expect(page.getByText('Chưa có kết quả giải nào', { exact: false })).toBeVisible();
     const enable = page.getByRole('button', { name: 'Bật hồ sơ' });
     await expect(enable).toBeDisabled();
     await page.getByLabel('Lời giới thiệu').fill('Chạy sáng ven sông');
@@ -87,6 +93,15 @@ const card = (handle, displayName, bio = '') => ({ handle, displayName, avatarTh
     await enable.click();
     await expect(page.getByRole('link', { name: /\/community\/nguoi-chay-thu/ })).toBeVisible();
     assert.deepEqual(puts[0], { consentVersion: 'profile-v1', bio: 'Chạy sáng ven sông', showClub: false, showResults: false });
+
+    // Đổi handle sau khi bật: ô nhập có handle hiện tại, lưu thì gửi handle mới và link đổi theo.
+    const handleInput = page.getByLabel('Tên hồ sơ trên đường dẫn');
+    await expect(handleInput).toHaveValue('nguoi-chay-thu');
+    await handleInput.fill('chay-cung-nam');
+    await page.getByRole('button', { name: 'Lưu thay đổi' }).click();
+    await expect(page.getByRole('link', { name: /\/community\/chay-cung-nam/ })).toBeVisible();
+    assert.equal(puts[1].handle, 'chay-cung-nam');
+    assert.equal('consentVersion' in puts[1], false);
 
     // Tắt hồ sơ: hộp xác nhận; "Giữ lại" không gọi gì, "Xóa hồ sơ" gọi DELETE (trả 204) và quay về màn hình đồng ý.
     await page.getByRole('button', { name: 'Tắt và xóa hồ sơ cộng đồng' }).click();
@@ -116,12 +131,33 @@ const card = (handle, displayName, bio = '') => ({ handle, displayName, avatarTh
     await expect(page.getByRole('button', { name: 'Xem thêm' })).toHaveCount(0);
     assert.equal(await page.locator('img[src="x"]').count(), 0);
 
+    // Tìm theo tên: gửi q, hiện kết quả; không ai khớp thì báo và có nút xem lại tất cả.
+    const searchBox = page.getByLabel('Tìm theo tên');
+    await searchBox.fill('nguyen');
+    await page.getByRole('button', { name: 'Tìm', exact: true }).click();
+    await expect(page.getByRole('link', { name: /Nguyễn Văn A/ })).toHaveAttribute('href', '/community/nguyen-van-a');
+    await expect(page.locator('.community-card')).toHaveCount(1);
+    await searchBox.fill('khong co ai');
+    await page.getByRole('button', { name: 'Tìm', exact: true }).click();
+    await expect(page.getByText('Không tìm thấy người chạy nào', { exact: false })).toBeVisible();
+    await expect(page.getByText('Chưa có ai bật hồ sơ cộng đồng')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Xem tất cả' }).click();
+    await expect(page.locator('.community-card')).toHaveCount(1);
+    await expect(searchBox).toHaveValue('');
+    assert.deepEqual(searches, ['nguyen', 'khong co ai']);
+
     // Trang hồ sơ: chữ thuần, không có thẻ img mới, không chạy onerror.
     await page.goto(base + '/community/nguoi-xss');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(XSS);
     await expect(page.getByText('@nguoi-xss')).toBeVisible();
     await expect(page.getByText('CLB Sông Hàn')).toBeVisible();
     await expect(page.getByText('tháng 01/2026', { exact: false })).toBeVisible();
+    // Khối thành tích: chỉ số tổng hợp.
+    const results = page.getByRole('region', { name: 'Thành tích' });
+    await expect(results).toContainText('4');
+    await expect(results).toContainText('62,2');
+    await expect(results).toContainText('1:50:10');
+    await expect(results).toContainText('Tốt nhất 21K');
     assert.equal(await page.locator('img[src="x"]').count(), 0);
     assert.equal(await page.evaluate(() => window.__communityXss), undefined);
 
@@ -139,6 +175,6 @@ const card = (handle, displayName, bio = '') => ({ handle, displayName, avatarTh
     }
 
     assert.deepEqual(errors, []);
-    console.log('PASS: khách chuyển tới /login, chưa đủ tuổi thấy giải thích, ô đồng ý không tick sẵn và khóa nút bật, PUT gửi profile-v1, tắt hồ sơ có hộp xác nhận và DELETE 204, danh sách trống và phân trang, HTML trong họ tên hiện là chữ, 404, 400px không cuộn ngang (API giả).');
+    console.log('PASS: khách chuyển tới /login, chưa đủ tuổi thấy giải thích, ô đồng ý không tick sẵn và khóa nút bật, PUT gửi profile-v1, báo chưa có kết quả, đổi handle, tắt hồ sơ có hộp xác nhận và DELETE 204, danh sách trống, phân trang và tìm theo tên, HTML trong họ tên hiện là chữ, khối thành tích, 404, 400px không cuộn ngang (API giả).');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
