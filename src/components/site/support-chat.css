@@ -26,6 +26,10 @@ body:has(.immersive-journey[data-enhanced=true]) .support-widget:not([data-open=
 .support-welcome>span,.support-eyebrow { display:block; font-size:8px; font-weight:650; letter-spacing:.14em; color:var(--accent-strong); margin-bottom:14px; }
 .support-welcome h3,.support-ticket-guest h3 { font-size:25px; line-height:1.16; font-weight:600; letter-spacing:-.045em; }
 .support-welcome p,.support-ticket-guest>p { color:var(--muted); font-size:12px; line-height:1.8; margin-top:15px; }
+/* Hai dòng báo dữ liệu ở đầu khung trò chuyện (P09) */
+.support-notices { margin:0 0 18px; padding:10px 12px; border-left:2px solid #c9cebf; background:var(--background); border-radius:0 4px 4px 0; }
+.support-notices p { font-size:10px; line-height:1.65; color:var(--muted); }
+.support-notices p+p { margin-top:6px; }
 .support-message { max-width:94%; margin-bottom:18px; border:1px solid var(--border); border-radius:9px 9px 9px 2px; padding:12px 13px; background:var(--background); overflow-wrap:anywhere; }
 .support-message-user { margin-left:auto; background:#e9eee2; border-color:#dae2cf; border-radius:9px 9px 2px 9px; }
 .support-message small { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:7px; color:var(--muted); font-size:9px; font-weight:600; }

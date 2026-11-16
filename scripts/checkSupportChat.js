@@ -1,6 +1,7 @@
 const { chromium, expect } = require('@playwright/test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const { actionLabel } = require('../src/lib/supportActions.cjs');
 const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
 
 (async () => {
@@ -12,6 +13,8 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     let failChat = true, longReply = false, holdChat = false, releaseChat, ticket = null, failCreate = true, detailReads = 0, chatActions = null;
     // Nút "Chưa đúng" (Task 6.5): key bài server gửi kèm câu trả lời, và câu trả lời giả của POST /support/feedback.
     let chatArticleKeys = null, failFeedback = false, feedbackRecorded = true;
+    // P09: mã lỗi khi chat hỏng (503 kèm JSON, hoặc 500 kèm trang HTML như lúc máy chủ khởi động lại) và `mode` của câu trả lời.
+    let failStatus = 503, chatMode = 'guide';
     const feedbackBodies = [];
     const now = '2030-06-01T09:30:00.000Z';
     const unsafeReply = 'Bạn có thể tra cứu BIB. <img src=x onerror="window.chatInjected=true">';
@@ -26,9 +29,10 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
         assert.ok(body.history.length <= 10, 'Chat sends at most ten prior messages');
         assert.ok(body.history.every(item => ['user', 'assistant'].includes(item.role) && item.content.length <= 4000), 'History entries fit the backend schema');
         assert.ok(body.history.reduce((sum, item) => sum + item.content.length, 0) <= 16000, 'Long conversations remain inside the backend history budget');
+        if (failChat && failStatus === 500) return route.fulfill({ status: 500, contentType: 'text/html', body: '<html><body>Internal Server Error</body></html>' });
         if (failChat) return route.fulfill({ status: 503, json: { message: 'Trợ lý đang bận. Bạn thử lại nhé.' } });
         if (holdChat) await new Promise(resolve => { releaseChat = resolve; });
-        return reply({ reply: holdChat ? 'PHẢN HỒI RIÊNG TƯ CŨ' : longReply ? 'Hướng dẫn ' + chatBodies.length + '. ' + 'Thông tin mẫu. '.repeat(240) : unsafeReply, mode: 'guide', suggestions: ['Tìm cự ly phù hợp'], ...(chatActions ? { actions: chatActions } : {}), ...(chatArticleKeys ? { articleKeys: chatArticleKeys } : {}), sources: [
+        return reply({ reply: holdChat ? 'PHẢN HỒI RIÊNG TƯ CŨ' : longReply ? 'Hướng dẫn ' + chatBodies.length + '. ' + 'Thông tin mẫu. '.repeat(240) : unsafeReply, mode: chatMode, suggestions: ['Tìm cự ly phù hợp'], ...(chatActions ? { actions: chatActions } : {}), ...(chatArticleKeys ? { articleKeys: chatArticleKeys } : {}), sources: [
           { title: 'Tra cứu BIB', url: '/lookup' }, { title: 'External', url: 'https://outside.example.test' },
           { title: 'Protocol relative', url: '//outside.example.test' }, { title: 'Script', url: 'javascript:alert(1)' },
           { title: 'Backslash', url: '/\\outside.example.test' },
@@ -64,10 +68,15 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await expect(panel).toBeVisible();
     await expect(widget.locator('#support-heading')).toBeFocused();
     await expect(widget.getByRole('button', { name: 'Gửi câu hỏi', exact: true })).toBeDisabled();
-    // Dòng báo hàng chờ (Global Constraints của plan; Task 6.5 thay câu của Task 6.4 vì có thêm nút "Chưa đúng").
-    await expect(widget.locator('.support-composer').getByText('Câu trợ lý chưa trả lời được, hoặc câu bạn báo “Chưa đúng”, sẽ được lưu không kèm tài khoản, đã che các dãy số, và tự xóa sau 30 ngày không có ai hỏi lại.', { exact: true })).toBeVisible();
-    // Dòng báo AI (P08, Global Constraints): nói rõ ai được dùng AI, câu gì được gửi tới Google Gemini và Google được làm gì với nó.
-    await expect(widget.locator('.support-composer').getByText('Khi bạn đã đăng nhập và hồ sơ cho thấy đủ 18 tuổi, câu hỏi chung (không gồm dữ liệu vé, ví, đơn) được gửi tới Google Gemini để viết câu trả lời. Google có thể dùng nội dung này để cải thiện sản phẩm, và người của Google có thể đọc. Đừng nhập họ tên, số điện thoại, thông tin sức khỏe hay thông tin cá nhân khác vào câu hỏi.', { exact: true })).toBeVisible();
+    // Hai dòng báo nằm ở đầu khung trò chuyện (P09, người dùng chọn), ai mở chat cũng thấy trước khi hỏi, và ô nhập gọn
+    // lại trên màn hẹp. Câu chữ giữ đúng Global Constraints của plan.
+    const notices = widget.locator('.support-transcript .support-notices');
+    // Dòng báo hàng chờ (Task 6.5 thay câu của Task 6.4 vì có thêm nút "Chưa đúng").
+    await expect(notices.getByText('Câu trợ lý chưa trả lời được, hoặc câu bạn báo “Chưa đúng”, sẽ được lưu không kèm tài khoản, đã che các dãy số, và tự xóa sau 30 ngày không có ai hỏi lại.', { exact: true })).toBeVisible();
+    // Dòng báo AI (P08): nói rõ ai được dùng AI, câu gì được gửi tới Google Gemini và Google được làm gì với nó.
+    await expect(notices.getByText('Khi bạn đã đăng nhập và hồ sơ cho thấy đủ 18 tuổi, câu hỏi chung (không gồm dữ liệu vé, ví, đơn) được gửi tới Google Gemini để viết câu trả lời. Google có thể dùng nội dung này để cải thiện sản phẩm, và người của Google có thể đọc. Đừng nhập họ tên, số điện thoại, thông tin sức khỏe hay thông tin cá nhân khác vào câu hỏi.', { exact: true })).toBeVisible();
+    await expect(widget.locator('.support-composer')).not.toContainText('Google Gemini');
+    await expect(widget.locator('.support-composer')).not.toContainText('30 ngày');
     await expect(widget).not.toContainText('Câu hỏi có thể được xử lý bởi dịch vụ AI khi tính năng này được bật.');
     await question.fill('Tôi cần tìm BIB của mình');
     await question.press('Enter');
@@ -76,6 +85,8 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     failChat = false;
     await widget.getByRole('button', { name: 'Thử lại', exact: true }).click();
     await expect(widget.locator('.support-message-assistant')).toHaveCount(1);
+    // Bấm chuột (hay chạm) thì focus không nhảy về ô nhập, để bàn phím ảo trên điện thoại không tự bật lên (P09).
+    await expect(question).not.toBeFocused();
     await expect(widget.locator('.support-message-user')).toHaveCount(1);
     assert.deepEqual(chatBodies[0], chatBodies[1], 'Retry keeps the original prompt/history without duplicating the user message');
     await expect(widget.locator('.support-message-assistant')).toContainText(unsafeReply);
@@ -234,8 +245,8 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await question.fill('Cho tôi một hướng dẫn dài để đọc');
     await question.press('Enter');
     await expect(widget.locator('.support-message-assistant')).toHaveCount(1);
-    for (const width of [1440, 768, 390, 360]) {
-      await page.setViewportSize({ width, height: width <= 390 ? 667 : 950 });
+    for (const width of [1440, 768, 400, 390, 360]) {
+      await page.setViewportSize({ width, height: width <= 400 ? 667 : 950 });
       const box = await panel.boundingBox(), viewport = page.viewportSize();
       assert.ok(box.x >= 0 && box.x + box.width <= viewport.width + 1 && box.y >= 0 && box.y + box.height <= viewport.height + 1, 'Widget stays inside the viewport at ' + width);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'No horizontal page overflow at ' + width);
@@ -274,7 +285,83 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await lastAnswer.getByRole('link', { name: 'Ví của tôi' }).click();
     await expect(page).toHaveURL(/\/account\/wallet$/);
     await expect(panel).toHaveCount(0);
+
+    // P09, Task 9.1: ở độ rộng 400px, khung chat dùng được hoàn toàn bằng bàn phím, nhãn chế độ theo đúng `mode`,
+    // và lỗi 500 cũng có nút thử lại. Tải lại trang để bắt đầu từ khung chat trống của khách.
+    await page.setViewportSize({ width: 400, height: 667 });
+    await page.goto(base + '/lookup', { waitUntil: 'networkidle' });
+    await launcher.click();
+    await expect(panel).toBeVisible();
+    // Mở khung chat còn trống thì thấy trọn khối dòng báo ngay, không bị cuộn khuất sau các câu gợi ý.
+    const noticeBox = await notices.boundingBox(), openBox = await transcript.boundingBox();
+    assert.ok(noticeBox.y >= openBox.y - 1 && noticeBox.y + noticeBox.height <= openBox.y + openBox.height + 1, 'Dòng báo nằm trọn trong tầm nhìn khi mở khung chat trống ở 400 × 667');
+    const answers = widget.locator('.support-message-assistant');
+    // Máy chủ trả 500 kèm trang HTML (như Render lúc khởi động lại): vẫn có câu báo lỗi và nút "Thử lại".
+    failChat = true; failStatus = 500; chatMode = 'ai';
+    await question.fill('Giải nào sắp mở đăng ký?');
+    await question.press('Enter');
+    await expect(widget.getByRole('alert')).toContainText('Máy chủ chưa sẵn sàng');
+    await expect(answers).toHaveCount(0);
+    failChat = false; failStatus = 503;
+    // Nút "Thử lại" biến mất khi gửi lại, nên bấm bằng bàn phím thì focus về ô nhập chứ không rơi ra ngoài khung chat.
+    await widget.getByRole('button', { name: 'Thử lại', exact: true }).focus();
+    await page.keyboard.press('Enter');
+    await expect(question).toBeFocused();
+    await expect(answers).toHaveCount(1);
+    await expect(widget.getByRole('alert')).toHaveCount(0);
+    // Câu trả lời của AI mang nhãn "Trợ lý AI", cả trên câu trả lời lẫn ở dòng chế độ phía trên.
+    await expect(answers.nth(0).locator('small')).toHaveText('Trợ lý AI');
+    await expect(widget.locator('.support-mode')).toContainText('Trợ lý AI');
+    // Câu trả lời tác vụ (có nút) luôn là guide: nhãn đổi về "Hướng dẫn tự động", câu AI cũ giữ nhãn của nó.
+    // Nhãn dài nhất server tạo được (40 ký tự, cắt bằng actionLabel) dùng để kiểm nút không tràn khung ở 400px.
+    chatMode = 'guide';
+    const longLabel = actionLabel('Kết quả Giải chạy di sản Cần Thơ mở rộng lần thứ ba');
+    chatActions = [{ label: 'Lịch giải', url: '/events' }, { label: longLabel, url: '/marketplace' }, { label: 'Gửi yêu cầu hỗ trợ', view: 'new-ticket' }];
+    await question.fill('Kết quả chạy của tôi');
+    await question.press('Enter');
+    await expect(answers).toHaveCount(2);
+    const taskAnswer = answers.nth(1);
+    await expect(taskAnswer.locator('small')).toHaveText('Hướng dẫn tự động');
+    await expect(widget.locator('.support-mode')).toContainText('Hướng dẫn tự động');
+    await expect(answers.nth(0).locator('small')).toHaveText('Trợ lý AI');
+    // Dòng báo vẫn là mục đầu tiên của khung trò chuyện khi đã có câu trả lời; phần trò chuyện còn đủ chỗ đọc ở 400 × 667
+    // (trước P09, dòng báo nằm dưới ô nhập và phần này chỉ còn khoảng 120px).
+    assert.equal(await transcript.evaluate(node => node.firstElementChild.className), 'support-notices');
+    const transcriptHeight = await transcript.evaluate(node => node.clientHeight);
+    assert.ok(transcriptHeight >= 180, 'Phần trò chuyện cao ít nhất 180px ở 400 × 667, đang là ' + transcriptHeight);
+    const panelBox = await panel.boundingBox();
+    const actionBoxes = await taskAnswer.locator('.support-actions a, .support-actions button').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().toJSON()));
+    assert.equal(actionBoxes.length, 3);
+    for (const box of actionBoxes) assert.ok(box.left >= panelBox.x && box.right <= panelBox.x + panelBox.width + 1, 'Nút tác vụ nằm gọn trong khung chat ở 400px');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'Không cuộn ngang ở 400px khi câu trả lời có nút');
+    // Phím Tab đi theo thứ tự đọc: ba nút của câu trả lời, nguồn, câu gợi ý, ô nhập, rồi nút gửi (ô nhập có chữ thì nút gửi mới bật).
+    await question.fill('Còn một câu nữa');
+    const stops = [
+      taskAnswer.getByRole('link', { name: 'Lịch giải' }), taskAnswer.getByRole('link', { name: longLabel }),
+      taskAnswer.getByRole('button', { name: 'Gửi yêu cầu hỗ trợ' }), taskAnswer.getByRole('link', { name: 'Tra cứu BIB' }),
+      widget.getByRole('button', { name: 'Tìm cự ly phù hợp' }), question, widget.getByRole('button', { name: 'Gửi câu hỏi', exact: true }),
+    ];
+    await stops[0].focus();
+    for (const stop of stops.slice(1)) { await page.keyboard.press('Tab'); await expect(stop).toBeFocused(); }
+    // Câu gợi ý cũng biến mất khi gửi: bấm bằng bàn phím thì focus về ô nhập, và chữ đang gõ dở không bị xóa.
+    chatActions = null;
+    await stops[4].focus();
+    await page.keyboard.press('Enter');
+    await expect(question).toBeFocused();
+    await expect(answers).toHaveCount(3);
+    await expect(question).toHaveValue('Còn một câu nữa');
+    // Enter trên nút mở tab hỗ trợ: sang tab "Nhân viên hỗ trợ" và focus nằm ở tab.
+    await taskAnswer.getByRole('button', { name: 'Gửi yêu cầu hỗ trợ' }).focus();
+    await page.keyboard.press('Enter');
+    await expect(widget.getByRole('button', { name: 'Nhân viên hỗ trợ', exact: true })).toBeFocused();
+    await expect(widget.locator('.support-ticket-guest')).toBeVisible();
+    // Enter trên nút dẫn trang: sang đúng trang và khung chat đóng lại.
+    await widget.getByRole('button', { name: 'Trợ lý nhanh', exact: true }).click();
+    await answers.nth(1).getByRole('link', { name: 'Lịch giải' }).focus();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/\/events$/);
+    await expect(panel).toHaveCount(0);
     assert.deepEqual(errors, []);
-    console.log('PASS: unanswered-queue notice, "Chưa đúng" feedback (only on article answers, question and valid keys sent, retry on error, thanks or not-saved status), guest chat/retry, bounded history, text-only answers/internal links, action buttons (internal links, support list and new-request form, duplicate sources hidden), auth reset/stale response guard, human ticket create/detail/reply/closed, mobile fit, isolated wheel and Escape focus (API fixtures only).');
+    console.log('PASS: unanswered-queue notice, "Chưa đúng" feedback (only on article answers, question and valid keys sent, retry on error, thanks or not-saved status), guest chat/retry, bounded history, text-only answers/internal links, action buttons (internal links, support list and new-request form, duplicate sources hidden), auth reset/stale response guard, human ticket create/detail/reply/closed, mobile fit, isolated wheel and Escape focus, 400px keyboard flow (500 retry, mode labels, Tab order, focus kept after prompt/retry, Enter on actions) (API fixtures only).');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
