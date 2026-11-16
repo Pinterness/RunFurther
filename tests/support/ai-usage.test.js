@@ -106,3 +106,15 @@ test('bộ đếm theo tài khoản bỏ các ngày cũ, không phình mãi', ()
   allowance.consume('user-0', new Date('2026-11-05T08:00:00Z'));
   assert.equal(allowance.size(), 1);
 });
+
+// P09: tryConsume kiểm và trừ trong một bước; refund trả lại lượt khi cổng không giữ được lượt ngày, nhưng chỉ trong
+// cùng ngày Pacific (gọi refund bằng giờ của ngày khác không được xóa số đếm của ngày đang chạy).
+test('tryConsume trừ lượt ngay khi kiểm; refund chỉ trả lượt trong cùng ngày Pacific', () => {
+  const allowance = createAccountAllowance({ perDay: 2 });
+  assert.equal(allowance.tryConsume('a', NOW), true); assert.equal(allowance.tryConsume('a', NOW), true);
+  assert.equal(allowance.tryConsume('a', NOW), false);
+  allowance.refund('a', NOW);
+  assert.equal(allowance.tryConsume('a', NOW), true);
+  allowance.refund('a', new Date('2026-11-05T08:00:00Z'));
+  assert.equal(allowance.canUse('a', NOW), false);
+});

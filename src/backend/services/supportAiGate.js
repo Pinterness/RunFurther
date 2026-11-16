@@ -48,10 +48,10 @@ function createAiGate({
     if (!(await attempt(isSwitchOn, false))) return deny('switch');
     const at = now();
     if (!isAdult(await attempt(() => findDob(userId), null), at)) return deny('age');
-    if (!allowance.canUse(userId, at)) return deny('account-limit');
-    if (!(await attempt(() => reserve({ now: at }), false))) return deny('daily-limit');
-    // Lượt của tài khoản chỉ bị trừ khi đã giữ được lượt ngày.
-    allowance.consume(userId, at);
+    // Trừ lượt của tài khoản ngay lúc kiểm (không có await ở giữa), để nhiều câu tới cùng lúc không cùng lọt qua.
+    // Không giữ được lượt ngày thì trả lại, nên lượt của tài khoản chỉ bị tính khi đã giữ được lượt ngày.
+    if (!allowance.tryConsume(userId, at)) return deny('account-limit');
+    if (!(await attempt(() => reserve({ now: at }), false))) { allowance.refund(userId, at); return deny('daily-limit'); }
     return { allowed: true, reason: null };
   };
 }

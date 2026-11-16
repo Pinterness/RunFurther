@@ -168,3 +168,13 @@ test('đang có 4 lời gọi AI chạy dở thì câu thứ 5 nhận guide mà 
     assert.ok((await Promise.all(running)).every(result => result.mode === 'ai'), 'vòng ' + round);
   }
 });
+
+// P09, lỗi nhẹ (3) của code-review P08: trước đây cổng kiểm "còn lượt của tài khoản" rồi mới trừ sau một await (giữ
+// lượt ngày), nên nhiều câu của cùng tài khoản tới cùng lúc đều qua bước kiểm. Nay kiểm và trừ trong cùng một bước.
+test('nhiều câu của cùng tài khoản tới cùng lúc thì không vượt giới hạn câu AI của tài khoản', async () => {
+  const allowance = createAccountAllowance({ perDay: 2 });
+  const gate = createAiGate({ ...ok, allowance, reserve: async () => { await new Promise(resolve => setImmediate(resolve)); return true; } });
+  const results = await Promise.all(Array.from({ length: 5 }, () => gate({ userId: U, question: 'giữ chỗ bao lâu' })));
+  assert.equal(results.filter(result => result.allowed).length, 2);
+  assert.equal(results.filter(result => result.reason === 'account-limit').length, 3);
+});

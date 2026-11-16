@@ -60,6 +60,20 @@ function createAccountAllowance({ perDay = ACCOUNT_DAILY_AI_ANSWERS } = {}) {
   return {
     canUse(userId, now = new Date()) { rollTo(now); return (used.get(String(userId)) || 0) < perDay; },
     consume(userId, now = new Date()) { rollTo(now); const key = String(userId); used.set(key, (used.get(key) || 0) + 1); },
+    // Kiểm và trừ trong cùng một bước đồng bộ, không có await ở giữa, nên nhiều câu của cùng tài khoản tới cùng lúc
+    // không cùng lọt qua bước kiểm (P09). Trả true khi đã trừ được một lượt.
+    tryConsume(userId, now = new Date()) {
+      if (!this.canUse(userId, now)) return false;
+      this.consume(userId, now);
+      return true;
+    },
+    // Trả lại một lượt đã trừ, khi cổng không giữ được lượt ngày. Chỉ trả trong cùng ngày Pacific: lượt của ngày cũ
+    // đã bị xóa khi sang ngày mới, và refund không được làm xóa số đếm của ngày đang chạy.
+    refund(userId, now = new Date()) {
+      if (pacificDay(now) !== currentDay) return;
+      const key = String(userId), count = used.get(key) || 0;
+      if (count <= 1) used.delete(key); else used.set(key, count - 1);
+    },
     size() { return used.size; },
   };
 }
