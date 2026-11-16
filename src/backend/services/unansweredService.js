@@ -55,14 +55,19 @@ async function recordUnanswered(question, { kind = 'NO_ANSWER', articleKeys = []
   // được. Đây là giới hạn mềm: nhiều câu mới tới cùng lúc có thể làm vượt một chút.
   if (await UnansweredQuestion.countDocuments({ status: 'OPEN', kind }).maxTimeMS(1500) >= UNANSWERED_OPEN_LIMIT) return 'skipped';
 
-  // Upsert dùng $inc cho cả lúc tạo lẫn lúc cộng. Truy vấn khớp đúng các trường của unique index, nên khi hai request
-  // cùng chèn, MongoDB tự thử lại request thua thành một lần cộng: ba request đồng thời cho ra count = 3.
-  const inserted = await UnansweredQuestion.updateOne({ kind, normalized }, {
-    $inc: { count: 1 },
-    $set: { lastAskedAt: now },
-    $setOnInsert: { sample: sampleOf(masked), firstAskedAt: now, status: 'OPEN' },
-    $addToSet: { articleKeys: { $each: keys } },
-  }, { upsert: true });
+  // Upsert dạng pipeline: tạo dòng mới, hoặc cộng vào dòng vừa xuất hiện giữa bước 1 và bước này (request khác vừa chèn,
+  // rồi admin có thể đã đánh dấu). Luật trạng thái giống bước 1: RESOLVED mở lại thành OPEN, IGNORED giữ nguyên, dòng
+  // mới là OPEN. Truy vấn khớp đúng các trường của unique index, nên khi hai request cùng chèn, MongoDB tự thử lại
+  // request thua thành một lần cộng: ba request đồng thời cho ra count = 3. Chuỗi đi qua $literal để câu bắt đầu bằng
+  // "$" không bị hiểu là tên trường.
+  const inserted = await UnansweredQuestion.updateOne({ kind, normalized }, [{ $set: {
+    count: { $add: [{ $ifNull: ['$count', 0] }, 1] },
+    lastAskedAt: now,
+    sample: { $ifNull: ['$sample', { $literal: sampleOf(masked) }] },
+    firstAskedAt: { $ifNull: ['$firstAskedAt', now] },
+    status: { $cond: [{ $eq: ['$status', 'IGNORED'] }, 'IGNORED', 'OPEN'] },
+    articleKeys: { $setUnion: [{ $ifNull: ['$articleKeys', []] }, { $literal: keys }] },
+  } }], { upsert: true });
   return inserted.upsertedCount ? 'created' : 'counted';
 }
 
