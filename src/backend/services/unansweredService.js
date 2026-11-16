@@ -7,11 +7,11 @@ const { loadPublishedArticles } = require('./supportKnowledgeStore');
 const { sensitiveQuestion } = require('./supportFilters');
 const { httpError } = require('../lib/errors');
 const errorCodes = require('../lib/errorCodes');
+const { isArticleKey } = require('../../lib/supportArticleKey.cjs');
 
 const UNANSWERED_OPEN_LIMIT = 500;
 const UNANSWERED_SAMPLE_LIMIT = 300;
 const UNANSWERED_TTL_SECONDS = 2592000;
-const ARTICLE_KEY = /^[a-z0-9][a-z0-9-]{1,59}$/;
 
 // Mọi dãy từ 3 chữ số trở lên (năm sinh, số tiền, mã đơn, số tài khoản…) đổi thành "#". Dãy 1–2 chữ số như ngày
 // "12/10" hay cự ly "21km" vẫn giữ, vì chúng giúp admin hiểu câu hỏi mà không nhận ra được ai.
@@ -37,7 +37,7 @@ async function recordUnanswered(question, { kind = 'NO_ANSWER', articleKeys = []
   const masked = maskDigits(question);
   const normalized = normalizeSupportText(masked);
   if (tooShort(normalized)) return 'skipped';
-  const keys = (Array.isArray(articleKeys) ? articleKeys : []).filter(key => typeof key === 'string' && ARTICLE_KEY.test(key)).slice(0, 3);
+  const keys = (Array.isArray(articleKeys) ? articleKeys : []).filter(isArticleKey).slice(0, 3);
   const now = new Date();
 
   // Bước 1: câu đã có thì cộng 1 và cập nhật lần hỏi cuối, trong một lệnh duy nhất. Câu RESOLVED mà vẫn bị hỏi lại,
@@ -118,7 +118,7 @@ async function recordFeedback({ question, articleKeys } = {}, { findArticles = l
   }
   // Một câu trả lời dùng tối đa 2 bài, nên báo "Chưa đúng" cũng chỉ nhắc tới 1–2 bài.
   if (!Array.isArray(articleKeys) || articleKeys.length < 1 || articleKeys.length > 2
-    || !articleKeys.every(key => typeof key === 'string' && ARTICLE_KEY.test(key))) throw invalid('Danh sách bài được báo không hợp lệ.');
+    || !articleKeys.every(isArticleKey)) throw invalid('Danh sách bài được báo không hợp lệ.');
   // Chỉ nhận key của bài đang xuất bản: bot chỉ trả lời bằng những bài này, nên key khác là do request bị sửa tay.
   const published = new Set((await findArticles()).map(article => article.key));
   if (!articleKeys.every(key => published.has(key))) {

@@ -7,6 +7,7 @@ import { MessageCircle, ThumbsDown, X } from 'lucide-react';
 import { api } from '../../lib/clientApi';
 import { internalPath } from '../../lib/internalPath.cjs';
 import { toActions } from '../../lib/supportActions.cjs';
+import { isArticleKey } from '../../lib/supportArticleKey.cjs';
 import './support-chat.css';
 
 const initialPrompts = ['Làm sao để đăng ký giải?', 'Tôi đã chuyển khoản nhưng chưa có vé.', 'Cách nhận race kit?'];
@@ -26,8 +27,9 @@ function boundedHistory(messages) {
   }
   return history;
 }
-// Key các bài server đã dùng để trả lời (nút "Chưa đúng"). Chỉ giữ key đúng dạng mã bài, tối đa 2 như server nhận.
-const feedbackKeys = keys => (Array.isArray(keys) ? keys : []).filter(key => typeof key === 'string' && /^[a-z0-9][a-z0-9-]{1,59}$/.test(key)).slice(0, 2);
+// Key các bài server đã dùng để trả lời (nút "Chưa đúng"). Chỉ giữ key đúng dạng mã bài (luật dùng chung với server),
+// tối đa 2 như server nhận.
+const feedbackKeys = keys => (Array.isArray(keys) ? keys : []).filter(isArticleKey).slice(0, 2);
 // Server chỉ trả recorded: false mà không nói lý do (câu nhạy cảm, quá ngắn hay hàng chờ đã đầy), nên câu báo không đoán lý do.
 const feedbackNotes = { recorded: 'Cảm ơn bạn. Admin sẽ xem lại câu trả lời này.', skipped: 'Câu hỏi này không được lưu vào hàng chờ. Nếu cần, bạn có thể gửi yêu cầu cho nhân viên hỗ trợ.' };
 

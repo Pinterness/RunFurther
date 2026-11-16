@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const { internalPath } = require('../../lib/internalPath.cjs');
+const { ARTICLE_KEY } = require('../../lib/supportArticleKey.cjs');
 const { normalizeSupportText } = require('../services/supportKnowledge');
 
 const maxItems = (limit, label) => ({
@@ -34,7 +35,7 @@ const supportArticleSchema = new mongoose.Schema(
       required: [true, 'Bài phải có mã.'],
       unique: true,
       immutable: true,
-      match: [/^[a-z0-9][a-z0-9-]{1,59}$/, 'Mã bài chỉ gồm chữ thường không dấu, số và dấu gạch ngang (2–60 ký tự).'],
+      match: [ARTICLE_KEY, 'Mã bài chỉ gồm chữ thường không dấu, số và dấu gạch ngang (2–60 ký tự).'],
     },
     title: { type: String, required: [true, 'Bài phải có tiêu đề.'], trim: true, maxlength: [120, 'Tiêu đề tối đa 120 ký tự.'] },
     terms: {

@@ -1,8 +1,7 @@
 // Super Admin routes for the support bot's knowledge articles; the rules live in supportKnowledgeAdmin.js.
 const knowledge = require('../services/supportKnowledgeAdmin');
 const unanswered = require('../services/unansweredService');
-
-const handle = fn => async (req, res, next) => { try { await fn(req, res); } catch (error) { next(error); } };
+const { handle } = require('../lib/asyncHandler');
 
 exports.list = handle(async (_req, res) => { res.json({ articles: await knowledge.listArticles() }); });
 exports.detail = handle(async (req, res) => { res.json({ article: await knowledge.getArticle(req.params.id) }); });
