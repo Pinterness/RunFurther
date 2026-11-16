@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const { MongoMemoryReplSet } = require('mongodb-memory-server');
 const User = require('../../src/backend/models/User');
 const Wallet = require('../../src/backend/models/Wallet');
+const RunnerProfile = require('../../src/backend/models/RunnerProfile');
 const { banks } = require('../../src/backend/data/banks.json');
 
 const BANK_DIRECTORY_URL = 'https://api.vietqr.io/v2/banks';
@@ -69,17 +70,22 @@ function createBackendHarness({ app, dbName, monitorCommands = false }) {
 
   /**
    * Creates an active user with a wallet and a signed token.
-   * @param {{ role?: string, balance?: number }} [options] System role and starting balance.
+   * @param {{ role?: string, balance?: number, dob?: string, createdAt?: Date, fullName?: string }} [options]
+   *   System role and starting balance. `dob` ('YYYY-MM-DD') tạo thêm RunnerProfile có ngày sinh đó; `createdAt` đặt
+   *   ngày tạo tài khoản; `fullName` thay họ tên mặc định.
    * @returns {Promise<{ id: string, email: string, fullName: string, token: string }>} The user.
    */
-  async function createUser({ role = 'RUNNER', balance = 0 } = {}) {
+  async function createUser({ role = 'RUNNER', balance = 0, dob, createdAt, fullName } = {}) {
     state.users += 1;
     const user = await User.create({
-      fullName: `Test ${role.toLowerCase()} ${state.users}`,
+      fullName: fullName ?? `Test ${role.toLowerCase()} ${state.users}`,
       email: `${dbName}-${state.users}@test.local`,
       passwordHash: 'unused-test-hash',
       systemRole: role,
     });
+    // timestamps của Mongoose tự đặt createdAt khi tạo, nên ngày tạo cũ được ghi thẳng vào collection.
+    if (createdAt) await User.collection.updateOne({ _id: user._id }, { $set: { createdAt } });
+    if (dob) await RunnerProfile.create({ userId: user._id, dob: new Date(dob) });
     await Wallet.create({ userId: user._id, balance, currency: 'VND' });
     const id = String(user._id);
     return {
