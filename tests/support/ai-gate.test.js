@@ -143,3 +143,28 @@ test('chủ đề giải mà không có giải công khai nào thì giữ câu "
   const withEvents = withSeed({ findEvents: async () => [{ name: 'Giải Huế', url: '/events/giai-hue', city: 'Huế', date: '01/02/2031', registrationOpen: true, categories: [] }], canUseAi: async () => ({ allowed: true, reason: null }), generateReply: async () => 'AI' });
   assert.equal((await withEvents({ message: 'Có giải nào sắp diễn ra?', userId: U })).mode, 'ai');
 });
+
+// P09, lỗi nhẹ (1) của code-review P08: adapter chỉ cho 4 lời gọi Gemini chạy cùng lúc. Trước đây responder hỏi cổng
+// trước, cổng giữ một lượt ngày và một lượt của tài khoản, rồi adapter mới từ chối câu thứ 5, nên câu đó tốn lượt mà
+// không được gọi. Nay responder giữ chỗ gọi AI trước khi hỏi cổng: hết chỗ thì trả guide, không hỏi cổng.
+// Fetch giả dừng khi bị hủy và adapter hết giờ sau 1 giây, nên nếu code sai để lọt lời gọi thứ 5 thì test đỏ chứ không treo.
+test('đang có 4 lời gọi AI chạy dở thì câu thứ 5 nhận guide mà không tốn lượt; xong thì chỗ được trả lại đúng một lần', { timeout: 10000 }, async () => {
+  const pending = []; let reserved = 0;
+  const fetchImpl = (_url, { signal }) => new Promise((resolve, reject) => { pending.push(resolve); signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true }); });
+  const adapter = createChatAdapter({ env: AI_ENV, timeoutMs: 1000, fetchImpl });
+  const ask = withSeed({ generateReply: adapter, canUseAi: createAiGate({ ...ok, reserve: async () => { reserved += 1; return true; } }) });
+  const waitFor = async check => { for (let i = 0; i < 200 && !check(); i++) await new Promise(resolve => setImmediate(resolve)); assert.ok(check()); };
+  const reply = () => Response.json({ choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'Đơn được giữ chỗ trong 10 phút.' } }] });
+  // Vòng 2 chứng minh 4 chỗ được trả lại sau vòng 1 (4 câu lại được gọi AI), và chỉ trả đúng một lần (câu thứ 5 vẫn bị
+  // chặn): responder và adapter cùng gọi hàm trả chỗ, nếu trả hai lần thì vòng 2 sẽ cho tới 8 lời gọi cùng lúc.
+  for (const round of [1, 2]) {
+    const before = pending.length;
+    const running = Array.from({ length: 4 }, () => ask({ message: 'giữ chỗ được bao lâu', userId: U }));
+    await waitFor(() => pending.length === before + 4);
+    const fifth = await ask({ message: 'giữ chỗ được bao lâu', userId: U });
+    assert.equal(fifth.mode, 'guide', 'vòng ' + round); assert.match(fifth.reply, /10 phút/);
+    assert.deepEqual([reserved, pending.length], [round * 4, before + 4], 'vòng ' + round);
+    pending.slice(before).forEach(resolve => resolve(reply()));
+    assert.ok((await Promise.all(running)).every(result => result.mode === 'ai'), 'vòng ' + round);
+  }
+});

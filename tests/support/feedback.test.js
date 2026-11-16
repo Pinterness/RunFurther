@@ -41,6 +41,18 @@ test('kết quả chat có articleKeys là key các bài đã dùng; mảng rỗ
   assert.match(events.reply, /chưa tải được thông tin giải/); assert.deepEqual(events.articleKeys, []);
 });
 
+// P09, lỗi nhẹ (d) của code-review P06: câu trả lời về lịch giải dựng từ dữ liệu giải trong database (giống câu tác vụ),
+// không lấy chữ nào từ bài `events`. Nút "Chưa đúng" sẽ báo admin sửa bài events, mà sửa bài không sửa được dữ liệu
+// giải, nên câu này không có articleKeys.
+test('câu trả lời lịch giải dựng từ dữ liệu giải thì articleKeys rỗng, kể cả khi không có giải nào', async () => {
+  const event = { name: 'Giải chạy thử Cần Thơ', city: 'Cần Thơ', date: '20/12/2026', registrationOpen: true, categories: [{ code: '10K', distance: 10, price: 300000 }], url: '/events/giai-chay-thu' };
+  for (const [events, reply] of [[[event], /Thông tin công khai hiện có/], [[], /Chưa tìm thấy giải công khai/]]) {
+    const answer = createSupportResponder({ findArticles: async () => seedArticles(), generateReply: null, recordMiss: null, findEvents: async () => events });
+    const result = await answer({ message: 'Có giải nào sắp diễn ra?' });
+    assert.match(result.reply, reply); assert.deepEqual(result.articleKeys, [], String(reply));
+  }
+});
+
 test('recordFeedback từ chối câu hỏi hay danh sách bài sai dạng, và key không thuộc bài đã xuất bản', async () => {
   const valid = { question: 'giữ chỗ được bao lâu', articleKeys: ['hold'] };
   const invalid = [
