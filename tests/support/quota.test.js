@@ -10,7 +10,7 @@ process.env.JWT_SECRET = 'isolated-support-quota-test-secret';
 const { app } = require('../../src/backend/server');
 const AiUsage = require('../../src/backend/models/AiUsage');
 const PaymentRequest = require('../../src/backend/models/PaymentRequest');
-const { ATLAS_LIMIT_BYTES, createAtlasMeter, createAiMeter, quotaAlerts, clearQuotaCache } = require('../../src/backend/services/quotaService');
+const { ATLAS_LIMIT_BYTES, createAtlasMeter, createAiMeter, quotaAlerts, clearQuotaCache, clusterStats } = require('../../src/backend/services/quotaService');
 const { pacificDay } = require('../../src/backend/services/aiUsageService');
 const { createBackendHarness } = require('../helpers/backendHarness');
 
@@ -116,4 +116,24 @@ test('db.stats() lỗi thì chuông của Super Admin vẫn trả các mục kh�
   assert.ok(keys.some(key => key.startsWith('topup-review:')), keys.join());
   assert.ok(keys.includes(`quota:ai:90:${pacificDay(new Date())}`), keys.join());
   assert.ok(!keys.some(key => key.startsWith('quota:atlas:')));
+});
+
+// P09, lỗi nhẹ (6) của code-review P08: gói Atlas Free giới hạn 512 MB cho cả cluster, không riêng database của app,
+// nên đồng hồ cộng dataSize + indexSize của mọi database trừ admin, local, config.
+test('đồng hồ Atlas cộng dung lượng của mọi database trên cluster, trừ database hệ thống', async () => {
+  const other = mongoose.connection.client.db('runfurther_quota_other');
+  await other.collection('rows').insertMany(Array.from({ length: 50 }, (_, index) => ({ index, text: 'x'.repeat(200) })));
+  try {
+    const own = await mongoose.connection.db.stats(), extra = await other.stats();
+    assert.ok(extra.dataSize > 0);
+    assert.deepEqual(await clusterStats(), { dataSize: own.dataSize + extra.dataSize, indexSize: own.indexSize + extra.indexSize });
+  } finally { await other.dropDatabase(); }
+});
+
+test('không liệt kê được database (tài khoản thiếu quyền) thì đồng hồ Atlas đo riêng database của app', async () => {
+  const connection = {
+    db: { databaseName: 'test', admin: () => ({ command: async () => { throw Object.assign(new Error('not authorized'), { codeName: 'Unauthorized' }); } }), stats: async () => ({ dataSize: 7, indexSize: 3 }) },
+    client: { db: () => { throw new Error('không được đọc database khác'); } },
+  };
+  assert.deepEqual(await clusterStats({ connection }), { dataSize: 7, indexSize: 3 });
 });

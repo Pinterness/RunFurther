@@ -381,7 +381,7 @@ Tất cả endpoint dưới đây dùng tiền tố `/api/support`, trả `Cache
   - Lần 2: 20 Đ, 0 T, 0 S, 0 L. Đạt. Ba luật được nghĩ ra sau khi thấy lỗi của lần 1 trên chính các câu này, nên lần 2 có phần lạc quan; đó là giới hạn đã biết.
   - Tổng cộng 78 lượt của project Google dùng để chấm (không phải project production).
 - Gói Free của Gemini cho phép Google dùng nội dung để cải thiện sản phẩm và người của Google có thể đọc; khung chat báo rõ điều này. Khóa chỉ nằm trong Environment của Render, không dùng biến `NEXT_PUBLIC_*`, và project của khóa không gắn tài khoản thanh toán nên vượt lượt chỉ trả lỗi 429.
-- Chuông hạn mức (`quotaService.js`): với SUPER_ADMIN, `GET /api/notifications` thêm mục khi dung lượng Atlas (`dataSize + indexSize` so với 512 MB, cache 10 phút, khóa theo tháng giờ Việt Nam) hoặc lượt AI hôm nay (khóa theo ngày Pacific) đạt 70% hoặc 90%. Khóa dạng `quota:<atlas|ai>:<70|90>:<kỳ>`; đồng hồ nào lỗi thì bỏ đồng hồ đó, chuông vẫn trả các mục khác.
+- Chuông hạn mức (`quotaService.js`): với SUPER_ADMIN, `GET /api/notifications` thêm mục khi dung lượng Atlas (`dataSize + indexSize` của mọi database trên cluster trừ `admin`, `local`, `config` (từ P09, vì 512 MB là giới hạn của cả cluster; tài khoản không liệt kê được database thì đo riêng database của app), so với 512 MB, cache 10 phút, khóa theo tháng giờ Việt Nam) hoặc lượt AI hôm nay (khóa theo ngày Pacific) đạt 70% hoặc 90%. Khóa dạng `quota:<atlas|ai>:<70|90>:<kỳ>`; đồng hồ nào lỗi thì bỏ đồng hồ đó, chuông vẫn trả các mục khác.
 
 **Dữ liệu và giới hạn truy xuất**
 
