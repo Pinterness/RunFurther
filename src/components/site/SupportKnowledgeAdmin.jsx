@@ -145,8 +145,9 @@ export default function SupportKnowledgeAdmin() {
   //   thì câu tự mở lại (spec T12).
   // - "Bỏ qua" (ignore): câu không cần bài, và không hiện lại kể cả khi có người hỏi lại.
   // Lỗi thì giữ câu và báo để thử lại.
+  // Khi một bài đang lưu thì cũng không cho bấm: bài đó có thể đang được tạo từ chính câu này.
   async function settleQuestion(question, action) {
-    if (queueRequest.current) return;
+    if (queueRequest.current || busy) return;
     const request = new AbortController(); queueRequest.current = request;
     setPending({ id: question._id, action }); setQueueActionError('');
     try {
@@ -235,7 +236,7 @@ export default function SupportKnowledgeAdmin() {
         <div className="knowledge-heading-actions"><button type="button" className="quiet-button" disabled={queueLoading} onClick={() => refreshQueue(value => value + 1)}>Làm mới</button></div></header>
       {queueActionError && <div className="knowledge-error knowledge-queue-alert" role="alert"><p>{queueActionError}</p></div>}
       {queueLoading && !queue.length ? <p className="knowledge-empty" role="status">Đang tải hàng chờ...</p> : queueError ? <div className="knowledge-error" role="alert"><p>{queueError}</p><button type="button" className="text-action" onClick={() => refreshQueue(value => value + 1)}>Tải lại hàng chờ</button></div> : !queue.length ? <p className="knowledge-empty knowledge-queue-empty">Chưa có câu nào bot không trả lời được.</p> : <ul className="knowledge-queue-list">{queue.map(question => <li key={question._id} className="knowledge-queue-row"><div><p className="knowledge-queue-sample">{question.sample}</p>{question.kind === 'WRONG_ANSWER' && <p className="knowledge-queue-kind">Người dùng báo “Chưa đúng” cho bài: {question.articleKeys?.length ? question.articleKeys.join(', ') : 'không rõ'}</p>}<p className="knowledge-queue-meta">Hỏi {question.count} lần · lần cuối <time dateTime={question.lastAskedAt}>{dateLabel(question.lastAskedAt)}</time></p></div>
-        <div className="knowledge-queue-actions"><button type="button" className="button-dark" disabled={busy || Boolean(pending)} onClick={() => createFromQuestion(question)}>Tạo bài từ câu này</button><button type="button" className="quiet-button" disabled={Boolean(pending)} onClick={() => settleQuestion(question, 'resolve')}>{pendingLabel(question, 'resolve', 'Đã xử lý')}</button><button type="button" className="text-action" disabled={Boolean(pending)} onClick={() => settleQuestion(question, 'ignore')}>{pendingLabel(question, 'ignore', 'Bỏ qua')}</button></div></li>)}</ul>}
+        <div className="knowledge-queue-actions"><button type="button" className="button-dark" disabled={busy || Boolean(pending)} onClick={() => createFromQuestion(question)}>Tạo bài từ câu này</button><button type="button" className="quiet-button" disabled={busy || Boolean(pending)} onClick={() => settleQuestion(question, 'resolve')}>{pendingLabel(question, 'resolve', 'Đã xử lý')}</button><button type="button" className="text-action" disabled={busy || Boolean(pending)} onClick={() => settleQuestion(question, 'ignore')}>{pendingLabel(question, 'ignore', 'Bỏ qua')}</button></div></li>)}</ul>}
     </section>
     <SupportAiSwitch dateLabel={dateLabel} />
     {historyOpen && article && <Modal title={'Lịch sử: ' + article.title} busy={busy} onClose={() => { setHistoryOpen(false); setRestoring(null); }}>

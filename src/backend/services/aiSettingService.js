@@ -2,7 +2,7 @@
 // đặt; công tắc này cho Super Admin bật tắt AI ngay trên trang admin. Chưa có tài liệu SUPPORT_AI thì coi như tắt (T5),
 // nên chỉ nhập khóa trên Render vẫn chưa đủ để AI chạy.
 const PlatformSetting = require('../models/PlatformSetting');
-const { readAiConfig } = require('./supportAiConfig');
+const { readAiConfig, envText } = require('./supportAiConfig');
 const { pacificDay, readDailyLimit, todayUsage } = require('./aiUsageService');
 const { assert } = require('../lib/errors');
 const ERROR_CODES = require('../lib/errorCodes');
@@ -58,11 +58,11 @@ async function presentAiSetting({ env = process.env, now = new Date() } = {}) {
     PlatformSetting.findOne({ key: SETTING_KEY }).populate('history.changedBy', 'fullName email').lean(),
     todayUsage(now),
   ]);
-  const provider = typeof env.SUPPORT_AI_PROVIDER === 'string' && env.SUPPORT_AI_PROVIDER.trim() ? env.SUPPORT_AI_PROVIDER.trim() : 'guide';
+  // Đọc biến môi trường bằng cùng hàm envText với readAiConfig, để trang admin và cổng AI hiểu biến theo một cách.
   return {
     aiEnabled: setting?.aiEnabled === true,
-    provider,
-    model: typeof env.SUPPORT_AI_MODEL === 'string' ? env.SUPPORT_AI_MODEL.trim() : '',
+    provider: envText(env, 'SUPPORT_AI_PROVIDER') || 'guide',
+    model: envText(env, 'SUPPORT_AI_MODEL'),
     configured: Boolean(readAiConfig(env)),
     today: { day: pacificDay(now), used, limit: readDailyLimit(env) },
     history: (setting?.history ?? []).slice(-HISTORY_SHOWN).reverse().map(entry => ({

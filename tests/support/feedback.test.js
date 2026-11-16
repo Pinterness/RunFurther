@@ -41,6 +41,18 @@ test('kết quả chat có articleKeys là key các bài đã dùng; mảng rỗ
   assert.match(events.reply, /chưa tải được thông tin giải/); assert.deepEqual(events.articleKeys, []);
 });
 
+// P09, lỗi nhẹ (d) của code-review P06: câu trả lời về lịch giải dựng từ dữ liệu giải trong database (giống câu tác vụ),
+// không lấy chữ nào từ bài `events`. Nút "Chưa đúng" sẽ báo admin sửa bài events, mà sửa bài không sửa được dữ liệu
+// giải, nên câu này không có articleKeys.
+test('câu trả lời lịch giải dựng từ dữ liệu giải thì articleKeys rỗng, kể cả khi không có giải nào', async () => {
+  const event = { name: 'Giải chạy thử Cần Thơ', city: 'Cần Thơ', date: '20/12/2026', registrationOpen: true, categories: [{ code: '10K', distance: 10, price: 300000 }], url: '/events/giai-chay-thu' };
+  for (const [events, reply] of [[[event], /Thông tin công khai hiện có/], [[], /Chưa tìm thấy giải công khai/]]) {
+    const answer = createSupportResponder({ findArticles: async () => seedArticles(), generateReply: null, recordMiss: null, findEvents: async () => events });
+    const result = await answer({ message: 'Có giải nào sắp diễn ra?' });
+    assert.match(result.reply, reply); assert.deepEqual(result.articleKeys, [], String(reply));
+  }
+});
+
 test('recordFeedback từ chối câu hỏi hay danh sách bài sai dạng, và key không thuộc bài đã xuất bản', async () => {
   const valid = { question: 'giữ chỗ được bao lâu', articleKeys: ['hold'] };
   const invalid = [
@@ -86,4 +98,15 @@ test('key lạ thì 400 FEEDBACK_UNKNOWN_ARTICLE', async () => {
 test('lần gửi thứ 7 trong cùng một phút thì bị 429', async () => {
   while (sent < 6) assert.equal((await sendFeedback({ question: 'giữ chỗ được bao lâu', articleKeys: ['hold'] })).status, 200);
   assert.equal((await sendFeedback({ question: 'giữ chỗ được bao lâu', articleKeys: ['hold'] })).status, 429);
+});
+
+// Code-review P09: câu trả lời lịch giải do AI viết đã dùng nội dung các bài được gửi cho AI, nên vẫn giữ articleKeys
+// (nút "Chưa đúng" đưa được câu AI sai vào hàng chờ). Chỉ câu guide dựng từ dữ liệu giải mới không có articleKeys.
+test('câu trả lời lịch giải do AI viết vẫn giữ articleKeys của các bài đã gửi cho AI', async () => {
+  const event = { name: 'Giải chạy thử Cần Thơ', city: 'Cần Thơ', date: '20/12/2026', registrationOpen: true, categories: [{ code: '10K', distance: 10, price: 300000 }], url: '/events/giai-chay-thu' };
+  const deps = { findArticles: async () => seedArticles(), recordMiss: null, findEvents: async () => [event], generateReply: async () => 'Có giải Cần Thơ ngày 20/12/2026.' };
+  const ai = await createSupportResponder({ ...deps, canUseAi: async () => ({ allowed: true, reason: null }) })({ message: 'Có giải nào sắp diễn ra?', userId: '507f1f77bcf86cd799439011' });
+  assert.equal(ai.mode, 'ai'); assert.ok(ai.articleKeys.includes('events'), JSON.stringify(ai.articleKeys));
+  const guide = await createSupportResponder({ ...deps, canUseAi: async () => ({ allowed: false, reason: 'switch' }) })({ message: 'Có giải nào sắp diễn ra?', userId: '507f1f77bcf86cd799439011' });
+  assert.equal(guide.mode, 'guide'); assert.deepEqual(guide.articleKeys, []);
 });

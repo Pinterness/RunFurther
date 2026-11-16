@@ -105,3 +105,13 @@ test('fromQuestionId sai định dạng thì 400 và không tạo bài; câu đ�
   const gone = await request(KNOWLEDGE, { method: 'POST', as: admin, body: { key: 'tu-cau-da-xoa', title: 'Câu đã xóa', terms: ['câu đã xóa'], answer: 'Vẫn lưu.', fromQuestionId: '000000000000000000000000' } });
   assert.equal(gone.status, 201);
 });
+
+// P09, sửa lỗi nhẹ (c) của code-review P06: admin A soạn bài từ một câu, trong lúc đó admin B bấm "Bỏ qua" câu đó.
+// Lưu bài của A không được đổi IGNORED thành RESOLVED, vì câu RESOLVED tự mở lại khi có người hỏi lại, còn câu
+// IGNORED thì không bao giờ hiện lại. Chỉ câu còn OPEN mới chuyển sang RESOLVED.
+test('tạo bài từ một câu đã bị "Bỏ qua" thì bài vẫn được tạo và câu giữ nguyên IGNORED', async () => {
+  const [ignored] = await UnansweredQuestion.insertMany([row('cau da bo qua', 2, 1, 'IGNORED')]);
+  const created = await request(KNOWLEDGE, { method: 'POST', as: admin, body: { key: 'tu-cau-bo-qua', title: 'Câu đã bỏ qua', terms: ['câu đã bỏ qua'], answer: 'Vẫn lưu.', fromQuestionId: String(ignored._id) } });
+  assert.equal(created.status, 201);
+  assert.equal((await UnansweredQuestion.findById(ignored._id).lean()).status, 'IGNORED');
+});

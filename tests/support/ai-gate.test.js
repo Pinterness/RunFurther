@@ -143,3 +143,66 @@ test('chủ đề giải mà không có giải công khai nào thì giữ câu "
   const withEvents = withSeed({ findEvents: async () => [{ name: 'Giải Huế', url: '/events/giai-hue', city: 'Huế', date: '01/02/2031', registrationOpen: true, categories: [] }], canUseAi: async () => ({ allowed: true, reason: null }), generateReply: async () => 'AI' });
   assert.equal((await withEvents({ message: 'Có giải nào sắp diễn ra?', userId: U })).mode, 'ai');
 });
+
+// P09, lỗi nhẹ (1) của code-review P08: adapter chỉ cho 4 lời gọi Gemini chạy cùng lúc. Trước đây responder hỏi cổng
+// trước, cổng giữ một lượt ngày và một lượt của tài khoản, rồi adapter mới từ chối câu thứ 5, nên câu đó tốn lượt mà
+// không được gọi. Nay responder giữ chỗ gọi AI trước khi hỏi cổng: hết chỗ thì trả guide, không hỏi cổng.
+// Fetch giả dừng khi bị hủy và adapter hết giờ sau 1 giây, nên nếu code sai để lọt lời gọi thứ 5 thì test đỏ chứ không treo.
+test('đang có 4 lời gọi AI chạy dở thì câu thứ 5 nhận guide mà không tốn lượt; xong thì chỗ được trả lại đúng một lần', { timeout: 10000 }, async () => {
+  const pending = []; let reserved = 0;
+  const fetchImpl = (_url, { signal }) => new Promise((resolve, reject) => { pending.push(resolve); signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true }); });
+  const adapter = createChatAdapter({ env: AI_ENV, timeoutMs: 1000, fetchImpl });
+  const ask = withSeed({ generateReply: adapter, canUseAi: createAiGate({ ...ok, reserve: async () => { reserved += 1; return true; } }) });
+  const waitFor = async check => { for (let i = 0; i < 200 && !check(); i++) await new Promise(resolve => setImmediate(resolve)); assert.ok(check()); };
+  const reply = () => Response.json({ choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'Đơn được giữ chỗ trong 10 phút.' } }] });
+  // Vòng 2 chứng minh 4 chỗ được trả lại sau vòng 1 (4 câu lại được gọi AI), và chỉ trả đúng một lần (câu thứ 5 vẫn bị
+  // chặn): responder và adapter cùng gọi hàm trả chỗ, nếu trả hai lần thì vòng 2 sẽ cho tới 8 lời gọi cùng lúc.
+  for (const round of [1, 2]) {
+    const before = pending.length;
+    const running = Array.from({ length: 4 }, () => ask({ message: 'giữ chỗ được bao lâu', userId: U }));
+    await waitFor(() => pending.length === before + 4);
+    const fifth = await ask({ message: 'giữ chỗ được bao lâu', userId: U });
+    assert.equal(fifth.mode, 'guide', 'vòng ' + round); assert.match(fifth.reply, /10 phút/);
+    assert.deepEqual([reserved, pending.length], [round * 4, before + 4], 'vòng ' + round);
+    pending.slice(before).forEach(resolve => resolve(reply()));
+    assert.ok((await Promise.all(running)).every(result => result.mode === 'ai'), 'vòng ' + round);
+  }
+});
+
+// P09, lỗi nhẹ (3) của code-review P08: trước đây cổng kiểm "còn lượt của tài khoản" rồi mới trừ sau một await (giữ
+// lượt ngày), nên nhiều câu của cùng tài khoản tới cùng lúc đều qua bước kiểm. Nay kiểm và trừ trong cùng một bước.
+test('nhiều câu của cùng tài khoản tới cùng lúc thì không vượt giới hạn câu AI của tài khoản', async () => {
+  const allowance = createAccountAllowance({ perDay: 2 });
+  const gate = createAiGate({ ...ok, allowance, reserve: async () => { await new Promise(resolve => setImmediate(resolve)); return true; } });
+  const results = await Promise.all(Array.from({ length: 5 }, () => gate({ userId: U, question: 'giữ chỗ bao lâu' })));
+  assert.equal(results.filter(result => result.allowed).length, 2);
+  assert.equal(results.filter(result => result.reason === 'account-limit').length, 3);
+});
+
+// Code-review P09: chỗ gọi AI chỉ được giữ ngay trước bước trừ lượt, sau các bước đọc DB của cổng (công tắc, ngày sinh),
+// nên các câu đang chờ cổng đọc DB không chiếm chỗ của câu khác. Hết chỗ thì cổng từ chối 'busy' mà chưa trừ lượt nào.
+test('cổng chỉ giữ chỗ gọi AI sau các bước đọc DB; hết chỗ thì từ chối "busy" mà không trừ lượt', async () => {
+  const steps = [];
+  const allowance = createAccountAllowance({ perDay: 5 });
+  const gate = createAiGate({ ...ok, allowance, isSwitchOn: async () => { steps.push('switch'); return true; }, findDob: async () => { steps.push('dob'); return new Date('1990-05-01'); }, reserve: async () => { steps.push('reserve'); return true; } });
+  const busy = await gate({ userId: U, question: 'giữ chỗ bao lâu' }, { claimSlot: () => { steps.push('slot'); return false; } });
+  assert.deepEqual(busy, { allowed: false, reason: 'busy' });
+  assert.deepEqual(steps, ['switch', 'dob', 'slot']);
+  assert.equal(allowance.canUse(U, ok.now()), true);
+  // Không truyền claimSlot thì cổng chạy như trước.
+  assert.equal((await gate({ userId: U, question: 'giữ chỗ bao lâu' })).allowed, true);
+});
+
+test('4 câu đang chờ cổng đọc ngày sinh không chiếm chỗ: câu thứ 5 vẫn được gọi AI', { timeout: 10000 }, async () => {
+  let releaseDob, dobCalls = 0;
+  const held = new Promise(resolve => { releaseDob = resolve; });
+  const reply = () => Response.json({ choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'Đơn được giữ chỗ trong 10 phút.' } }] });
+  const adapter = createChatAdapter({ env: AI_ENV, fetchImpl: async () => reply() });
+  const ask = withSeed({ generateReply: adapter, canUseAi: createAiGate({ ...ok, findDob: async () => { dobCalls++; if (dobCalls <= 4) await held; return new Date('1990-05-01'); } }) });
+  const waitFor = async check => { for (let i = 0; i < 200 && !check(); i++) await new Promise(resolve => setImmediate(resolve)); assert.ok(check()); };
+  const waiting = Array.from({ length: 4 }, () => ask({ message: 'giữ chỗ được bao lâu', userId: U }));
+  await waitFor(() => dobCalls === 4);
+  assert.equal((await ask({ message: 'giữ chỗ được bao lâu', userId: U })).mode, 'ai');
+  releaseDob();
+  assert.ok((await Promise.all(waiting)).every(result => result.mode === 'ai'));
+});

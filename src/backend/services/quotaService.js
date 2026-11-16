@@ -10,9 +10,34 @@ const LEVELS = [90, 70];
 const monthFormat = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit' });
 const megabytes = bytes => (bytes / 1048576).toLocaleString('vi-VN', { maximumFractionDigits: 1 });
 
+const SYSTEM_DATABASES = ['admin', 'local', 'config'];
+
+// Gói Atlas Free giới hạn 512 MB cho cả cluster, không riêng database của app (P09). Hàm cộng dataSize + indexSize
+// của mọi database trừ database hệ thống. Database của app đo bằng chính connection.db.stats(); các database khác
+// đo qua client.db(tên). Tài khoản không được liệt kê database thì đo riêng database của app như trước.
+async function clusterStats({ connection = mongoose.connection } = {}) {
+  const own = connection.db.databaseName;
+  let names;
+  try {
+    const { databases } = await connection.db.admin().command({ listDatabases: 1, nameOnly: true });
+    names = databases.map(database => database.name).filter(name => !SYSTEM_DATABASES.includes(name) && name !== own);
+  } catch { names = []; }
+  // Database khác đọc lỗi (thiếu quyền, quá giờ) thì bỏ qua và ghi log, để đồng hồ vẫn đo được database của app.
+  // Database của app đọc lỗi thì để lỗi đi tiếp: quotaAlerts bỏ cả đồng hồ, như trước P09.
+  const others = names.map(name => connection.client.db(name).stats().catch(error => {
+    console.error(`Quota meter skipped database ${name}:`, error.message);
+    return null;
+  }));
+  const all = await Promise.all([connection.db.stats(), ...others]);
+  return all.reduce((total, stats) => ({
+    dataSize: total.dataSize + (Number(stats?.dataSize) || 0),
+    indexSize: total.indexSize + (Number(stats?.indexSize) || 0),
+  }), { dataSize: 0, indexSize: 0 });
+}
+
 // Atlas tính dung lượng bằng dataSize + indexSize, không tính storageSize. Kết quả được giữ 10 phút, vì chuông của
 // mỗi Super Admin hỏi lại server 60 giây một lần. Đọc lỗi thì không giữ, để lần sau đọc lại.
-function createAtlasMeter({ stats = () => mongoose.connection.db.stats(), cacheMs = ATLAS_CACHE_MS, now = Date.now } = {}) {
+function createAtlasMeter({ stats = () => clusterStats(), cacheMs = ATLAS_CACHE_MS, now = Date.now } = {}) {
   let cached = null;
   return {
     name: 'atlas',
@@ -72,4 +97,4 @@ async function quotaAlerts({ meters = defaultMeters(), now = new Date() } = {}) 
   return items;
 }
 
-module.exports = { ATLAS_LIMIT_BYTES, createAtlasMeter, createAiMeter, quotaAlerts, clearQuotaCache };
+module.exports = { ATLAS_LIMIT_BYTES, clusterStats, createAtlasMeter, createAiMeter, quotaAlerts, clearQuotaCache };

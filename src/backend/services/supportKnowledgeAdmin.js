@@ -50,8 +50,10 @@ async function getArticle(id) {
   return present(article);
 }
 
-// `fromQuestionId`: bài được tạo từ nút "Tạo bài từ câu này" của hàng chờ. Tạo bài xong thì câu đó thành RESOLVED.
-// Nếu câu đã tự xóa (TTL) trong lúc admin soạn bài thì bài vẫn được tạo, vì bài mới là thứ admin cần giữ.
+// `fromQuestionId`: bài được tạo từ nút "Tạo bài từ câu này" của hàng chờ. Tạo bài xong thì câu đó thành RESOLVED,
+// nhưng chỉ khi câu còn OPEN: câu mà admin khác vừa bấm "Bỏ qua" giữ nguyên IGNORED (câu RESOLVED tự mở lại khi bị
+// hỏi lại, câu IGNORED thì không). Nếu câu đã tự xóa (TTL) hay không còn OPEN trong lúc admin soạn bài thì bài vẫn
+// được tạo, vì bài mới là thứ admin cần giữ.
 async function createArticle(input, actorId, { fromQuestionId } = {}) {
   const fromQuestion = fromQuestionId !== undefined && fromQuestionId !== null;
   if (fromQuestion && !mongoose.isObjectIdOrHexString(fromQuestionId)) throw invalid('Câu hỏi nguồn không hợp lệ.');
@@ -63,7 +65,7 @@ async function createArticle(input, actorId, { fromQuestionId } = {}) {
     throw asHttpError(error);
   }
   if (fromQuestion) {
-    try { await setUnansweredStatus(fromQuestionId, 'RESOLVED'); } catch (error) {
+    try { await setUnansweredStatus(fromQuestionId, 'RESOLVED', { from: 'OPEN' }); } catch (error) {
       // Bài đã lưu rồi, nên lỗi ở bước này chỉ ghi log; admin vẫn bấm "Đã xử lý" được trong hàng chờ.
       if (error?.code !== errorCodes.UNANSWERED_NOT_FOUND) console.error('Resolving unanswered question failed:', error.message);
     }

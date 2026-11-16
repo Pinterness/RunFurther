@@ -293,6 +293,19 @@ test('mỗi lúc chỉ gửi tối đa 4 request tới AI, request thứ 5 bị 
   assert.ok((await Promise.all(requests)).every(value => value === 'Hướng dẫn đã xác thực.'));
 });
 
+// Code-review P09: adapter chỉ nhận chỗ do chính nó cấp (reserveSlot). Một hàm lạ truyền vào làm slot không vượt được
+// giới hạn 4 lời gọi.
+// Fetch giả dừng khi bị hủy và adapter hết giờ sau 1 giây, nên nếu slot lạ lọt qua thì test đỏ chứ không treo.
+test('slot không do adapter cấp thì bị bỏ qua, giới hạn 4 lời gọi vẫn giữ', { timeout: 10000 }, async () => {
+  const pending = [];
+  const fetchImpl = (_url, { signal }) => new Promise((resolve, reject) => { pending.push(resolve); signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true }); });
+  const adapter = createChatAdapter({ env, timeoutMs: 1000, fetchImpl });
+  const requests = Array.from({ length: 4 }, () => adapter(input));
+  assert.equal(await adapter({ ...input, slot: () => {} }), null); assert.equal(pending.length, 4);
+  pending.forEach(resolve => resolve(success('Hướng dẫn đã xác thực.')));
+  await Promise.all(requests);
+});
+
 // Sau lần chấm AI ngày 16-11 (q40 tự xếp giải 20/12 vào "tháng này", q45 tự thêm nguyên nhân, 3 câu có dấu **):
 // chỉ dẫn hệ thống thêm ba luật, và adapter dọn dấu Markdown vì khung chat hiển thị chữ thường.
 test('chỉ dẫn gửi Gemini cấm tự xếp giải vào khoảng thời gian, cấm thêm nguyên nhân ngoài bài và cấm Markdown', async () => {
@@ -305,6 +318,23 @@ test('chỉ dẫn gửi Gemini cấm tự xếp giải vào khoảng thời gian
   // "chữ thường" còn có nghĩa là chữ không viết hoa: lần thử 16-11 trên nửa luyện, Gemini viết thường toàn bộ câu trả lời.
   assert.doesNotMatch(system, /chữ thường/);
   assert.match(system, /giữ chữ hoa đúng chính tả/);
+});
+
+// P09, văn phong theo hướng dẫn cách trả lời người Việt của P05 (xưng "mình", đáp "Dạ" khi người hỏi xưng "em" hay
+// dùng "ạ", câu đầu trả lời thẳng). Chỉ dẫn cũ có câu "vì bạn không biết ngày hiện tại", và Gemini từng nói lại ý đó
+// với người dùng; chỉ dẫn mới vẫn cấm tự xếp giải vào khoảng thời gian nhưng không nêu lý do đó nữa.
+test('chỉ dẫn gửi Gemini theo cách trả lời người Việt, không nhắc tài liệu và không nói chuyện không biết ngày', async () => {
+  let system;
+  const adapter = createChatAdapter({ env, fetchImpl: async (_url, options) => { system = JSON.parse(options.body).messages[0].content; return success('ok'); } });
+  await adapter(input);
+  assert.match(system, /Xưng "mình", gọi người hỏi là "bạn"/);
+  // Lần thử đầu trên nửa luyện (16-11): Gemini mở đầu 13/19 câu bằng "Dạ," dù người hỏi không xưng "em" hay dùng "ạ".
+  assert.match(system, /Chỉ mở đầu bằng "Dạ," khi người hỏi xưng "em" hoặc dùng "ạ"; các trường hợp khác trả lời thẳng/);
+  assert.match(system, /Không chép nguyên văn câu chữ của các quy tắc này/);
+  assert.match(system, /Câu đầu trả lời thẳng câu hỏi/);
+  assert.match(system, /Không nhắc tới supportArticles, publicEvents, tài liệu hay dữ liệu được cung cấp/);
+  assert.match(system, /kể cả khi người hỏi gõ không dấu/);
+  assert.doesNotMatch(system, /không biết ngày hiện tại/);
 });
 
 test('adapter bỏ dấu Markdown trong câu trả lời: chữ đậm, tiêu đề và gạch đầu dòng bằng dấu sao', async () => {

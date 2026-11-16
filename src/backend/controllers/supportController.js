@@ -1,5 +1,8 @@
 const mongoose = require('mongoose');
 const Ticket = require('../models/SupportTicket');
+const { answerSupport } = require('../services/supportAiService');
+const { recordFeedback } = require('../services/unansweredService');
+const { handle } = require('../lib/asyncHandler');
 
 function fail(statusCode, message) { throw Object.assign(new Error(message), { statusCode }); }
 function text(value, max, label) {
@@ -11,7 +14,6 @@ function ticketId(req) {
   return req.params.ticketId;
 }
 const scope = (req, admin = false) => ({ _id: ticketId(req), ...(!admin ? { userId: req.userId } : {}) });
-const handle = fn => async (req, res, next) => { try { await fn(req, res); } catch (error) { next(error); } };
 
 exports.chat = handle(async (req, res) => {
   const message = text(req.body.message, 2000, 'Tin nhắn');
@@ -23,14 +25,12 @@ exports.chat = handle(async (req, res) => {
   });
   if (safeHistory.reduce((n, item) => n + item.content.length, 0) > 16000) fail(400, 'Lịch sử chat quá dài.');
   const page = typeof req.body.page === 'string' && /^\/(?!\/)[a-zA-Z0-9/_?=&%.-]*$/.test(req.body.page) ? req.body.page.slice(0, 250) : '/';
-  const { answerSupport } = require('../services/supportAiService');
   const answer = await answerSupport({ message, history: safeHistory, userId: req.userId || null, page });
   res.set('Cache-Control', 'no-store').json(answer);
 });
 
 // Nút "Chưa đúng" dưới câu trả lời của trợ lý. Không đọc token: hàng chờ không lưu người hỏi.
 exports.feedback = handle(async (req, res) => {
-  const { recordFeedback } = require('../services/unansweredService');
   res.json(await recordFeedback({ question: req.body?.question, articleKeys: req.body?.articleKeys }));
 });
 

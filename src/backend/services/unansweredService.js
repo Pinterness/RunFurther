@@ -7,11 +7,11 @@ const { loadPublishedArticles } = require('./supportKnowledgeStore');
 const { sensitiveQuestion } = require('./supportFilters');
 const { httpError } = require('../lib/errors');
 const errorCodes = require('../lib/errorCodes');
+const { isArticleKey } = require('../../lib/supportArticleKey.cjs');
 
 const UNANSWERED_OPEN_LIMIT = 500;
 const UNANSWERED_SAMPLE_LIMIT = 300;
 const UNANSWERED_TTL_SECONDS = 2592000;
-const ARTICLE_KEY = /^[a-z0-9][a-z0-9-]{1,59}$/;
 
 // Mọi dãy từ 3 chữ số trở lên (năm sinh, số tiền, mã đơn, số tài khoản…) đổi thành "#". Dãy 1–2 chữ số như ngày
 // "12/10" hay cự ly "21km" vẫn giữ, vì chúng giúp admin hiểu câu hỏi mà không nhận ra được ai.
@@ -37,17 +37,20 @@ async function recordUnanswered(question, { kind = 'NO_ANSWER', articleKeys = []
   const masked = maskDigits(question);
   const normalized = normalizeSupportText(masked);
   if (tooShort(normalized)) return 'skipped';
-  const keys = (Array.isArray(articleKeys) ? articleKeys : []).filter(key => typeof key === 'string' && ARTICLE_KEY.test(key)).slice(0, 3);
+  const keys = (Array.isArray(articleKeys) ? articleKeys : []).filter(isArticleKey).slice(0, 3);
   const now = new Date();
 
-  // Bước 1: câu đã có thì cộng 1 và cập nhật lần hỏi cuối, trong một lệnh duy nhất. Câu RESOLVED mà vẫn bị hỏi lại,
-  // tức bài đã làm chưa giải quyết được, thì mở lại thành OPEN; câu IGNORED giữ nguyên (spec T12).
-  const existing = await UnansweredQuestion.updateOne({ kind, normalized }, [{ $set: {
-    count: { $add: ['$count', 1] },
+  // Phần cộng câu dùng chung cho bước 1 và bước 3, để luật trạng thái chỉ nằm ở một chỗ: câu RESOLVED mà vẫn bị hỏi
+  // lại, tức bài đã làm chưa giải quyết được, thì mở lại thành OPEN; câu IGNORED giữ nguyên (spec T12); dòng mới là OPEN.
+  const bump = {
+    count: { $add: [{ $ifNull: ['$count', 0] }, 1] },
     lastAskedAt: now,
-    status: { $cond: [{ $eq: ['$status', 'RESOLVED'] }, 'OPEN', '$status'] },
+    status: { $cond: [{ $eq: ['$status', 'IGNORED'] }, 'IGNORED', 'OPEN'] },
     articleKeys: { $setUnion: [{ $ifNull: ['$articleKeys', []] }, { $literal: keys }] },
-  } }]);
+  };
+
+  // Bước 1: câu đã có thì cộng 1 và cập nhật lần hỏi cuối, trong một lệnh duy nhất.
+  const existing = await UnansweredQuestion.updateOne({ kind, normalized }, [{ $set: bump }]);
   if (existing.matchedCount) return 'counted';
 
   // Bước 2: câu mới. Loại câu này đã đủ 500 câu OPEN thì bỏ qua. Mỗi loại có giới hạn riêng: nút "Chưa đúng" cho
@@ -55,14 +58,16 @@ async function recordUnanswered(question, { kind = 'NO_ANSWER', articleKeys = []
   // được. Đây là giới hạn mềm: nhiều câu mới tới cùng lúc có thể làm vượt một chút.
   if (await UnansweredQuestion.countDocuments({ status: 'OPEN', kind }).maxTimeMS(1500) >= UNANSWERED_OPEN_LIMIT) return 'skipped';
 
-  // Upsert dùng $inc cho cả lúc tạo lẫn lúc cộng. Truy vấn khớp đúng các trường của unique index, nên khi hai request
-  // cùng chèn, MongoDB tự thử lại request thua thành một lần cộng: ba request đồng thời cho ra count = 3.
-  const inserted = await UnansweredQuestion.updateOne({ kind, normalized }, {
-    $inc: { count: 1 },
-    $set: { lastAskedAt: now },
-    $setOnInsert: { sample: sampleOf(masked), firstAskedAt: now, status: 'OPEN' },
-    $addToSet: { articleKeys: { $each: keys } },
-  }, { upsert: true });
+  // Bước 3: upsert dạng pipeline với cùng phần cộng `bump`, thêm hai trường chỉ đặt khi tạo dòng mới. Nhờ vậy dòng vừa
+  // xuất hiện giữa bước 1 và bước này (request khác vừa chèn, rồi admin có thể đã đánh dấu) cũng theo đúng luật trạng
+  // thái. Truy vấn khớp đúng các trường của unique index, nên khi hai request cùng chèn, MongoDB tự thử lại request
+  // thua thành một lần cộng: ba request đồng thời cho ra count = 3. Chuỗi đi qua $literal để câu bắt đầu bằng "$"
+  // không bị hiểu là tên trường.
+  const inserted = await UnansweredQuestion.updateOne({ kind, normalized }, [{ $set: {
+    ...bump,
+    sample: { $ifNull: ['$sample', { $literal: sampleOf(masked) }] },
+    firstAskedAt: { $ifNull: ['$firstAskedAt', now] },
+  } }], { upsert: true });
   return inserted.upsertedCount ? 'created' : 'counted';
 }
 
@@ -86,12 +91,15 @@ async function listUnanswered({ status = 'OPEN' } = {}) {
  * Đánh dấu một câu là đã xử lý (RESOLVED) hoặc bỏ qua (IGNORED).
  * @param {string} id Mã câu trong hàng chờ.
  * @param {'RESOLVED' | 'IGNORED'} status Trạng thái mới.
+ * @param {{ from?: 'OPEN' }} [options] `from`: chỉ đổi khi câu đang ở trạng thái này; câu ở trạng thái khác coi như
+ *   không tìm thấy (404). Tạo bài từ một câu dùng `from: 'OPEN'`, để không đổi câu admin khác vừa bấm "Bỏ qua".
  * @returns {Promise<object>} Câu sau khi đổi, cùng các trường như danh sách.
  */
-async function setUnansweredStatus(id, status) {
+async function setUnansweredStatus(id, status, { from } = {}) {
   if (!['RESOLVED', 'IGNORED'].includes(status)) throw httpError(400, 'Trạng thái hàng chờ không hợp lệ.', errorCodes.UNANSWERED_INVALID);
+  // Điều kiện trạng thái nằm ngay trong lệnh cập nhật, nên hai admin thao tác cùng lúc cũng không ghi đè nhau.
   const question = mongoose.isObjectIdOrHexString(id)
-    && await UnansweredQuestion.findByIdAndUpdate(id, { status }, { new: true }).select(QUEUE_FIELDS).lean();
+    && await UnansweredQuestion.findOneAndUpdate({ _id: id, ...(from ? { status: from } : {}) }, { status }, { new: true }).select(QUEUE_FIELDS).lean();
   if (!question) throw httpError(404, 'Không tìm thấy câu hỏi trong hàng chờ.', errorCodes.UNANSWERED_NOT_FOUND);
   return question;
 }
@@ -110,7 +118,7 @@ async function recordFeedback({ question, articleKeys } = {}, { findArticles = l
   }
   // Một câu trả lời dùng tối đa 2 bài, nên báo "Chưa đúng" cũng chỉ nhắc tới 1–2 bài.
   if (!Array.isArray(articleKeys) || articleKeys.length < 1 || articleKeys.length > 2
-    || !articleKeys.every(key => typeof key === 'string' && ARTICLE_KEY.test(key))) throw invalid('Danh sách bài được báo không hợp lệ.');
+    || !articleKeys.every(isArticleKey)) throw invalid('Danh sách bài được báo không hợp lệ.');
   // Chỉ nhận key của bài đang xuất bản: bot chỉ trả lời bằng những bài này, nên key khác là do request bị sửa tay.
   const published = new Set((await findArticles()).map(article => article.key));
   if (!articleKeys.every(key => published.has(key))) {

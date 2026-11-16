@@ -136,6 +136,29 @@ test('câu RESOLVED bị hỏi lại thì mở lại thành OPEN; câu IGNORED t
   assert.deepEqual(rows.map(row => [row.normalized, row.status, row.count]), [['doi cu ly duoc khong', 'OPEN', 2], ['xin voucher giam gia', 'IGNORED', 2]]);
 });
 
+// P09, lỗi nhẹ (a) của code-review P06: bước 1 không thấy câu, rồi trong lúc bước 2 đếm câu OPEN thì một request khác
+// đã chèn câu đó và admin bấm "Đã xử lý". Bước 3 (upsert) gặp dòng RESOLVED phải mở lại như bước 1, chứ không chỉ cộng
+// count; câu IGNORED thì vẫn giữ nguyên. Test chen dòng vào đúng chỗ đó bằng cách thay tạm countDocuments.
+test('câu bị đánh dấu RESOLVED hay IGNORED ngay giữa hai bước ghi thì vẫn xử lý như bước 1', async () => {
+  const original = UnansweredQuestion.countDocuments;
+  try {
+    for (const [status, expected] of [['RESOLVED', 'OPEN'], ['IGNORED', 'IGNORED']]) {
+      await UnansweredQuestion.deleteMany({});
+      UnansweredQuestion.countDocuments = function (...args) {
+        const query = original.apply(this, args), exec = query.exec.bind(query);
+        query.exec = async (...rest) => {
+          await UnansweredQuestion.collection.insertOne({ kind: 'NO_ANSWER', normalized: 'doi cu ly duoc khong', sample: 'đổi cự ly được không', count: 1, status, articleKeys: [], firstAskedAt: new Date(), lastAskedAt: new Date() });
+          return exec(...rest);
+        };
+        return query;
+      };
+      assert.equal(await recordUnanswered('đổi cự ly được không'), 'counted', status);
+      const rows = await UnansweredQuestion.find().lean();
+      assert.deepEqual(rows.map(row => [row.status, row.count, row.sample]), [[expected, 2, 'đổi cự ly được không']], status);
+    }
+  } finally { UnansweredQuestion.countDocuments = original; }
+});
+
 test('báo "Chưa đúng" lưu thành dòng WRONG_ANSWER riêng, kèm key các bài và gộp key khi báo lại', async () => {
   assert.equal(await recordUnanswered('giữ chỗ được bao lâu', { kind: 'WRONG_ANSWER', articleKeys: ['hold'] }), 'created');
   assert.equal(await recordUnanswered('giữ chỗ được bao lâu', { kind: 'WRONG_ANSWER', articleKeys: ['hold', 'payment'] }), 'counted');
@@ -148,4 +171,10 @@ test('admin xem thử câu trả lời thì không ghi vào hàng chờ', async 
   const result = await previewAnswer({ question: 'đổi cự ly sau khi mua vé được không' });
   assert.match(result.reply, FALLBACK);
   assert.equal(await UnansweredQuestion.countDocuments(), 0);
+});
+
+// Bước 3 là pipeline: câu mẫu bắt đầu bằng "$" phải được lưu nguyên văn, không bị hiểu là tên trường.
+test('câu bắt đầu bằng dấu $ vẫn được lưu nguyên văn làm câu mẫu', async () => {
+  assert.equal(await recordUnanswered('$sample chưa thấy vé'), 'created');
+  assert.equal((await UnansweredQuestion.findOne().lean()).sample, '$sample chưa thấy vé');
 });
