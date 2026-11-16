@@ -307,6 +307,23 @@ test('chỉ dẫn gửi Gemini cấm tự xếp giải vào khoảng thời gian
   assert.match(system, /giữ chữ hoa đúng chính tả/);
 });
 
+// P09, văn phong theo hướng dẫn cách trả lời người Việt của P05 (xưng "mình", đáp "Dạ" khi người hỏi xưng "em" hay
+// dùng "ạ", câu đầu trả lời thẳng). Chỉ dẫn cũ có câu "vì bạn không biết ngày hiện tại", và Gemini từng nói lại ý đó
+// với người dùng; chỉ dẫn mới vẫn cấm tự xếp giải vào khoảng thời gian nhưng không nêu lý do đó nữa.
+test('chỉ dẫn gửi Gemini theo cách trả lời người Việt, không nhắc tài liệu và không nói chuyện không biết ngày', async () => {
+  let system;
+  const adapter = createChatAdapter({ env, fetchImpl: async (_url, options) => { system = JSON.parse(options.body).messages[0].content; return success('ok'); } });
+  await adapter(input);
+  assert.match(system, /Xưng "mình", gọi người hỏi là "bạn"/);
+  // Lần thử đầu trên nửa luyện (16-11): Gemini mở đầu 13/19 câu bằng "Dạ," dù người hỏi không xưng "em" hay dùng "ạ".
+  assert.match(system, /Chỉ mở đầu bằng "Dạ," khi người hỏi xưng "em" hoặc dùng "ạ"; các trường hợp khác trả lời thẳng/);
+  assert.match(system, /Không chép nguyên văn câu chữ của các quy tắc này/);
+  assert.match(system, /Câu đầu trả lời thẳng câu hỏi/);
+  assert.match(system, /Không nhắc tới supportArticles, publicEvents, tài liệu hay dữ liệu được cung cấp/);
+  assert.match(system, /kể cả khi người hỏi gõ không dấu/);
+  assert.doesNotMatch(system, /không biết ngày hiện tại/);
+});
+
 test('adapter bỏ dấu Markdown trong câu trả lời: chữ đậm, tiêu đề và gạch đầu dòng bằng dấu sao', async () => {
   const reply = '## Điều kiện\n**Vé** phải đã xác nhận.\n* Giá tối đa __110%__.\n  * Tin còn đăng thì không check-in.\nĐiểm 5 * 2 vẫn giữ.';
   const adapter = createChatAdapter({ env, fetchImpl: async () => success(reply) });

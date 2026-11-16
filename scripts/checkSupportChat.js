@@ -67,6 +67,8 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await launcher.click();
     await expect(panel).toBeVisible();
     await expect(widget.locator('#support-heading')).toBeFocused();
+    // Lời chào xưng "mình" như câu trả lời của bot và của AI (P09, hướng dẫn cách trả lời người Việt của P05).
+    await expect(widget.locator('.support-welcome')).toContainText('Mình giúp bạn tìm hướng dẫn');
     await expect(widget.getByRole('button', { name: 'Gửi câu hỏi', exact: true })).toBeDisabled();
     // Hai dòng báo nằm ở đầu khung trò chuyện (P09, người dùng chọn), ai mở chat cũng thấy trước khi hỏi, và ô nhập gọn
     // lại trên màn hẹp. Câu chữ giữ đúng Global Constraints của plan.
