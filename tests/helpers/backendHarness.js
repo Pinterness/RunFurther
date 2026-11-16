@@ -65,7 +65,9 @@ function createBackendHarness({ app, dbName, monitorCommands = false }) {
       headers: { 'Content-Type': 'application/json', ...auth, ...headers },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-    return { status: response.status, body: await response.json() };
+    // Phản hồi 204 không có nội dung, nên body là null thay vì lỗi đọc JSON.
+    const text = await response.text();
+    return { status: response.status, body: text ? JSON.parse(text) : null };
   }
 
   /**

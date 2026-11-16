@@ -1,6 +1,6 @@
 // Kiểm tuổi tối thiểu theo ngày sinh trong hồ sơ người chạy. Dùng chung cho cổng AI (18 tuổi) và cộng đồng, chat
 // (16 tuổi). Luật "thiếu dữ liệu thì từ chối": dob trống, sai, không phải Date hay ở tương lai đều coi như chưa đủ.
-const { ageOn } = require('../../lib/runnerValidation.cjs');
+const { ageOn, calendarDate, yearsBefore } = require('../../lib/runnerValidation.cjs');
 
 /**
  * Người có ngày sinh `dob` đã đủ `years` tuổi vào ngày `now` theo lịch Việt Nam chưa.
@@ -15,4 +15,15 @@ function isAtLeastAge(dob, years, now = new Date()) {
   return ageOn(dob.toISOString().slice(0, 10), now) >= years;
 }
 
-module.exports = { isAtLeastAge };
+/**
+ * Ngày sinh muộn nhất vẫn đủ `years` tuổi vào ngày `now` (lịch Việt Nam), ở dạng nửa đêm UTC giống dob đã lưu.
+ * Dùng để lọc tuổi ngay trong truy vấn: `dob <= latestBirthday(16, now)` cho cùng kết quả với isAtLeastAge.
+ * @param {number} years Số tuổi tối thiểu.
+ * @param {Date} [now] Thời điểm tính.
+ * @returns {Date} Mốc ngày sinh.
+ */
+function latestBirthday(years, now = new Date()) {
+  return new Date(`${yearsBefore(calendarDate(now), years)}T00:00:00.000Z`);
+}
+
+module.exports = { isAtLeastAge, latestBirthday };

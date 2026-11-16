@@ -43,6 +43,7 @@ app.use("/api/marketplace", marketplaceRoutes);
 app.use("/api/organizations", organizationRoutes);
 app.use("/api/notifications", require("./routes/notificationRoutes"));
 app.use("/api/support", require("./routes/supportRoutes"));
+app.use("/api/community", require("./routes/communityRoutes"));
 app.get('/api/media/images/:imageId', require('./controllers/imageController').read);
 app.get('/api/banks', async (_req, res, next) => {
   try { res.json({ banks: await require('./services/bankService').listBanks() }); } catch (error) { next(error); }

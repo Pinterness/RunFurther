@@ -2,7 +2,7 @@
 // Không kết nối DB: chỉ kiểm hàm thuần và hằng số.
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { isAtLeastAge } = require('../../src/backend/lib/age');
+const { isAtLeastAge, latestBirthday } = require('../../src/backend/lib/age');
 const { PROFILE_CONSENT, CHAT_CONSENT, CONSENT_HISTORY } = require('../../src/lib/communityConsent.cjs');
 
 const now = new Date('2026-11-16T03:00:00Z'); // 10 giờ sáng 16-11 giờ Việt Nam
@@ -22,6 +22,16 @@ test('ngày sinh rỗng, sai hay ở tương lai thì chưa đủ tuổi', () =>
   for (const dob of [null, undefined, new Date('x'), '2000-01-01', new Date('2030-01-01')]) {
     assert.equal(isAtLeastAge(dob, 16, now), false, String(dob));
   }
+});
+
+test('mốc ngày sinh muộn nhất khớp với isAtLeastAge, kể cả ngày 29-02', () => {
+  for (const at of [now, new Date('2024-02-28T20:00:00Z'), new Date('2025-02-28T03:00:00Z'), new Date('2026-11-15T17:30:00Z')]) {
+    const cutoff = latestBirthday(16, at);
+    const nextDay = new Date(cutoff.getTime() + 24 * 3600 * 1000);
+    assert.equal(isAtLeastAge(cutoff, 16, at), true, at.toISOString());
+    assert.equal(isAtLeastAge(nextDay, 16, at), false, at.toISOString());
+  }
+  assert.equal(latestBirthday(16, now).toISOString(), '2010-11-16T00:00:00.000Z');
 });
 
 test('văn bản đồng ý có phiên bản và nêu đủ ý bắt buộc', () => {
