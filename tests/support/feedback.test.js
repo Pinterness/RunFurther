@@ -99,3 +99,14 @@ test('lần gửi thứ 7 trong cùng một phút thì bị 429', async () => {
   while (sent < 6) assert.equal((await sendFeedback({ question: 'giữ chỗ được bao lâu', articleKeys: ['hold'] })).status, 200);
   assert.equal((await sendFeedback({ question: 'giữ chỗ được bao lâu', articleKeys: ['hold'] })).status, 429);
 });
+
+// Code-review P09: câu trả lời lịch giải do AI viết đã dùng nội dung các bài được gửi cho AI, nên vẫn giữ articleKeys
+// (nút "Chưa đúng" đưa được câu AI sai vào hàng chờ). Chỉ câu guide dựng từ dữ liệu giải mới không có articleKeys.
+test('câu trả lời lịch giải do AI viết vẫn giữ articleKeys của các bài đã gửi cho AI', async () => {
+  const event = { name: 'Giải chạy thử Cần Thơ', city: 'Cần Thơ', date: '20/12/2026', registrationOpen: true, categories: [{ code: '10K', distance: 10, price: 300000 }], url: '/events/giai-chay-thu' };
+  const deps = { findArticles: async () => seedArticles(), recordMiss: null, findEvents: async () => [event], generateReply: async () => 'Có giải Cần Thơ ngày 20/12/2026.' };
+  const ai = await createSupportResponder({ ...deps, canUseAi: async () => ({ allowed: true, reason: null }) })({ message: 'Có giải nào sắp diễn ra?', userId: '507f1f77bcf86cd799439011' });
+  assert.equal(ai.mode, 'ai'); assert.ok(ai.articleKeys.includes('events'), JSON.stringify(ai.articleKeys));
+  const guide = await createSupportResponder({ ...deps, canUseAi: async () => ({ allowed: false, reason: 'switch' }) })({ message: 'Có giải nào sắp diễn ra?', userId: '507f1f77bcf86cd799439011' });
+  assert.equal(guide.mode, 'guide'); assert.deepEqual(guide.articleKeys, []);
+});

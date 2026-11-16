@@ -77,6 +77,8 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await expect(notices.getByText('Câu trợ lý chưa trả lời được, hoặc câu bạn báo “Chưa đúng”, sẽ được lưu không kèm tài khoản, đã che các dãy số, và tự xóa sau 30 ngày không có ai hỏi lại.', { exact: true })).toBeVisible();
     // Dòng báo AI (P08): nói rõ ai được dùng AI, câu gì được gửi tới Google Gemini và Google được làm gì với nó.
     await expect(notices.getByText('Khi bạn đã đăng nhập và hồ sơ cho thấy đủ 18 tuổi, câu hỏi chung (không gồm dữ liệu vé, ví, đơn) được gửi tới Google Gemini để viết câu trả lời. Google có thể dùng nội dung này để cải thiện sản phẩm, và người của Google có thể đọc. Đừng nhập họ tên, số điện thoại, thông tin sức khỏe hay thông tin cá nhân khác vào câu hỏi.', { exact: true })).toBeVisible();
+    // Code-review P09: dòng báo nằm ngoài vùng aria-live, để trình đọc màn hình không đọc nó như một tin nhắn mới.
+    assert.equal(await notices.evaluate(node => Boolean(node.closest('[aria-live]'))), false, 'Dòng báo không nằm trong vùng aria-live');
     await expect(widget.locator('.support-composer')).not.toContainText('Google Gemini');
     await expect(widget.locator('.support-composer')).not.toContainText('30 ngày');
     await expect(widget).not.toContainText('Câu hỏi có thể được xử lý bởi dịch vụ AI khi tính năng này được bật.');
@@ -91,6 +93,9 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await expect(question).not.toBeFocused();
     await expect(widget.locator('.support-message-user')).toHaveCount(1);
     assert.deepEqual(chatBodies[0], chatBodies[1], 'Retry keeps the original prompt/history without duplicating the user message');
+    // Tin nhắn nằm trong vùng role="log" (trình đọc màn hình đọc tin mới); dòng báo và câu gợi ý nằm ngoài vùng đó.
+    await expect(widget.getByRole('log', { name: 'Cuộc trò chuyện với trợ lý' }).locator('.support-message')).toHaveCount(2);
+    await expect(widget.getByRole('log', { name: 'Cuộc trò chuyện với trợ lý' }).locator('.support-notices, .support-prompts')).toHaveCount(0);
     await expect(widget.locator('.support-message-assistant')).toContainText(unsafeReply);
     await expect(widget.locator('.support-message-assistant img')).toHaveCount(0);
     assert.equal(await page.evaluate(() => Boolean(window.chatInjected)), false);

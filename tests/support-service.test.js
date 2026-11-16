@@ -293,6 +293,19 @@ test('mỗi lúc chỉ gửi tối đa 4 request tới AI, request thứ 5 bị 
   assert.ok((await Promise.all(requests)).every(value => value === 'Hướng dẫn đã xác thực.'));
 });
 
+// Code-review P09: adapter chỉ nhận chỗ do chính nó cấp (reserveSlot). Một hàm lạ truyền vào làm slot không vượt được
+// giới hạn 4 lời gọi.
+// Fetch giả dừng khi bị hủy và adapter hết giờ sau 1 giây, nên nếu slot lạ lọt qua thì test đỏ chứ không treo.
+test('slot không do adapter cấp thì bị bỏ qua, giới hạn 4 lời gọi vẫn giữ', { timeout: 10000 }, async () => {
+  const pending = [];
+  const fetchImpl = (_url, { signal }) => new Promise((resolve, reject) => { pending.push(resolve); signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true }); });
+  const adapter = createChatAdapter({ env, timeoutMs: 1000, fetchImpl });
+  const requests = Array.from({ length: 4 }, () => adapter(input));
+  assert.equal(await adapter({ ...input, slot: () => {} }), null); assert.equal(pending.length, 4);
+  pending.forEach(resolve => resolve(success('Hướng dẫn đã xác thực.')));
+  await Promise.all(requests);
+});
+
 // Sau lần chấm AI ngày 16-11 (q40 tự xếp giải 20/12 vào "tháng này", q45 tự thêm nguyên nhân, 3 câu có dấu **):
 // chỉ dẫn hệ thống thêm ba luật, và adapter dọn dấu Markdown vì khung chat hiển thị chữ thường.
 test('chỉ dẫn gửi Gemini cấm tự xếp giải vào khoảng thời gian, cấm thêm nguyên nhân ngoài bài và cấm Markdown', async () => {

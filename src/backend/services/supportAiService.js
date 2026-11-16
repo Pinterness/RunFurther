@@ -69,18 +69,22 @@ const plainText = text => text
 // `fetchImpl` mặc định gọi `fetch` lúc chạy (không gắn sẵn lúc nạp module), để test thay được `global.fetch`.
 function createChatAdapter({ env = process.env, fetchImpl = (...args) => fetch(...args), timeoutMs = AI_LIMITS.timeoutMs } = {}) {
   let inFlight = 0;
+  const issued = new WeakSet();
   // Giữ một trong 4 chỗ gọi AI. Trả về hàm trả chỗ (gọi nhiều lần cũng chỉ trả một lần), hoặc null khi đã đủ 4 lời
-  // gọi đang chạy. Responder giữ chỗ trước khi hỏi cổng AI, để câu không được gọi thì không tốn lượt (P09).
+  // gọi đang chạy. Cổng AI giữ chỗ ngay trước bước trừ lượt, để câu không được gọi thì không tốn lượt (P09).
   function reserveSlot() {
     if (inFlight >= AI_LIMITS.inFlight) return null;
     inFlight += 1;
     let held = true;
-    return () => { if (held) { held = false; inFlight -= 1; } };
+    const release = () => { if (held) { held = false; inFlight -= 1; } };
+    issued.add(release);
+    return release;
   }
-  // `slot`: chỗ responder đã giữ sẵn; không có thì adapter tự giữ (gọi thẳng adapter như script chấm AI).
+  // `slot`: chỗ đã giữ sẵn qua reserveSlot của chính adapter này. Thiếu, hay là một hàm adapter không cấp, thì adapter
+  // tự giữ chỗ (gọi thẳng adapter như script chấm AI), nên không cách nào vượt được giới hạn 4 lời gọi.
   async function generateReply({ question, articles = [], events = [], slot = null }) {
     const config = readAiConfig(env);
-    const release = slot || (config ? reserveSlot() : null);
+    const release = issued.has(slot) ? slot : (config ? reserveSlot() : null);
     if (!config || !release || sensitiveQuestion(question)) { release?.(); return null; }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), Math.max(1, Math.min(AI_LIMITS.timeoutMs, timeoutMs)));
@@ -129,7 +133,7 @@ function createSupportResponder({ findArticles = loadPublishedArticles, findEven
     const question = message.trim();
     const query = normalizeSupportText(question);
     // `articleKeys`: key các bài đã dùng để trả lời, để khung chat hiện nút "Chưa đúng". Mảng rỗng khi trả FALLBACK,
-    // trả lời tác vụ, trả lời lịch giải hay báo lỗi, vì khi đó câu trả lời không lấy từ bài nào.
+    // trả lời tác vụ, câu guide về lịch giải (dựng từ dữ liệu giải) hay báo lỗi, vì khi đó câu trả lời không lấy từ bài nào.
     const result = { reply: FALLBACK, mode: 'guide', sources: [], suggestions: [...DEFAULT_SUGGESTIONS], articleKeys: [] };
     const route = routeTask(query);
     if (route?.key) {
@@ -165,7 +169,8 @@ function createSupportResponder({ findArticles = loadPublishedArticles, findEven
     let events = [];
     if (articles[0].key === 'events') {
       // Câu trả lời lịch giải dựng từ dữ liệu giải trong database (như câu tác vụ), không lấy chữ nào từ bài: không có
-      // articleKeys nên không có nút "Chưa đúng", vì sửa bài tri thức không sửa được dữ liệu giải.
+      // articleKeys nên không có nút "Chưa đúng", vì sửa bài tri thức không sửa được dữ liệu giải. Nếu sau đó AI viết
+      // câu trả lời từ các bài được gửi cho nó thì key được gắn lại ở bước AI bên dưới.
       result.articleKeys = [];
       try {
         events = (await findEvents({ message: question, page })).slice(0, LIMITS.events);
@@ -188,19 +193,21 @@ function createSupportResponder({ findArticles = loadPublishedArticles, findEven
     // Chỉ hỏi cổng khi đã có bài để AI dựa vào và có adapter; cổng giữ lượt ngày nên không được gọi thừa. Cổng chỉ
     // nhận userId và câu hỏi; adapter chỉ nhận câu hỏi, bài và giải công khai (không lịch sử, không userId, không trang).
     if (typeof generateReply === 'function') {
-      // Giữ chỗ gọi AI trước khi hỏi cổng (cổng giữ lượt ngày và lượt của tài khoản). Đã đủ 4 lời gọi đang chạy thì
-      // trả guide ngay, không hỏi cổng, nên câu không được gọi AI cũng không tốn lượt. Hàm giả trong test không có
-      // reserveSlot thì bỏ qua bước này.
-      const slot = typeof generateReply.reserveSlot === 'function' ? generateReply.reserveSlot() : undefined;
-      if (slot === null) return result;
+      // Cổng giữ chỗ gọi AI (tối đa 4) qua claimSlot, sau các bước đọc DB và ngay trước bước trừ lượt: hết chỗ thì cổng
+      // từ chối 'busy' và câu không tốn lượt nào. Hàm giả trong test không có reserveSlot thì không truyền claimSlot.
+      let slot = null;
+      const claimSlot = typeof generateReply.reserveSlot === 'function' ? () => (slot = generateReply.reserveSlot()) !== null : null;
       try {
         let gate;
-        try { gate = await canUseAi({ userId, question }); } catch (error) { console.error('Support AI gate failed:', error.message); }
+        try { gate = await canUseAi({ userId, question }, claimSlot ? { claimSlot } : undefined); } catch (error) { console.error('Support AI gate failed:', error.message); }
         if (!gate?.allowed) return result;
         try {
           const aiReply = await generateReply({ question, articles, events, slot });
           if (typeof aiReply === 'string' && aiReply.trim() && aiReply.length <= LIMITS.replyCharacters) {
             result.reply = aiReply.trim(); result.mode = 'ai';
+            // AI viết từ chính các bài được gửi cho nó, kể cả chủ đề giải, nên giữ key để nút "Chưa đúng" đưa được câu
+            // AI sai vào hàng chờ.
+            result.articleKeys = articles.slice(0, AI_LIMITS.articles).map(article => article.key);
           }
         } catch { /* AI lỗi thì vẫn còn câu trả lời soạn sẵn. */ }
       } finally { slot?.(); }

@@ -137,3 +137,17 @@ test('không liệt kê được database (tài khoản thiếu quyền) thì đ
   };
   assert.deepEqual(await clusterStats({ connection }), { dataSize: 7, indexSize: 3 });
 });
+
+// Code-review P09: một database khác báo lỗi khi đọc stats (thiếu quyền, quá giờ) thì bỏ qua database đó và ghi log,
+// đồng hồ vẫn đo database của app như trước, không mất cả đồng hồ.
+test('một database khác đọc stats lỗi thì đồng hồ Atlas bỏ qua database đó, vẫn đo database của app', async () => {
+  const connection = {
+    db: { databaseName: 'test', admin: () => ({ command: async () => ({ databases: [{ name: 'test' }, { name: 'sample_mflix' }, { name: 'local' }] }) }), stats: async () => ({ dataSize: 7, indexSize: 3 }) },
+    client: { db: name => ({ stats: async () => { throw new Error('not authorized on ' + name); } }) },
+  };
+  const consoleError = console.error, logged = [];
+  console.error = (...args) => logged.push(args.join(' '));
+  try { assert.deepEqual(await clusterStats({ connection }), { dataSize: 7, indexSize: 3 }); }
+  finally { console.error = consoleError; }
+  assert.ok(logged.some(line => /sample_mflix/.test(line)), logged.join('\n'));
+});

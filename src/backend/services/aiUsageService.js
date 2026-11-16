@@ -57,14 +57,17 @@ function createAccountAllowance({ perDay = ACCOUNT_DAILY_AI_ANSWERS } = {}) {
     const day = pacificDay(now);
     if (day !== currentDay) { used.clear(); currentDay = day; }
   };
+  // Các hàm dùng biến trong closure, không dùng `this`, nên tách hàm ra khỏi object vẫn chạy đúng.
+  const canUse = (userId, now = new Date()) => { rollTo(now); return (used.get(String(userId)) || 0) < perDay; };
+  const consume = (userId, now = new Date()) => { rollTo(now); const key = String(userId); used.set(key, (used.get(key) || 0) + 1); };
   return {
-    canUse(userId, now = new Date()) { rollTo(now); return (used.get(String(userId)) || 0) < perDay; },
-    consume(userId, now = new Date()) { rollTo(now); const key = String(userId); used.set(key, (used.get(key) || 0) + 1); },
+    canUse,
+    consume,
     // Kiểm và trừ trong cùng một bước đồng bộ, không có await ở giữa, nên nhiều câu của cùng tài khoản tới cùng lúc
     // không cùng lọt qua bước kiểm (P09). Trả true khi đã trừ được một lượt.
     tryConsume(userId, now = new Date()) {
-      if (!this.canUse(userId, now)) return false;
-      this.consume(userId, now);
+      if (!canUse(userId, now)) return false;
+      consume(userId, now);
       return true;
     },
     // Trả lại một lượt đã trừ, khi cổng không giữ được lượt ngày. Chỉ trả trong cùng ngày Pacific: lượt của ngày cũ

@@ -41,13 +41,17 @@ function createAiGate({
   now = () => new Date(),
 } = {}) {
   const deny = reason => ({ allowed: false, reason });
-  return async function canUseAi({ userId, question }) {
+  // Tham số thứ nhất chỉ là dữ liệu của câu hỏi (userId, câu hỏi). `claimSlot` (tùy chọn) là hàm responder đưa vào để
+  // giữ một trong 4 chỗ gọi AI của adapter; cổng gọi nó sau các bước đọc DB, ngay trước bước trừ lượt, nên câu đang
+  // chờ đọc công tắc hay ngày sinh không chiếm chỗ của câu khác, và câu hết chỗ không bị trừ lượt nào (P09).
+  return async function canUseAi({ userId, question }, { claimSlot = null } = {}) {
     if (!readAiConfig(env)) return deny('provider');
     if (sensitiveQuestion(question)) return deny('sensitive');
     if (!userId || !mongoose.isValidObjectId(userId)) return deny('guest');
     if (!(await attempt(isSwitchOn, false))) return deny('switch');
     const at = now();
     if (!isAdult(await attempt(() => findDob(userId), null), at)) return deny('age');
+    if (claimSlot && !claimSlot()) return deny('busy');
     // Trừ lượt của tài khoản ngay lúc kiểm (không có await ở giữa), để nhiều câu tới cùng lúc không cùng lọt qua.
     // Không giữ được lượt ngày thì trả lại, nên lượt của tài khoản chỉ bị tính khi đã giữ được lượt ngày.
     if (!allowance.tryConsume(userId, at)) return deny('account-limit');

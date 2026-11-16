@@ -22,7 +22,13 @@ async function clusterStats({ connection = mongoose.connection } = {}) {
     const { databases } = await connection.db.admin().command({ listDatabases: 1, nameOnly: true });
     names = databases.map(database => database.name).filter(name => !SYSTEM_DATABASES.includes(name) && name !== own);
   } catch { names = []; }
-  const all = await Promise.all([connection.db.stats(), ...names.map(name => connection.client.db(name).stats())]);
+  // Database khác đọc lỗi (thiếu quyền, quá giờ) thì bỏ qua và ghi log, để đồng hồ vẫn đo được database của app.
+  // Database của app đọc lỗi thì để lỗi đi tiếp: quotaAlerts bỏ cả đồng hồ, như trước P09.
+  const others = names.map(name => connection.client.db(name).stats().catch(error => {
+    console.error(`Quota meter skipped database ${name}:`, error.message);
+    return null;
+  }));
+  const all = await Promise.all([connection.db.stats(), ...others]);
   return all.reduce((total, stats) => ({
     dataSize: total.dataSize + (Number(stats?.dataSize) || 0),
     indexSize: total.indexSize + (Number(stats?.indexSize) || 0),

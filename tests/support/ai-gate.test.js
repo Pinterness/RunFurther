@@ -178,3 +178,31 @@ test('nhiều câu của cùng tài khoản tới cùng lúc thì không vượt
   assert.equal(results.filter(result => result.allowed).length, 2);
   assert.equal(results.filter(result => result.reason === 'account-limit').length, 3);
 });
+
+// Code-review P09: chỗ gọi AI chỉ được giữ ngay trước bước trừ lượt, sau các bước đọc DB của cổng (công tắc, ngày sinh),
+// nên các câu đang chờ cổng đọc DB không chiếm chỗ của câu khác. Hết chỗ thì cổng từ chối 'busy' mà chưa trừ lượt nào.
+test('cổng chỉ giữ chỗ gọi AI sau các bước đọc DB; hết chỗ thì từ chối "busy" mà không trừ lượt', async () => {
+  const steps = [];
+  const allowance = createAccountAllowance({ perDay: 5 });
+  const gate = createAiGate({ ...ok, allowance, isSwitchOn: async () => { steps.push('switch'); return true; }, findDob: async () => { steps.push('dob'); return new Date('1990-05-01'); }, reserve: async () => { steps.push('reserve'); return true; } });
+  const busy = await gate({ userId: U, question: 'giữ chỗ bao lâu' }, { claimSlot: () => { steps.push('slot'); return false; } });
+  assert.deepEqual(busy, { allowed: false, reason: 'busy' });
+  assert.deepEqual(steps, ['switch', 'dob', 'slot']);
+  assert.equal(allowance.canUse(U, ok.now()), true);
+  // Không truyền claimSlot thì cổng chạy như trước.
+  assert.equal((await gate({ userId: U, question: 'giữ chỗ bao lâu' })).allowed, true);
+});
+
+test('4 câu đang chờ cổng đọc ngày sinh không chiếm chỗ: câu thứ 5 vẫn được gọi AI', { timeout: 10000 }, async () => {
+  let releaseDob, dobCalls = 0;
+  const held = new Promise(resolve => { releaseDob = resolve; });
+  const reply = () => Response.json({ choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'Đơn được giữ chỗ trong 10 phút.' } }] });
+  const adapter = createChatAdapter({ env: AI_ENV, fetchImpl: async () => reply() });
+  const ask = withSeed({ generateReply: adapter, canUseAi: createAiGate({ ...ok, findDob: async () => { dobCalls++; if (dobCalls <= 4) await held; return new Date('1990-05-01'); } }) });
+  const waitFor = async check => { for (let i = 0; i < 200 && !check(); i++) await new Promise(resolve => setImmediate(resolve)); assert.ok(check()); };
+  const waiting = Array.from({ length: 4 }, () => ask({ message: 'giữ chỗ được bao lâu', userId: U }));
+  await waitFor(() => dobCalls === 4);
+  assert.equal((await ask({ message: 'giữ chỗ được bao lâu', userId: U })).mode, 'ai');
+  releaseDob();
+  assert.ok((await Promise.all(waiting)).every(result => result.mode === 'ai'));
+});

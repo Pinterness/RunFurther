@@ -40,14 +40,17 @@ async function recordUnanswered(question, { kind = 'NO_ANSWER', articleKeys = []
   const keys = (Array.isArray(articleKeys) ? articleKeys : []).filter(isArticleKey).slice(0, 3);
   const now = new Date();
 
-  // Bước 1: câu đã có thì cộng 1 và cập nhật lần hỏi cuối, trong một lệnh duy nhất. Câu RESOLVED mà vẫn bị hỏi lại,
-  // tức bài đã làm chưa giải quyết được, thì mở lại thành OPEN; câu IGNORED giữ nguyên (spec T12).
-  const existing = await UnansweredQuestion.updateOne({ kind, normalized }, [{ $set: {
-    count: { $add: ['$count', 1] },
+  // Phần cộng câu dùng chung cho bước 1 và bước 3, để luật trạng thái chỉ nằm ở một chỗ: câu RESOLVED mà vẫn bị hỏi
+  // lại, tức bài đã làm chưa giải quyết được, thì mở lại thành OPEN; câu IGNORED giữ nguyên (spec T12); dòng mới là OPEN.
+  const bump = {
+    count: { $add: [{ $ifNull: ['$count', 0] }, 1] },
     lastAskedAt: now,
-    status: { $cond: [{ $eq: ['$status', 'RESOLVED'] }, 'OPEN', '$status'] },
+    status: { $cond: [{ $eq: ['$status', 'IGNORED'] }, 'IGNORED', 'OPEN'] },
     articleKeys: { $setUnion: [{ $ifNull: ['$articleKeys', []] }, { $literal: keys }] },
-  } }]);
+  };
+
+  // Bước 1: câu đã có thì cộng 1 và cập nhật lần hỏi cuối, trong một lệnh duy nhất.
+  const existing = await UnansweredQuestion.updateOne({ kind, normalized }, [{ $set: bump }]);
   if (existing.matchedCount) return 'counted';
 
   // Bước 2: câu mới. Loại câu này đã đủ 500 câu OPEN thì bỏ qua. Mỗi loại có giới hạn riêng: nút "Chưa đúng" cho
@@ -55,18 +58,15 @@ async function recordUnanswered(question, { kind = 'NO_ANSWER', articleKeys = []
   // được. Đây là giới hạn mềm: nhiều câu mới tới cùng lúc có thể làm vượt một chút.
   if (await UnansweredQuestion.countDocuments({ status: 'OPEN', kind }).maxTimeMS(1500) >= UNANSWERED_OPEN_LIMIT) return 'skipped';
 
-  // Upsert dạng pipeline: tạo dòng mới, hoặc cộng vào dòng vừa xuất hiện giữa bước 1 và bước này (request khác vừa chèn,
-  // rồi admin có thể đã đánh dấu). Luật trạng thái giống bước 1: RESOLVED mở lại thành OPEN, IGNORED giữ nguyên, dòng
-  // mới là OPEN. Truy vấn khớp đúng các trường của unique index, nên khi hai request cùng chèn, MongoDB tự thử lại
-  // request thua thành một lần cộng: ba request đồng thời cho ra count = 3. Chuỗi đi qua $literal để câu bắt đầu bằng
-  // "$" không bị hiểu là tên trường.
+  // Bước 3: upsert dạng pipeline với cùng phần cộng `bump`, thêm hai trường chỉ đặt khi tạo dòng mới. Nhờ vậy dòng vừa
+  // xuất hiện giữa bước 1 và bước này (request khác vừa chèn, rồi admin có thể đã đánh dấu) cũng theo đúng luật trạng
+  // thái. Truy vấn khớp đúng các trường của unique index, nên khi hai request cùng chèn, MongoDB tự thử lại request
+  // thua thành một lần cộng: ba request đồng thời cho ra count = 3. Chuỗi đi qua $literal để câu bắt đầu bằng "$"
+  // không bị hiểu là tên trường.
   const inserted = await UnansweredQuestion.updateOne({ kind, normalized }, [{ $set: {
-    count: { $add: [{ $ifNull: ['$count', 0] }, 1] },
-    lastAskedAt: now,
+    ...bump,
     sample: { $ifNull: ['$sample', { $literal: sampleOf(masked) }] },
     firstAskedAt: { $ifNull: ['$firstAskedAt', now] },
-    status: { $cond: [{ $eq: ['$status', 'IGNORED'] }, 'IGNORED', 'OPEN'] },
-    articleKeys: { $setUnion: [{ $ifNull: ['$articleKeys', []] }, { $literal: keys }] },
   } }], { upsert: true });
   return inserted.upsertedCount ? 'created' : 'counted';
 }

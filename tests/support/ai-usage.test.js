@@ -118,3 +118,11 @@ test('tryConsume trừ lượt ngay khi kiểm; refund chỉ trả lượt trong
   allowance.refund('a', new Date('2026-11-05T08:00:00Z'));
   assert.equal(allowance.canUse('a', NOW), false);
 });
+
+// Code-review P09: tryConsume và refund không phụ thuộc `this`, nên tách hàm ra khỏi object vẫn chạy đúng.
+test('tryConsume và refund vẫn đúng khi được tách ra khỏi object', () => {
+  const { tryConsume, refund, canUse } = createAccountAllowance({ perDay: 1 });
+  assert.equal(tryConsume('a', NOW), true); assert.equal(tryConsume('a', NOW), false);
+  refund('a', NOW);
+  assert.equal(canUse('a', NOW), true);
+});
