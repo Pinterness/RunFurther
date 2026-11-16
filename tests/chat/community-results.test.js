@@ -12,8 +12,10 @@ const RunnerProfile = require('../../src/backend/models/RunnerProfile');
 const Event = require('../../src/backend/models/Event');
 const EventCategory = require('../../src/backend/models/EventCategory');
 const Registration = require('../../src/backend/models/Registration');
+const CommunityProfile = require('../../src/backend/models/CommunityProfile');
 const { createProfileWithHandle } = require('../../src/backend/services/communityHandle');
 const { createBackendHarness } = require('../helpers/backendHarness');
+const { yearsAgo } = require('../helpers/dates');
 
 const harness = createBackendHarness({ app, dbName: 'runfurther_community_results' });
 const { request, createUser } = harness;
@@ -36,7 +38,10 @@ before(async () => {
     dateInfo: { raceDate: new Date('2026-10-01T00:00:00Z'), registrationStart: new Date('2026-08-01T00:00:00Z'), registrationEnd: new Date('2026-09-30T00:00:00Z') },
   });
   const category = (code, distance) => EventCategory.create({ eventId: event._id, code, name: code, distance, price: 1, quotaTotal: 100 });
-  race = { event, k5: await category('5K', 5), k21: await category('21K', 21.1), k15: await category('15K', 15) };
+  race = {
+    event, k5: await category('5K', 5), k21: await category('21K', 21.1), k15: await category('15K', 15),
+    k5x: await category('6K', 5.9), k42: await category('42K', 42), k42m: await category('FM', 42.195), k10: await category('10K', 10),
+  };
 });
 after(harness.stop);
 
@@ -59,8 +64,11 @@ test('thành tích chỉ đếm vé đã xác nhận của chính chủ, đủ 1
   await ticket(user, race.k15, { chipTime: '1:20:00' });
   // Không được đếm: vé mua hộ người khác, vé của em 12 tuổi, vé đã hủy, chip time sai dạng, chưa có kết quả, thiếu ngày sinh.
   await ticket(user, race.k5, { email: 'ban-than@test.local', chipTime: '0:20:00' });
-  await ticket(user, race.k5, { birthday: '2014-01-01', chipTime: '0:21:00' });
+  await ticket(user, race.k5, { birthday: yearsAgo(12), chipTime: '0:21:00' });
   await ticket(user, race.k5, { status: 'CANCELLED', chipTime: '0:22:00' });
+  // Vé đang chuyển nhượng hoặc đã chuyển cho người khác cũng không còn là thành tích của chủ tài khoản.
+  await ticket(user, race.k5, { status: 'PENDING_TRANSFER', chipTime: '0:22:30' });
+  await ticket(user, race.k5, { status: 'TRANSFERRED', chipTime: '0:23:30' });
   await ticket(user, race.k5, { chipTime: '25:30' });
   await ticket(user, race.k5);
   await ticket(user, race.k5, { birthday: '', chipTime: '0:23:00' });
@@ -70,13 +78,23 @@ test('thành tích chỉ đếm vé đã xác nhận của chính chủ, đủ 1
   assert.deepEqual(body.results, { completedRaces: 4, totalKm: 62.2, bestTimes: { '5K': '0:25:30', '21K': '1:50:10' } });
   assert.ok([...keysDeep(body)].every(k => ALLOWED.has(k)), [...keysDeep(body)].join());
   const json = JSON.stringify(body);
-  for (const secret of ['Giải Bí Mật', 'BIB-', 'ban-than', '2014', '1995', 'qr-results']) assert.ok(!json.includes(secret), secret);
+  for (const secret of ['Giải Bí Mật', 'BIB-', 'ban-than', yearsAgo(12), '1995', 'qr-results']) assert.ok(!json.includes(secret), secret);
 
   // Phần tử của danh sách theo cùng danh sách trắng, nên cũng có thành tích.
   const list = await request('/community/profiles', { as: viewer });
   assert.deepEqual(list.body.profiles.find(p => p.handle === handle).results, body.results);
   // Chủ hồ sơ thấy trước số liệu của mình trong GET /me.
   assert.deepEqual((await request('/community/me', { as: user })).body.results, body.results);
+});
+
+test('thời gian tốt nhất chỉ xếp vào 5K, 10K, 21K, 42K khi cự ly đúng chuẩn; chip time 0:00:00 không tính', async () => {
+  const { user, handle } = await withProfile({ showResults: true });
+  await ticket(user, race.k5x, { chipTime: '0:30:00' });   // 5,9 km: không phải 5K
+  await ticket(user, race.k42, { chipTime: '3:59:00' });   // 42 km
+  await ticket(user, race.k42m, { chipTime: '3:50:00' });  // 42,195 km
+  await ticket(user, race.k10, { chipTime: '0:00:00' });   // dữ liệu hỏng
+  const { body } = await profileOf(handle);
+  assert.deepEqual(body.results, { completedRaces: 3, totalKm: 90.1, bestTimes: { '42K': '3:50:00' } });
 });
 
 test('tắt "Hiện thành tích" hoặc chưa có kết quả nào thì không có khóa results', async () => {
@@ -109,6 +127,15 @@ test('handle đã có người dùng thì 409 COMMUNITY_HANDLE_TAKEN; tên cấm
   assert.equal((await request('/community/me', { as: user })).body.profile.handle, handle);
 });
 
+test('hồ sơ cũ mang handle nay bị cấm vẫn sửa được lời giới thiệu, nhưng không đổi sang tên cấm khác', async () => {
+  const user = await createUser({ dob: '1995-03-10' });
+  await CommunityProfile.create({ userId: user.id, handle: 'admin-2', consentAt: new Date(), consentVersion: 'profile-v1' });
+  const keep = await request('/community/me', { method: 'PUT', as: user, body: { handle: 'admin-2', bio: 'mới' } });
+  assert.deepEqual([keep.status, keep.body.profile?.bio], [200, 'mới'], JSON.stringify(keep.body));
+  const swap = await request('/community/me', { method: 'PUT', as: user, body: { handle: 'admin-3' } });
+  assert.deepEqual([swap.status, swap.body.code], [400, 'COMMUNITY_INVALID']);
+});
+
 test('hai người cùng đổi sang một handle cùng lúc: một người được, người kia 409', async () => {
   const [a, b] = await Promise.all([withProfile(), withProfile()]);
   const results = await Promise.all([a, b].map(({ user }) => request('/community/me', { method: 'PUT', as: user, body: { handle: 'cung-mot-ten' } })));
@@ -121,7 +148,7 @@ test('tìm theo tên không phân biệt dấu và hoa thường, vẫn bỏ ng�
   const hidden = await withProfile({}, { fullName: 'Nguyễn Ẩn Tìm' });
   await User.updateOne({ _id: hidden.user.id }, { $set: { status: 'BANNED' } });
   const young = await withProfile({}, { fullName: 'Nguyễn Nhỏ Tìm' });
-  await RunnerProfile.updateOne({ userId: young.user.id }, { $set: { dob: new Date('2015-01-01') } });
+  await RunnerProfile.updateOne({ userId: young.user.id }, { $set: { dob: new Date(yearsAgo(10)) } });
   await withProfile({}, { fullName: 'Trần Khác' });
 
   const search = async q => (await request('/community/profiles?q=' + encodeURIComponent(q), { as: viewer })).body.profiles.map(p => p.handle).sort();
@@ -137,4 +164,12 @@ test('tìm theo tên không phân biệt dấu và hoa thường, vẫn bỏ ng�
   const all = await request('/community/profiles?q=%20%20', { as: viewer });
   assert.equal(all.status, 200);
   assert.ok(all.body.profiles.length > 2);
+});
+
+// Đặt cuối file: test này dùng hết lượt đọc của IP trong phút hiện tại.
+test('đọc hồ sơ quá 120 lần mỗi phút từ một IP thì bị 429', async () => {
+  let status = 200, sent = 0;
+  while (status !== 429 && sent < 200) { status = (await request('/community/profiles', { as: viewer })).status; sent += 1; }
+  assert.equal(status, 429);
+  assert.ok(sent <= 121, `bị chặn sau ${sent} lần`);
 });

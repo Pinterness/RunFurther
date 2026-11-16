@@ -26,8 +26,9 @@ const communityProfileSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-// Danh sách /community lấy hồ sơ mới nhất trước.
-communityProfileSchema.index({ createdAt: -1 });
+// Danh sách /community lấy hồ sơ mới nhất trước; _id phá hòa khi hai hồ sơ cùng mili giây. Index phải có đủ hai trường
+// thì MongoDB mới sắp bằng index, không phải quét và sắp cả collection.
+communityProfileSchema.index({ createdAt: -1, _id: -1 });
 
 const CommunityProfile = mongoose.models.CommunityProfile || mongoose.model('CommunityProfile', communityProfileSchema);
 

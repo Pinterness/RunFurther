@@ -22,11 +22,17 @@ const BIO_MAX = 160;
 const QUERY_MAX = 60;
 // Tìm theo tên lọc bằng JS (MongoDB không so được chữ đã bỏ dấu), nên chỉ quét chừng này hồ sơ mới nhất.
 const SEARCH_SCAN = 1000;
+// Danh sách cũng dừng ở 1.000 hồ sơ (50 trang), để mỗi request có chi phí giới hạn.
+const MAX_PAGE = SEARCH_SCAN / PAGE_SIZE;
+const DAY_MS = 24 * 60 * 60 * 1000;
 const USER_FIELDS = { fullName: 1, avatarTheme: 1, createdAt: 1, status: 1 };
 const RUNNER_FIELDS = { dob: 1, club: 1 };
 const RESULT_STATUSES = ['CONFIRMED', 'CHECKED_IN', 'KIT_COLLECTED'];
 const CHIP_TIME = /^[0-9]+:[0-5][0-9]:[0-5][0-9]$/; // cùng mẫu với registrationController
-const BEST_TIME_KEYS = { 5: '5K', 10: '10K', 21: '21K', 42: '42K' }; // 21,0975 km và 42,195 km làm tròn xuống
+// Cự ly chuẩn của từng nhóm thời gian tốt nhất. Ban tổ chức nhập 21, 21,1 hay 21,0975 cho bán marathon, nên cho lệch
+// tối đa 0,2 km; 5,9 km hay 10,9 km không phải 5K hay 10K.
+const BEST_TIME_DISTANCES = [['5K', 5], ['10K', 10], ['21K', 21.0975], ['42K', 42.195]];
+const bestTimeKey = distance => BEST_TIME_DISTANCES.find(([, km]) => Math.abs(distance - km) <= 0.2)?.[0];
 
 const notFound = () => httpError(404, 'Không tìm thấy hồ sơ.', errorCodes.COMMUNITY_NOT_FOUND);
 const ownerVisible = (user, runner, now) => user?.status === 'ACTIVE' && isAtLeastAge(runner?.dob, MIN_AGE, now);
@@ -63,12 +69,13 @@ async function summarizeResults(userIds, now) {
     const id = String(ticket.userId), chipTime = ticket.finishResult.chipTime;
     if (String(ticket.runnerProfile?.email ?? '').toLowerCase() !== emailOf.get(id)) continue;
     if (!(ageOn(ticket.runnerProfile?.birthday, now) >= MIN_AGE)) continue;
-    if (!CHIP_TIME.test(chipTime)) continue;
+    // Chip time 0:00:00 là dữ liệu hỏng, không phải thành tích.
+    if (!CHIP_TIME.test(chipTime) || seconds(chipTime) === 0) continue;
     const distance = Number(ticket.categoryId?.distance) || 0;
     const sum = totals.get(id) ?? { completedRaces: 0, totalKm: 0, bestTimes: {} };
     sum.completedRaces += 1;
     sum.totalKm += distance;
-    const key = BEST_TIME_KEYS[Math.floor(distance)];
+    const key = bestTimeKey(distance);
     if (key && (!sum.bestTimes[key] || seconds(chipTime) < seconds(sum.bestTimes[key]))) sum.bestTimes[key] = chipTime;
     totals.set(id, sum);
   }
@@ -101,7 +108,8 @@ function presentProfile({ profile, user, runner, results, canMessage }) {
     displayName: user.fullName,
     avatarTheme: user.avatarTheme ?? 'forest',
     bio: profile.bio ?? '',
-    memberSince: calendarDate(user.createdAt).slice(0, 7),
+    // Tài khoản cũ có thể thiếu createdAt; _id của MongoDB chứa thời điểm tạo nên dùng thay.
+    memberSince: calendarDate(user.createdAt || user._id.getTimestamp()).slice(0, 7),
     ...(profile.showClub && runner?.club ? { club: runner.club } : {}),
     ...(profile.showResults && results ? { results } : {}),
     canMessage: Boolean(canMessage),
@@ -131,10 +139,27 @@ function readSettings(body) {
     const handle = typeof source.handle === 'string' ? source.handle.trim().toLowerCase() : '';
     assert(HANDLE_PATTERN.test(handle) && !handle.includes('--'), 400,
       'Tên hồ sơ gồm 3–30 chữ thường không dấu, số và dấu gạch, không bắt đầu hay kết thúc bằng dấu gạch.', errorCodes.COMMUNITY_INVALID);
-    assert(!isReservedHandle(handle), 400, 'Tên hồ sơ này dành cho hệ thống. Bạn chọn tên khác nhé.', errorCodes.COMMUNITY_INVALID);
-    settings.handle = handle;
+    settings.handle = handle; // tên cấm kiểm ở saveMine, chỉ khi handle thật sự đổi
   }
   return settings;
+}
+
+// Hai request bật hồ sơ chạy song song (bấm hai lần, hai tab) thì request sau gặp lỗi trùng userId; khi đó coi như
+// hồ sơ đã bật và trả về hồ sơ đang có.
+async function createOrReuse(userId, fields, fullName, now) {
+  try {
+    const profile = await createProfileWithHandle({ userId, ...fields, consentAt: now, consentVersion: PROFILE_CONSENT.version }, fullName);
+    return { profile: presentOwn(profile.toObject()), created: true };
+  } catch (error) {
+    const existing = error?.code === errorCodes.COMMUNITY_INVALID && await CommunityProfile.findOne({ userId }).lean();
+    if (existing) return { profile: presentOwn(existing), created: false };
+    throw error;
+  }
+}
+
+function assertHandleAllowed(settings, current) {
+  if (settings.handle === undefined || settings.handle === current.handle) return;
+  assert(!isReservedHandle(settings.handle), 400, 'Tên hồ sơ này dành cho hệ thống. Bạn chọn tên khác nhé.', errorCodes.COMMUNITY_INVALID);
 }
 
 const readDob = userId => RunnerProfile.findOne({ userId }).select({ dob: 1 }).lean().then(runner => runner?.dob);
@@ -171,6 +196,7 @@ async function saveMine(userId, body, { now = new Date() } = {}) {
   const current = await CommunityProfile.findOne({ userId }).lean();
   if (current && !Object.keys(settings).length) return { profile: presentOwn(current), created: false };
   if (current) {
+    assertHandleAllowed(settings, current);
     const updated = await updateMine(userId, settings);
     // Hồ sơ vừa bị xóa ở tab khác thì đi tiếp nhánh tạo mới, nhánh đó đòi đồng ý lại.
     if (updated) return { profile: presentOwn(updated), created: false };
@@ -180,11 +206,7 @@ async function saveMine(userId, body, { now = new Date() } = {}) {
     'Bạn cần đánh dấu đồng ý công khai hồ sơ trước khi bật.', errorCodes.COMMUNITY_CONSENT_REQUIRED);
   const { handle: _requested, ...fields } = settings;
   const user = await User.findById(userId).select({ fullName: 1 }).lean();
-  const profile = await createProfileWithHandle(
-    { userId, ...fields, consentAt: now, consentVersion: PROFILE_CONSENT.version },
-    user.fullName,
-  );
-  return { profile: presentOwn(profile.toObject()), created: true };
+  return createOrReuse(userId, fields, user.fullName, now);
 }
 
 // Tắt hồ sơ là xóa hẳn tài liệu (spec D2); không còn hồ sơ thì coi như đã xóa.
@@ -194,7 +216,7 @@ async function deleteMine(userId) {
 
 function readPage(raw) {
   if (raw === undefined) return 1;
-  assert(typeof raw === 'string' && /^[1-9]\d{0,5}$/.test(raw), 400, 'Số trang không hợp lệ.', errorCodes.COMMUNITY_INVALID);
+  assert(typeof raw === 'string' && /^[1-9]\d{0,2}$/.test(raw) && Number(raw) <= MAX_PAGE, 400, 'Số trang không hợp lệ.', errorCodes.COMMUNITY_INVALID);
   return Number(raw);
 }
 
@@ -211,19 +233,30 @@ const matchesQuery = (row, words) => {
 };
 
 /**
+ * Pipeline lấy hồ sơ xem được, mới nhất trước: sắp theo index { createdAt: -1, _id: -1 }, nối User và RunnerProfile
+ * (chỉ các trường cần), rồi giữ chủ hồ sơ ACTIVE và đủ 16 tuổi. isAtLeastAge xét ngày UTC của dob, nên mọi dob trong
+ * ngày mốc (kể cả dữ liệu cũ có kèm giờ) đều đạt: điều kiện là dob trước nửa đêm của ngày hôm sau.
+ * @param {Date} now Thời điểm tính tuổi.
+ * @returns {object[]} Các bước aggregate, chưa có $skip/$limit.
+ */
+function visibleProfilesPipeline(now) {
+  return [
+    { $sort: { createdAt: -1, _id: -1 } },
+    { $lookup: { from: User.collection.name, localField: 'userId', foreignField: '_id', as: 'user', pipeline: [{ $project: USER_FIELDS }] } },
+    { $lookup: { from: RunnerProfile.collection.name, localField: 'userId', foreignField: 'userId', as: 'runner', pipeline: [{ $project: RUNNER_FIELDS }] } },
+    { $set: { user: { $first: '$user' }, runner: { $first: '$runner' } } },
+    { $match: { 'user.status': 'ACTIVE', 'runner.dob': { $lt: new Date(latestBirthday(MIN_AGE, now).getTime() + DAY_MS) } } },
+  ];
+}
+
+/**
  * Danh sách /community: 20 hồ sơ xem được mới nhất mỗi trang, lọc theo tên nếu có `q`. Điều kiện xem được (ACTIVE,
  * đủ 16 tuổi) lọc ngay trong truy vấn, nên trang nào cũng đủ 20 hồ sơ nếu còn.
  */
 async function listProfiles(viewerId, { page: rawPage, q, now = new Date() } = {}) {
   const page = readPage(rawPage);
   const words = readQuery(q);
-  const visible = [
-    { $sort: { createdAt: -1, _id: -1 } },
-    { $lookup: { from: User.collection.name, localField: 'userId', foreignField: '_id', as: 'user', pipeline: [{ $project: USER_FIELDS }] } },
-    { $lookup: { from: RunnerProfile.collection.name, localField: 'userId', foreignField: 'userId', as: 'runner', pipeline: [{ $project: RUNNER_FIELDS }] } },
-    { $set: { user: { $first: '$user' }, runner: { $first: '$runner' } } },
-    { $match: { 'user.status': 'ACTIVE', 'runner.dob': { $lte: latestBirthday(MIN_AGE, now) } } },
-  ];
+  const visible = visibleProfilesPipeline(now);
   const start = (page - 1) * PAGE_SIZE;
   const rows = words.length
     ? (await CommunityProfile.aggregate([...visible, { $limit: SEARCH_SCAN }])).filter(row => matchesQuery(row, words)).slice(start, start + PAGE_SIZE + 1)
@@ -249,4 +282,4 @@ async function getProfile(viewerId, rawHandle, { now = new Date() } = {}) {
   return presentProfile({ profile, ...owner, results, canMessage: false });
 }
 
-module.exports = { MIN_AGE, canSeeProfile, presentProfile, getMine, saveMine, deleteMine, listProfiles, getProfile };
+module.exports = { MIN_AGE, canSeeProfile, presentProfile, getMine, saveMine, deleteMine, listProfiles, getProfile, visibleProfilesPipeline };

@@ -49,16 +49,34 @@ test('mẫu handle: 3–30 ký tự, chữ thường, số và dấu gạch, kh�
   for (const bad of ['ab', '-abc', 'abc-', 'ABC', 'le van', 'x'.repeat(31), 'lê-văn']) assert.doesNotMatch(bad, HANDLE_PATTERN, bad);
 });
 
-test('handle cấm, kể cả có hậu tố số và chữ hoa', () => {
-  for (const h of ['admin', 'Admin', 'hotro-2', 'runfurther', 'messages']) assert.equal(isReservedHandle(h), true, h);
-  assert.equal(isReservedHandle('admin-nguyen'), false);
+test('handle cấm: đứng một mình, kèm số ở trước hay sau, chữ hoa, hay chứa một từ của ban quản trị', () => {
+  for (const h of ['admin', 'Admin', 'hotro-2', 'runfurther', 'messages', '2-admin', '01-hotro-3', 'admin-2-3', 'ADMIN-9-9',
+    '1-2-admin', 'admin-nguyen', 'runfurther-official', 'hotro-runfurther', 'nguyen-ho-tro', 'ban-to-chuc-hue', 'staff-02']) {
+    assert.equal(isReservedHandle(h), true, h);
+  }
+  // Họ Hồ, tên có chữ "api" hay các chữ rời nhau vẫn dùng được.
+  for (const h of ['nguyen-van-a', '2-nguyen', 'ho-van-tro', 'ho-thi-tuyet', 'ban-thi-chuc', 'le-api-c']) assert.equal(isReservedHandle(h), false, h);
 });
 
-test('handle cấm cả dạng có tiền tố số (spec D1)', async () => {
-  for (const h of ['2-admin', '01-hotro-3']) assert.equal(isReservedHandle(h), true, h);
-  assert.equal(isReservedHandle('2-nguyen'), false);
-  const p = await createProfileWithHandle(base((await createUser()).id), '2 Admin');
-  assert.equal(p.handle, '2-admin-2');
+test('tên của hệ thống không bao giờ được cấp, kể cả kèm số: dùng runner thay thế', async () => {
+  for (const name of ['Admin', '2 Admin', 'Hỗ Trợ', 'RunFurther Official']) {
+    const p = await createProfileWithHandle(base((await createUser()).id), name);
+    assert.equal(isReservedHandle(p.handle), false, `${name} → ${p.handle}`);
+    assert.match(p.handle, /^runner(-\d+)?$/, name);
+  }
+});
+
+test('một handle có hậu tố số khổng lồ không chặn được người cùng tên về sau', async () => {
+  const squatter = await createUser();
+  await CommunityProfile.create({ ...base(squatter.id), handle: 'le-van-q-9007199254740992' });
+  const made = [];
+  for (let i = 0; i < 3; i++) made.push((await newProfile('Lê Văn Q')).handle);
+  assert.deepEqual(made, ['le-van-q', 'le-van-q-2', 'le-van-q-3']);
+});
+
+test('gốc còn trống thì dùng gốc, dù đã có handle của tên khác kết thúc bằng số', async () => {
+  assert.equal((await newProfile('Lê Văn D 2')).handle, 'le-van-d-2');
+  assert.equal((await newProfile('Lê Văn D')).handle, 'le-van-d');
 });
 
 test('hai người cùng tên tạo song song nhận hai handle khác nhau', async () => {
@@ -67,14 +85,10 @@ test('hai người cùng tên tạo song song nhận hai handle khác nhau', asy
   assert.deepEqual(made.map(p => p.handle).sort(), ['le-van-c', 'le-van-c-2']);
 });
 
-test('tên trùng tên cấm thì nhảy sang số', async () => {
-  const p = await createProfileWithHandle(base((await createUser()).id), 'Admin');
-  assert.equal(p.handle, 'admin-2');
-});
-
-test('họ tên không còn ký tự nào thì dùng runner, rồi runner-2', async () => {
+test('họ tên không còn ký tự nào thì dùng runner, có số khi runner đã có người dùng', async () => {
   const handles = [(await newProfile('🙂')).handle, (await newProfile('---')).handle];
-  assert.deepEqual(handles, ['runner', 'runner-2']);
+  assert.notEqual(handles[0], handles[1]);
+  for (const handle of handles) assert.match(handle, /^runner(-\d+)?$/);
 });
 
 test('hậu tố số không làm handle dài quá 30 ký tự', async () => {
@@ -109,5 +123,5 @@ test('model lưu handle chữ thường, bio mặc định rỗng, hai ô tùy c
   const indexes = await CommunityProfile.collection.indexes();
   assert.ok(indexes.some(i => i.key.handle === 1 && i.unique), 'unique handle');
   assert.ok(indexes.some(i => i.key.userId === 1 && i.unique), 'unique userId');
-  assert.ok(indexes.some(i => i.key.createdAt === -1), 'createdAt -1');
+  assert.ok(indexes.some(i => i.key.createdAt === -1 && i.key._id === -1), 'createdAt -1, _id -1');
 });

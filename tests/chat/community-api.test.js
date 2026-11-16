@@ -11,7 +11,11 @@ const User = require('../../src/backend/models/User');
 const RunnerProfile = require('../../src/backend/models/RunnerProfile');
 const CommunityProfile = require('../../src/backend/models/CommunityProfile');
 const { createProfileWithHandle } = require('../../src/backend/services/communityHandle');
+const { visibleProfilesPipeline } = require('../../src/backend/services/communityService');
+const { latestBirthday } = require('../../src/backend/lib/age');
+const mongoose = require('mongoose');
 const { createBackendHarness } = require('../helpers/backendHarness');
+const { yearsAgo } = require('../helpers/dates');
 
 const harness = createBackendHarness({ app, dbName: 'runfurther_community' });
 const { request, createUser } = harness;
@@ -82,7 +86,7 @@ test('không có hồ sơ, chủ dưới 16 tuổi, thiếu ngày sinh, bị kh�
   const deleted = await withProfile();
   await request('/community/me', { method: 'DELETE', as: deleted.user });
   const underage = await withProfile();
-  await setDob(underage.user, '2015-06-01');
+  await setDob(underage.user, yearsAgo(10));
   const noDob = await withProfile();
   await RunnerProfile.updateOne({ userId: noDob.user.id }, { $unset: { dob: 1 } });
   const banned = await withProfile();
@@ -95,7 +99,7 @@ test('không có hồ sơ, chủ dưới 16 tuổi, thiếu ngày sinh, bị kh�
 });
 
 test('chưa đủ 16 tuổi hay thiếu ngày sinh thì không bật được', async () => {
-  for (const options of [{ dob: '2015-01-01' }, {}]) {
+  for (const options of [{ dob: yearsAgo(10) }, {}]) {
     const user = await createUser(options);
     const res = await request('/community/me', { method: 'PUT', as: user, body: CONSENT });
     assert.equal(res.status, 403, JSON.stringify(options));
@@ -172,7 +176,7 @@ test('danh sách chỉ có hồ sơ xem được, mới nhất trước, 20 mỗ
   const made = [];
   for (let i = 0; i < 23; i++) made.push(await withProfile({}, { fullName: `Danh Sách ${i}` }));
   await User.updateOne({ _id: made[21].user.id }, { $set: { status: 'BANNED' } });
-  await setDob(made[20].user, '2015-06-01');
+  await setDob(made[20].user, yearsAgo(10));
   const visible = made.filter((_, i) => i !== 21 && i !== 20).map(m => m.handle).reverse();
 
   const page1 = await request('/community/profiles', { as: viewer });
@@ -181,10 +185,47 @@ test('danh sách chỉ có hồ sơ xem được, mới nhất trước, 20 mỗ
   assert.equal(page1.body.hasMore, true);
   const page2 = await request('/community/profiles?page=2', { as: viewer });
   assert.deepEqual(page2.body.profiles.map(p => p.handle).slice(0, 1), [visible[20]]);
-  for (const bad of ['0', '-1', 'abc', '1.5']) {
+  assert.ok(page2.body.profiles.every(p => !visible.slice(0, 20).includes(p.handle)), 'trang 2 không lặp trang 1');
+  // Trang quá sâu (sau 1.000 hồ sơ) bị từ chối để mỗi request có chi phí giới hạn.
+  for (const bad of ['0', '-1', 'abc', '1.5', '51', '999999']) {
     const res = await request('/community/profiles?page=' + bad, { as: viewer });
     assert.deepEqual([res.status, res.body.code], [400, 'COMMUNITY_INVALID'], bad);
   }
+});
+
+test('truy vấn danh sách dùng index, không quét cả collection', async () => {
+  const plan = JSON.stringify(await CommunityProfile.aggregate(visibleProfilesPipeline(new Date())).explain());
+  assert.ok(plan.includes('IXSCAN'), plan.slice(0, 400));
+  assert.ok(!plan.includes('COLLSCAN'), plan.slice(0, 400));
+});
+
+test('bấm "Bật hồ sơ" hai lần cùng lúc: cả hai thành công, chỉ có một hồ sơ', async () => {
+  const user = await createUser({ dob: '1995-01-01' });
+  const results = await Promise.all([1, 2].map(() => request('/community/me', { method: 'PUT', as: user, body: CONSENT })));
+  assert.deepEqual(results.map(r => r.status).sort(), [200, 201], JSON.stringify(results.map(r => r.body)));
+  assert.equal(results[0].body.profile.handle, results[1].body.profile.handle);
+  assert.equal(await CommunityProfile.countDocuments({ userId: user.id }), 1);
+});
+
+test('ngày sinh cũ có kèm giờ: trang hồ sơ và danh sách cùng một kết luận', async () => {
+  // Người tròn 16 tuổi hôm nay, nhưng dob lưu lúc 12 giờ trưa UTC thay vì nửa đêm (dữ liệu cũ).
+  const { user, handle } = await withProfile();
+  await RunnerProfile.updateOne({ userId: user.id }, { $set: { dob: new Date(latestBirthday(16).getTime() + 12 * 3600 * 1000) } });
+  assert.equal((await profileOf(handle)).status, 200);
+  const list = await request('/community/profiles', { as: viewer });
+  assert.ok(list.body.profiles.some(p => p.handle === handle), 'có trong danh sách');
+});
+
+test('tài khoản cũ thiếu createdAt hay createdAt null vẫn có tháng tham gia đúng, lấy từ _id', async () => {
+  const joined = new Date('2025-01-15T03:00:00Z');
+  const handles = [];
+  for (const createdAt of [undefined, null]) {
+    const _id = mongoose.Types.ObjectId.createFromTime(joined.getTime() / 1000 + handles.length);
+    await User.collection.insertOne({ _id, email: `cu-${handles.length}@test.local`, fullName: 'Tài Khoản Cũ', passwordHash: 'x', status: 'ACTIVE', ...(createdAt === undefined ? {} : { createdAt }) });
+    await RunnerProfile.create({ userId: _id, dob: new Date('1990-01-01') });
+    handles.push((await createProfileWithHandle({ userId: _id, consentAt: new Date(), consentVersion: 'profile-v1' }, 'Tài Khoản Cũ')).handle);
+  }
+  for (const handle of handles) assert.equal((await profileOf(handle)).body.memberSince, '2025-01', handle);
 });
 
 test('khách chưa đăng nhập nhận 401', async () => {
