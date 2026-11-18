@@ -11,11 +11,15 @@ const { expireBookings, completeBooking } = require('../services/bookingService'
 const { assert } = require('../lib/errors');
 const { paymentInstructions, activeBankAccount, sameBankAccount } = require('../services/bankService');
 const { runnerDetails } = require('../services/runnerProfileService');
+const { automaticTransfer } = require('../config/sepay');
 
 function bookingTransfer(booking, event) {
   const instructions = paymentInstructions(booking.bankSnapshot, booking.finalAmount, booking.orderCode);
   const transferBlocked = !sameBankAccount(instructions.bankInfo, activeBankAccount(event));
-  return transferBlocked ? { bankInfo: null, vietQrUrl: null, transferBlocked: true } : { ...instructions, transferBlocked: false };
+  return transferBlocked ? { bankInfo: null, vietQrUrl: null, transferBlocked: true, automaticConfirmation: false } : {
+    ...instructions, transferBlocked: false,
+    automaticConfirmation: automaticTransfer('BOOKING', instructions.bankInfo, booking.eventId?._id || booking.eventId),
+  };
 }
 function publicBooking(booking) {
   const { bankSnapshot, ...value } = booking.toObject?.() ?? booking;
@@ -52,6 +56,10 @@ async function createBookingHold(req, res, next) {
         paymentMethod, status: 'HOLD', expiresAt: new Date(Date.now() + 10 * 60 * 1000),
         bankSnapshot: activeBankAccount(event),
       }], { session });
+      if (booking.finalAmount > 0 && paymentMethod === 'VIETQR' && automaticTransfer('BOOKING', booking.bankSnapshot, event._id)) {
+        await PaymentRequest.create([{ requestKey: 'BOOKING-' + booking._id, userId: req.userId,
+          bookingId: booking._id, kind: 'BOOKING', amount: booking.finalAmount, status: 'PENDING' }], { session });
+      }
       return { booking: publicBooking(booking), ...bookingTransfer(booking, event), holdSecondsRemaining: 600 };
     });
     res.status(201).json(result);

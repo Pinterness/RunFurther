@@ -53,6 +53,7 @@ describe('GET payment lists', () => {
     );
     assert.deepEqual(byId[String(legacy._id)].transfer, {
       bankInfo: null,
+      automaticConfirmation: false,
       blocked: false,
       vietQrUrl: null,
       transferCode: null,

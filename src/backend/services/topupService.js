@@ -114,6 +114,7 @@ function presentTopup(payment, now = new Date(), currentAccount) {
   const payable = payment.status === 'PENDING' && !expired && !blocked;
   return {
     bankInfo: blocked ? null : bankInfo,
+    automaticConfirmation: !blocked && require('../config/sepay').automaticTransfer('TOPUP', bankInfo),
     blocked,
     vietQrUrl: payable ? vietQrUrl : null,
     transferCode: payment.transferCode ?? null,

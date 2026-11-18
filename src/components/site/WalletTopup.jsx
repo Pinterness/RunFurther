@@ -59,7 +59,7 @@ function TopupForm({ rules, onCreated, onRulesChanged }) {
   return (
     <>
       <p>
-        Nhập số tiền để nhận mã chuyển khoản. Số dư chỉ được cộng sau khi quản trị viên xác nhận đã
+        Nhập số tiền để nhận mã chuyển khoản. Số dư chỉ được cộng sau khi xác nhận đã
         nhận tiền.
       </p>
       <form onSubmit={submit}>
@@ -125,6 +125,7 @@ function TopupRequestCard({ payment, open, onToggle, available }) {
       <p className="topup-meta">
         {formatVnd(payment.amount)} · {expiry}
       </p>
+      {transfer.automaticConfirmation && !expired && !transfer.blocked && <p className="organizer-hint">Tự động xác nhận khi nhận được thông báo ngân hàng khớp số tiền và mã chuyển khoản.</p>}
       <div>
         <button type="button" className="quiet-button" aria-expanded={open} onClick={onToggle}>
           {open ? 'Ẩn hướng dẫn chuyển khoản' : 'Xem hướng dẫn chuyển khoản'}

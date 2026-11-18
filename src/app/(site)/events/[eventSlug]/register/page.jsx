@@ -81,7 +81,7 @@ export default function RegistrationPage({ params }) {
         if (disposed) return;
         if (!response.ok) throw new Error(data.message);
         setSecondsLeft(data.holdSecondsRemaining);
-        setBookingData(previous => ({ ...previous, ...(data.bankInfo !== undefined ? { bankInfo: data.bankInfo, vietQrUrl: data.vietQrUrl } : {}), paymentBlocked: data.paymentBlocked, transferBlocked: data.transferBlocked }));
+        setBookingData(previous => ({ ...previous, ...(data.bankInfo !== undefined ? { bankInfo: data.bankInfo, vietQrUrl: data.vietQrUrl } : {}), paymentBlocked: data.paymentBlocked, transferBlocked: data.transferBlocked, automaticConfirmation: data.automaticConfirmation }));
         if (data.booking.status === 'PAID' && data.registration) {
           setConfirmData({ ...data, bibNumber: data.registration.bibNumber });
           setErrorMessage('');
@@ -547,7 +547,8 @@ export default function RegistrationPage({ params }) {
           </div>
 
           {bookingData.paymentBlocked ? <p className="notice notice-error">Giải đang bị ẩn hoặc tạm ngừng. Không chuyển tiền; liên hệ chủ giải nếu bạn đã thanh toán.</p> : <TransferDetails blocked={bookingData.transferBlocked} bankInfo={bookingData.bankInfo} amount={bookingData.booking.finalAmount} orderCode={bookingData.booking.orderCode} qrUrl={bookingData.vietQrUrl} expired={secondsLeft <= 0} />}
-          {transferPending && <p role="status" className="notice">Đã gửi yêu cầu đối soát. Vui lòng không chuyển tiền lần nữa; vé sẽ xuất hiện sau khi chủ giải xác nhận.</p>}
+          {bookingData.automaticConfirmation && !transferPending && <p role="status" className="notice">Chuyển khoản đúng số tiền và nội dung. Hệ thống sẽ tự xác nhận khi nhận được thông báo từ ngân hàng; bạn có thể giữ trang này mở để nhận vé.</p>}
+          {transferPending && <p role="status" className="notice">Đã gửi yêu cầu đối soát. Vui lòng không chuyển tiền lần nữa; vé sẽ xuất hiện khi thanh toán được xác nhận.</p>}
               <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <button className="button-dark"
                   type="button"
