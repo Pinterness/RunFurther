@@ -33,6 +33,7 @@ function corsOptions(config) {
 
 function validateStartup(env = process.env) {
   readHttpConfig(env);
+  require('./sepay').readSepayConnections(env);
   if (!env.MONGODB_URI) throw new Error('MONGODB_URI is required.');
   if (!env.JWT_SECRET) throw new Error('JWT_SECRET is required.');
   if (env.NODE_ENV === 'production' && (env.JWT_SECRET.length < 32 || /replace[-_]with|your[-_]secret|change[-_]?me/i.test(env.JWT_SECRET))) {

@@ -1,6 +1,18 @@
 # Công nghệ và thuật toán / logic đã dùng trong cuộc trao đổi
 
-Cập nhật: 15/10/2026. Tài liệu tổng hợp phần đã triển khai và kiểm chứng trong mã nguồn; không xem toàn bộ thư viện được cài là tính năng đã hoàn thành.
+Cập nhật: 18/11/2026. Tài liệu tổng hợp phần đã triển khai và kiểm chứng trong mã nguồn; không xem toàn bộ thư viện được cài là tính năng đã hoàn thành.
+
+## SePay tự động đối soát — 18/11/2026
+
+- Tích hợp `POST /api/payments/webhooks/sepay/:connectionId`. `SEPAY_CONNECTIONS` là allowlist phía server, mặc định rỗng: mỗi kết nối khóa riêng, ngân hàng/tài khoản/VA riêng và chỉ có một phạm vi `TOPUP` hoặc `BOOKING` gắn với một eventId. Chưa cấu hình thì thanh toán thủ công vẫn hoạt động.
+- HMAC-SHA256 dùng bytes JSON gốc và timestamp ký, so sánh hằng thời gian, cửa sổ 5 phút. Kiểm tra payload có giới hạn kích thước, mã tham chiếu, chiều tiền vào, tài khoản nhận, ngân hàng, mã đơn, số tiền nguyên VND và thời điểm giao dịch theo UTC+7. Probe ký hợp lệ với id 0 không tác động số dư.
+- Durable inbox `SepayReceipt` giữ chứng cứ trước khi xử lý; unique connection/id + fingerprint phát hiện replay có dữ liệu khác. Unique bankReference/receipt đã APPLIED cùng MongoDB transaction bảo vệ ví, ledger, vé, RunPoints và quota trước webhook lặp hoặc duyệt tay đồng thời. Job 30 giây tiếp tục receipt RECEIVED bị gián đoạn; chưa tự tải các giao dịch chưa nhận từ SePay API.
+- TOPUP đúng snapshot và còn hạn tại thời điểm chuyển tiền được tự cộng ví. BOOKING đúng giải tự cấp vé mà không cần người mua bấm xác nhận chuyển khoản. Đơn vé dùng chuyển khoản có kết nối tự động tạo PaymentRequest ngay khi giữ chỗ; webhook cũng xử lý được đơn cũ chưa có PaymentRequest.
+- Giữ chỗ vé vẫn 10 phút. Nếu tiền vào đúng hạn nhưng webhook chậm, hệ thống có thể lấy lại quota đã được trả chỉ khi còn chỗ, trong cùng transaction. Tiền chuyển sau hạn, giải đã hủy/kết thúc/ẩn/ngừng, hết chỗ, sai tiền/mã hoặc ví khóa được lưu REVIEW để đối soát; không cấp vé vượt quota.
+- Super Admin xem/retry receipt TOPUP; chủ giải xem/retry receipt BOOKING của mình. UI có bảng giao dịch cần kiểm tra, trạng thái trống/lỗi/tải, phân trang và nút kiểm tra lại không bỏ qua điều kiện nghiệp vụ. Không lưu raw payload, số dư ngân hàng hoặc thông tin người gửi không cần thiết.
+- Cấu hình ban đầu bằng `.env.sepay.local` tạo qua `npm run sepay:env`, đưa biến JSON vào Render, giữ khóa khỏi Git/Vercel. Chưa có OAuth tự kết nối chủ giải, hoàn/rút tiền hoặc quyết toán tiền vé thanh toán bằng ví. Xem [SEPAY_SETUP.md](SEPAY_SETUP.md) để điền form, kiểm thử sandbox riêng và triển khai Live.
+- Build trên mã vừa pull phát hiện Next.js 16.4.3 có cảnh báo bảo mật. Đã nâng bản vá cùng nhánh lên 16.4.6, cập nhật lockfile bằng npm 11.21.0; không bỏ qua kiểm tra bảo mật của Next.js.
+
 
 ## Độ tuổi, quốc tịch và select — 15/10/2026
 

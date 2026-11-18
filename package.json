@@ -2,10 +2,14 @@
   "name": "runfurther",
   "version": "1.0.0",
   "private": true,
-  "engines": { "node": "24.x" },
+  "engines": {
+    "node": "24.x"
+  },
   "main": "src/backend/server.js",
   "scripts": {
-    "test": "node --test --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/backend.test.js tests/deployment.test.js tests/error-handler.test.js tests/format.test.mjs tests/runner-validation.test.js \"tests/topup/*.test.js\"",
+    "test": "node --test --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/backend.test.js tests/deployment.test.js tests/error-handler.test.js tests/format.test.mjs tests/runner-validation.test.js tests/sepay.test.js \"tests/topup/*.test.js\"",
+    "test:sepay": "node --test tests/sepay.test.js",
+    "sepay:env": "node scripts/prepareSepayEnv.js",
     "deploy:env": "node scripts/prepareDeployEnv.js",
     "test:topup": "node --test \"tests/topup/*.test.js\"",
     "test:layout": "node scripts/checkLayout.js",
@@ -51,7 +55,7 @@
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^1.47.0",
     "mongoose": "^8.9.5",
-    "next": "16.4.3",
+    "next": "16.4.6",
     "postcss": "^8.5.28",
     "qrcode": "^1.5.4",
     "react": "^19.2.8",

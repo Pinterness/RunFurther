@@ -23,6 +23,8 @@ const paymentRequestSchema = new mongoose.Schema(
     bankSnapshot: { type: bankSnapshotSchema, default: null, immutable: true },
     expiresAt: Date,
     receivedAmount: { type: Number, min: 1 },
+    confirmationSource: { type: String, enum: ['MANUAL', 'SEPAY'], default: 'MANUAL' },
+    sepayReceiptId: { type: mongoose.Schema.Types.ObjectId, ref: 'SepayReceipt' },
   },
   { timestamps: true },
 );

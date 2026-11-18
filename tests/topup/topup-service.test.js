@@ -103,6 +103,7 @@ describe('topupService', () => {
     assert.equal(approved.vietQrUrl, null);
     assert.deepEqual(legacy, {
       blocked: false,
+      automaticConfirmation: false,
       bankInfo: null,
       vietQrUrl: null,
       transferCode: null,

@@ -1,5 +1,11 @@
 # Quy tắc thiết kế giao diện RunFurther
 
+## Thanh toán SePay — 18/11/2026
+
+- Chỉ hiển thị hướng dẫn tự động xác nhận khi API báo có connection phù hợp. Thanh toán thủ công tiếp tục dùng thông báo trung tính về xác nhận tiền, không hứa đã nhận tiền chỉ vì người mua bấm nút.
+- Bảng giao dịch ngân hàng cần kiểm tra nằm trong đúng màn hình nạp ví của Super Admin hoặc đối soát tiền vé của chủ giải. Hiện số tiền, mã đơn, lý do, mã tham chiếu và giờ giao dịch; không hiện khóa HMAC hay payload kỹ thuật.
+- Nút Làm mới/Kiểm tra lại/Xem thêm có trạng thái đang xử lý; có trạng thái trống và lỗi đọc được bằng screen reader. Kiểm tra lại không phải nút bỏ qua điều kiện xác nhận.
+
 ## Hướng thiết kế
 Thể thao, tự nhiên, rõ ràng. Ảnh đường chạy và typography là điểm nhấn chính.
 Không dùng icon trang trí ở mọi dòng, emoji thay nhãn, thẻ kính, gradient neon hay nhiều màu nhấn cùng lúc.
