@@ -85,6 +85,39 @@ test('configuration is disabled by default, validates scope and rejects reused s
   }
 });
 
+test('configuration errors identify the field and correction without echoing its value', () => {
+  const cases = [
+    ['id', 'Invalid Id', /3-64/], ['kind', 'topup', /TOPUP or BOOKING/],
+    ['enabled', 'true', /without quotation marks/], ['eventId', 'a'.repeat(24), /Omit eventId/],
+    ['bankBin', 970422, /quoted string/], ['accountNumber', 123456789, /quoted string/],
+    ['subAccount', null, /empty string/], ['secret', 'short', /32-256/],
+  ];
+  for (const [field, value, correction] of cases) {
+    assert.throws(() => readSepayConnections({ SEPAY_CONNECTIONS: JSON.stringify([{ ...PLATFORM, [field]: value }]) }), error => {
+      assert.ok(error.message.includes(`SEPAY_CONNECTIONS[0].${field}:`));
+      assert.match(error.message, correction);
+      assert.ok(!error.message.includes(SECRET));
+      return true;
+    });
+  }
+  assert.equal(readSepayConnections({ SEPAY_CONNECTIONS: JSON.stringify([{ ...PLATFORM, subAccount: '' }]) })[0].subAccount, '');
+  for (const [second, field] of [[{ ...PLATFORM, secret: EVENT_SECRET }, 'id'], [{ ...PLATFORM, id: 'second' }, 'secret']]) {
+    assert.throws(() => readSepayConnections({ SEPAY_CONNECTIONS: JSON.stringify([PLATFORM, second]) }), error =>
+      error.message.includes(`SEPAY_CONNECTIONS[1].${field}:`) && !error.message.includes(SECRET) && !error.message.includes(EVENT_SECRET));
+  }
+});
+
+test('configuration diagnostics never echo secrets accidentally pasted into another field or malformed JSON', () => {
+  const sensitive = 'PRIVATE_CONFIG_VALUE_THAT_MUST_NEVER_BE_LOGGED_1234567890';
+  const values = [JSON.stringify({ secret: sensitive }), JSON.stringify(sensitive), '{"secret":"' + sensitive,
+    JSON.stringify([sensitive]), JSON.stringify([[]]),
+    ...['id', 'kind', 'enabled', 'eventId', 'bankBin', 'accountNumber', 'subAccount'].map(field => JSON.stringify([{ ...PLATFORM, [field]: sensitive }]))];
+  for (const value of values) {
+    assert.throws(() => readSepayConnections({ SEPAY_CONNECTIONS: value }), error =>
+      error.message.includes('SEPAY_CONNECTIONS') && !error.message.includes(sensitive) && !error.message.includes(SECRET));
+  }
+});
+
 test('HMAC uses raw bytes, rejects modified JSON, old timestamps and unsigned bodies', async () => {
   const body = payload('NAPK7M2Q9XA');
   const raw = Buffer.from('{ "message": "Thanh toán vé" }');
