@@ -68,6 +68,19 @@ Ví dụ cấu trúc (chỉ minh họa, các placeholder không dùng được �
 
 Để test local, chủ động sao chép biến này vào `.env` của môi trường thử nghiệm. `.env.sepay.local` không được server tự nạp.
 
+### Khi Render báo `Invalid SEPAY_CONNECTIONS`
+
+Backend kiểm tra cấu hình trước khi kết nối database. Log chỉ ra vị trí sai, ví dụ `SEPAY_CONNECTIONS[0].secret` là trường `secret` của connection đầu tiên; không in số tài khoản hay khóa bí mật.
+
+- `secret`: từ 32 đến 256 ký tự, trùng khóa HMAC bên SePay; không dùng chuỗi placeholder hoặc dùng lại cùng khóa cho hai connection. Nếu đổi khóa, cập nhật cả hai bên.
+- `bankBin`: MBBank phải là chuỗi `"970422"`, có dấu nháy; không dùng số `970422`.
+- `accountNumber`: chuỗi có dấu nháy, 1–19 chữ/số, không có khoảng trắng; giữ số 0 ở đầu.
+- `subAccount`: giữ `""` khi dùng tài khoản chính. Không dùng `null` hoặc điền số tài khoản chính vào đây.
+- `enabled`: `true`/`false` không có dấu nháy. `kind`: `"TOPUP"` hoặc `"BOOKING"` viết hoa.
+- Giá trị Environment phải là mảng `[{...}]`, không phải object `{...}`, không bọc toàn bộ JSON trong dấu nháy hoặc thêm `SEPAY_CONNECTIONS=`.
+
+Nếu cần khôi phục API trong lúc sửa cấu hình, đặt `SEPAY_CONNECTIONS=[]` rồi redeploy: chỉ tắt tự động đối soát, các luồng thủ công vẫn hoạt động. Giao dịch mới không được tự xác nhận trong thời gian này; kiểm tra/gửi lại webhook sau khi cấu hình đúng. Không gửi khóa HMAC trong ảnh log hoặc chat.
+
 ## 3. Form webhook SePay
 
 | Trường | Nạp ví | Vé của một giải |

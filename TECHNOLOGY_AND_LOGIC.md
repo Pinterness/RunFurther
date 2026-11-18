@@ -11,6 +11,7 @@ Cập nhật: 18/11/2026. Tài liệu tổng hợp phần đã triển khai và 
 - Giữ chỗ vé vẫn 10 phút. Nếu tiền vào đúng hạn nhưng webhook chậm, hệ thống có thể lấy lại quota đã được trả chỉ khi còn chỗ, trong cùng transaction. Tiền chuyển sau hạn, giải đã hủy/kết thúc/ẩn/ngừng, hết chỗ, sai tiền/mã hoặc ví khóa được lưu REVIEW để đối soát; không cấp vé vượt quota.
 - Super Admin xem/retry receipt TOPUP; chủ giải xem/retry receipt BOOKING của mình. UI có bảng giao dịch cần kiểm tra, trạng thái trống/lỗi/tải, phân trang và nút kiểm tra lại không bỏ qua điều kiện nghiệp vụ. Không lưu raw payload, số dư ngân hàng hoặc thông tin người gửi không cần thiết.
 - Cấu hình ban đầu bằng `.env.sepay.local` tạo qua `npm run sepay:env`, đưa biến JSON vào Render, giữ khóa khỏi Git/Vercel. Chưa có OAuth tự kết nối chủ giải, hoàn/rút tiền hoặc quyết toán tiền vé thanh toán bằng ví. Xem [SEPAY_SETUP.md](SEPAY_SETUP.md) để điền form, kiểm thử sandbox riêng và triển khai Live.
+- Lỗi cấu hình lúc khởi động chỉ rõ vị trí/trường và cách sửa, ví dụ `SEPAY_CONNECTIONS[0].secret` yêu cầu 32–256 ký tự. Thông báo không chứa giá trị đầu vào, kể cả khóa bị dán nhầm vào trường khác hoặc JSON lỗi; `subAccount: ""` vẫn hợp lệ khi dùng tài khoản chính.
 - Build trên mã vừa pull phát hiện Next.js 16.4.3 có cảnh báo bảo mật. Đã nâng bản vá cùng nhánh lên 16.4.6, cập nhật lockfile bằng npm 11.21.0; không bỏ qua kiểm tra bảo mật của Next.js.
 
 
