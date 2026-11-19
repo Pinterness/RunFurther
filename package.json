@@ -13,6 +13,7 @@
     "deploy:env": "node scripts/prepareDeployEnv.js",
     "test:topup": "node --test \"tests/topup/*.test.js\"",
     "test:layout": "node scripts/checkLayout.js",
+    "test:ui-polish": "node scripts/checkUiPolish.js",
     "test:hero": "node scripts/checkTrailScene.js",
     "test:scroll": "node scripts/checkScrollMotion.js",
     "test:runner-ui": "node scripts/checkRunnerFlows.js",

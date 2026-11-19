@@ -16,6 +16,8 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     const openPanel = async key => {
       await page.locator('.immersive-panel-trigger[data-panel="' + key + '"]:visible').first().click();
       await expect(page.locator('.immersive-panel-dialog')).toHaveAttribute('data-open', key);
+      await expect(page.locator('.immersive-panel-dialog')).toBeVisible();
+      await expect.poll(() => page.locator('.immersive-panel-dialog').evaluate(node => node.matches(':modal'))).toBe(true);
     };
     const closePanel = async () => {
       await page.keyboard.press('Escape');

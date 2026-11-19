@@ -88,7 +88,8 @@ export default function SupportChat() {
   useEffect(() => {
     if (!open) return;
     const frame = requestAnimationFrame(() => heading.current?.focus());
-    const escape = event => { if (event.key === 'Escape') { event.preventDefault(); close(); } };
+    // A native modal owns Escape while the chat is hidden beneath it.
+    const escape = event => { if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('dialog:modal')) { event.preventDefault(); close(); } };
     document.addEventListener('keydown', escape);
     return () => { cancelAnimationFrame(frame); document.removeEventListener('keydown', escape); };
   }, [open, close]);

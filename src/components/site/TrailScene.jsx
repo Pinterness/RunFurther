@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
+import { ArrowLeft, ArrowRight, ArrowUpRight, X } from 'lucide-react';
 import useJourneyController from './useJourneyController';
 import './trail-scene.css';
 
@@ -22,6 +23,7 @@ export default function TrailScene({ panels = {} }) {
   const [activity, setActivity] = useState('idle'), [panel, setPanel] = useState(null);
   const controller = useJourneyController({ root, canvasHost, simple, failed, panel, setFailed, setEnhanced, setChapter, setActivity });
   const busy = activity !== 'idle';
+  const Panel = enhanced ? 'dialog' : 'div';
 
   function openPanel(key) {
     if (!enhanced) { root.current.querySelector('[data-panel-page="' + key + '"]')?.scrollIntoView({ behavior: 'instant', block: 'start' }); return; }
@@ -30,28 +32,25 @@ export default function TrailScene({ panels = {} }) {
   }
   function closePanel() {
     setPanel(null);
-    const target = returnFocus.current;
-    requestAnimationFrame(() => {
-      if (!root.current) return;
-      if (target instanceof HTMLElement && !target.closest('[inert]')) target.focus({ preventScroll: true });
-      else root.current.querySelector('.immersive-panel-trigger')?.focus({ preventScroll: true });
-    });
   }
   useEffect(() => {
     if (!panel || !enhanced) return;
-    dialog.current?.focus({ preventScroll: true });
-    const handle = event => {
-      if (event.key === 'Escape') { event.preventDefault(); closePanel(); return; }
-      if (event.key !== 'Tab') return;
-      const items = [...dialog.current.querySelectorAll('a[href],button:not(:disabled),input,select,textarea,[tabindex="0"]')]
-        .filter(node => node.getClientRects().length && !node.closest('[hidden],[inert]'));
-      const first = items[0], last = items.at(-1);
-      if (!first) { event.preventDefault(); return; }
-      if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog.current)) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && (document.activeElement === last || document.activeElement === dialog.current)) { event.preventDefault(); first.focus(); }
+    const element = dialog.current;
+    // The browser keeps focus inside the top layer and makes the header/chat inert.
+    element.showModal();
+    element.focus({ preventScroll: true });
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      element.close();
+      document.body.style.overflow = overflow;
+      // Restore after React has removed inert, without a delayed frame that can
+      // steal focus from a subsequent Escape or a newly opened panel.
+      if (!root.current) return;
+      const target = returnFocus.current;
+      if (target instanceof HTMLElement && target.isConnected && !target.closest('[inert]')) target.focus({ preventScroll:true });
+      else root.current.querySelector('.immersive-panel-trigger')?.focus({ preventScroll:true });
     };
-    document.addEventListener('keydown', handle);
-    return () => document.removeEventListener('keydown', handle);
   }, [panel, enhanced]);
   useEffect(() => {
     const followHash = () => {
@@ -83,13 +82,13 @@ export default function TrailScene({ panels = {} }) {
       <div className="immersive-vignette" aria-hidden="true" />
       <div className="hero-scroll-mist" aria-hidden="true" />
       <div className="immersive-topline" aria-hidden="true"><span>RUNFURTHER — YOUR NEXT CHAPTER</span><span>CHẠY THEO NHỊP CỦA BẠN.</span></div>
-      <div className="immersive-library" inert={enhanced && Boolean(panel)} aria-label="Khám phá RunFurther">{Object.entries(panelNames).map(([key,label]) => <button type="button" key={key} className="immersive-panel-trigger" data-panel={key} onClick={() => openPanel(key)}>{label}<span aria-hidden="true">↗</span></button>)}</div>
+      <div className="immersive-library" inert={enhanced && Boolean(panel)} aria-label="Khám phá RunFurther">{Object.entries(panelNames).map(([key,label]) => <button type="button" key={key} className="immersive-panel-trigger" data-panel={key} onClick={() => openPanel(key)}>{label}</button>)}</div>
       {checkpoints.map((item, i) => <div key={i} className={'immersive-chapter immersive-chapter-' + i} inert={enhanced && (chapter !== i || Boolean(panel))} aria-hidden={enhanced && (chapter !== i || Boolean(panel)) ? true : undefined}>
         <div className="immersive-copy">
           <p className="hero-eyebrow"><span />{item.eyebrow}</p>
           {i === 0 ? <h1 id="hero-heading">{item.title}<br /><span>{item.accent}</span></h1> : <h2>{item.title}<br /><em>{item.accent}</em></h2>}
           <p className="immersive-description">{item.body}</p>
-          <div className="hero-actions"><Link className="action-primary" href={item.href}>{item.action}<span aria-hidden="true">↗</span></Link>{i === 0 && <a className="hero-secondary" href="#your-distance">Chọn cự ly ↗</a>}{i === 4 && <a className="hero-secondary" href="#questions">Giải đáp trước khi đăng ký ↗</a>}</div>
+          <div className="hero-actions"><Link className="action-primary" href={item.href}>{item.action}<ArrowUpRight size={18} aria-hidden="true" /></Link>{i === 0 && <a className="hero-secondary" href="#your-distance">Chọn cự ly</a>}{i === 4 && <a className="hero-secondary" href="#questions">Giải đáp trước khi đăng ký</a>}</div>
           {i === 2 && <p className="immersive-disclaimer">Sa bàn minh họa. Lộ trình chính thức tại trang của từng giải.</p>}
           {i === 3 && <p className="immersive-disclaimer">Race kit minh họa. Vật phẩm thực tế tùy theo ban tổ chức.</p>}
         </div>
@@ -97,15 +96,31 @@ export default function TrailScene({ panels = {} }) {
       </div>)}
       <div className="immersive-controls" inert={enhanced && Boolean(panel)}>
         <nav aria-label="Các trạm hành trình">{checkpoints.map((item,i) => <button key={i} type="button" aria-label={'Trạm ' + (i + 1) + ': ' + item.name} aria-current={enhanced && chapter === i ? 'step' : undefined} disabled={enhanced && busy} onClick={() => go(i)}><span>{String(i + 1).padStart(2,'0')}</span><span>{item.name}</span></button>)}</nav>
-        <div className="immersive-step-controls"><button className="immersive-step-previous" type="button" disabled={!enhanced || busy || chapter === 0} aria-label="Trạm trước" onClick={() => controller.current?.previous()}>←</button><p role="status" aria-live="polite">{activityLabels[activity]}</p><button className="immersive-step-next" type="button" disabled={!enhanced || busy || chapter === 4} aria-label="Trạm tiếp theo" onClick={() => controller.current?.next()}>→</button></div>
-        <div className="immersive-controls-actions"><a href="#your-distance" className="immersive-skip">Đến chọn cự ly ↗</a>{!failed && <button type="button" className="immersive-motion-toggle" aria-pressed={simple} onClick={toggleSimple}>{simple ? 'Bật trải nghiệm 3D' : 'Xem ít chuyển động'}</button>}</div>
+        <div className="immersive-step-controls"><button className="immersive-step-previous" type="button" disabled={!enhanced || busy || chapter === 0} aria-label="Trạm trước" onClick={() => controller.current?.previous()}><ArrowLeft size={18} aria-hidden="true" /></button><p role="status" aria-live="polite">{activityLabels[activity]}</p><button className="immersive-step-next" type="button" disabled={!enhanced || busy || chapter === 4} aria-label="Trạm tiếp theo" onClick={() => controller.current?.next()}><ArrowRight size={18} aria-hidden="true" /></button></div>
+        <div className="immersive-controls-actions">{!failed && <button type="button" className="immersive-motion-toggle" aria-pressed={simple} onClick={toggleSimple}>{simple ? 'Bật trải nghiệm 3D' : 'Xem ít chuyển động'}</button>}</div>
         <span className="immersive-progress" aria-hidden="true" />
       </div>
-      <div className="immersive-panel-dialog" ref={dialog} role={enhanced && panel ? 'dialog' : undefined} aria-modal={enhanced && panel ? true : undefined} aria-labelledby={enhanced && panel ? 'immersive-panel-title' : undefined} tabIndex={enhanced && panel ? -1 : undefined} data-open={panel || ''}>
-        {enhanced && panel && <div className="immersive-panel-header"><h2 id="immersive-panel-title">{panelNames[panel]}</h2><button type="button" className="immersive-panel-close" aria-label="Đóng nội dung" onClick={closePanel}>Đóng <span aria-hidden="true">×</span></button></div>}
+      <Panel className="immersive-panel-dialog" ref={dialog} role={enhanced && panel ? 'dialog' : undefined} aria-modal={enhanced && panel ? true : undefined} aria-labelledby={enhanced && panel ? 'immersive-panel-title' : undefined} tabIndex={enhanced && panel ? -1 : undefined} data-open={panel || ''}
+        onKeyDown={event => {
+          if (!enhanced || !panel || event.target.closest('dialog') !== event.currentTarget) return;
+          if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closePanel(); return; }
+          if (event.key !== 'Tab') return;
+          const items = [...event.currentTarget.querySelectorAll('a[href],button,input,select,textarea,summary,[tabindex="0"]')]
+            .filter(node => !node.disabled && node.tabIndex >= 0 && node.getClientRects().length && getComputedStyle(node).visibility !== 'hidden' && !node.closest('[hidden],[inert],[aria-hidden="true"]'));
+          event.preventDefault();
+          if (!items.length) return;
+          const index = items.indexOf(document.activeElement);
+          const next = index < 0 ? (event.shiftKey ? items.length - 1 : 0) : (index + (event.shiftKey ? -1 : 1) + items.length) % items.length;
+          items[next].focus();
+        }}
+        onCancel={event => { event.preventDefault(); closePanel(); }} onClick={event => {
+          if (!enhanced || event.target !== event.currentTarget) return;
+          const rect = event.currentTarget.getBoundingClientRect();
+          if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) closePanel();
+        }}>
+        {enhanced && panel && <div className="immersive-panel-header"><h2 id="immersive-panel-title">{panelNames[panel]}</h2><button type="button" className="immersive-panel-close" aria-label="Đóng nội dung" onClick={closePanel}>Đóng <X size={18} aria-hidden="true" /></button></div>}
         {Object.entries(panels).map(([key,content]) => <div key={key} className="immersive-panel-page" data-panel-page={key} hidden={enhanced && panel !== key}>{content}</div>)}
-      </div>
-      {enhanced && panel && <button type="button" className="immersive-panel-backdrop" aria-label="Đóng bảng nội dung" tabIndex={-1} onClick={closePanel} />}
+      </Panel>
       {failed && <p className="immersive-fallback-note" role="status">Chế độ ảnh tĩnh đang được sử dụng. Bạn vẫn có thể khám phá và đăng ký giải.</p>}
       <noscript><style>{'.immersive-controls nav,.immersive-motion-toggle,.immersive-step-controls,.immersive-library{display:none}'}</style></noscript>
     </div>
