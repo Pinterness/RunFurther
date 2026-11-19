@@ -16,8 +16,11 @@
   --action-bg: #cc4721;
   --accent-strong: #b84220;
   --accent-soft: #ffb48d;
-  --radius-control: 4px;
-  --radius-panel: 6px;
+  --radius-control: 8px;
+  --radius-panel: 12px;
+  --radius-overlay: 16px;
+  --error-surface: #fff0e9;
+  --error-text: #953619;
   --duration-fast: 150ms;
   --duration-normal: 240ms;
   --ease-out: cubic-bezier(.22, 1, .36, 1);
@@ -33,9 +36,9 @@ button:disabled { cursor: not-allowed; opacity: .6; }
 button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 :focus-visible { outline: 3px solid var(--accent-strong); outline-offset: 3px; }
 h1, h2, h3, p { margin: 0; }
-h1 { font-size: 30px; line-height: 1.25; font-weight: 800; }
-h2 { font-size: 20px; line-height: 1.4; font-weight: 700; }
-h3 { font-size: 16px; font-weight: 700; }
+h1 { font-size: 30px; line-height: 1.25; font-weight: 600; }
+h2 { font-size: 20px; line-height: 1.4; font-weight: 600; }
+h3 { font-size: 16px; font-weight: 600; }
 input:not([type=checkbox]):not([type=radio]), select, textarea {
   max-width: 100%; border: 1px solid var(--border); border-radius: var(--radius-control); padding: 10px 12px; background: var(--surface); color: var(--foreground);
 }
@@ -86,15 +89,15 @@ body .birthday-confirmation input[type="checkbox"] { appearance: auto; width: 18
 .page-heading { margin-bottom: 28px; }
 .page-heading p, .results-header p { color: var(--muted); margin-top: 10px; }
 .page-title { margin-bottom: 24px; }
-.eyebrow, .staff-kicker { display: block; color: var(--accent-strong); font-size: 11px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px; }
+.eyebrow, .staff-kicker { display: block; color: var(--accent-strong); font-size: 12px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px; }
 .muted { color: var(--muted); }
 .card, .panel, .race-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-panel); }
 .panel { padding: 24px; }
 .panel h2, .panel p { margin-bottom: 16px; }
 .section { margin-top: 28px; }
-.button, .button-dark, .button-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 11px 20px; border-radius: var(--radius-control); border: 1px solid transparent; font-weight: 700; line-height: 1.5; transition: background-color var(--duration-fast), border-color var(--duration-fast), box-shadow var(--duration-normal), transform var(--duration-normal) var(--ease-out); }
-:is(.button, .button-dark, .button-primary):hover:not(:disabled) { transform: translateY(-2px); }
-:is(.button, .button-dark, .button-primary):active:not(:disabled) { transform: translateY(1px) scale(.98); }
+.button, .button-dark, .button-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 12px 20px; border-radius: var(--radius-control); border: 1px solid transparent; font-weight: 700; line-height: 1.5; transition: background-color var(--duration-fast), border-color var(--duration-fast), box-shadow var(--duration-normal), transform var(--duration-normal) var(--ease-out); }
+:is(.button, .button-dark, .button-primary):hover:not(:disabled) { box-shadow: 0 2px 8px #14281f12; }
+:is(.button, .button-dark, .button-primary):active:not(:disabled) { transform: scale(.99); }
 .button-dark { background: var(--forest); color: #fff; }
 .button-dark:hover { background: #3d4d32; }
 .button-primary { background: var(--action-bg); color: #fff; }
@@ -112,17 +115,20 @@ body .birthday-confirmation input[type="checkbox"] { appearance: auto; width: 18
 .race-card:hover { box-shadow: 0 8px 24px #0f172a12; }
 .race-image { position: relative; display: block; height: 190px; overflow: hidden; }
 .race-image > img { width: 100%; height: 100%; object-fit: cover; }
-.race-image > span, .tag { display: inline-block; padding: 5px 10px; border-radius: 6px; background: #fbe8dc; color: var(--accent-strong); font-size: 11px; font-weight: 700; }
+.race-image > span, .tag { display: inline-block; padding: 5px 10px; border-radius: 6px; background: #fbe8dc; color: var(--accent-strong); font-size: 12px; font-weight: 700; }
 .race-image > span { position: absolute; top: 14px; left: 14px; }
 .race-body { padding: 20px; }
 .race-body h2 { font-size: 18px; margin-bottom: 10px; }
+.race-meta { display: grid; gap: 8px; margin-top: 12px; }
+.race-date { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--foreground); font-variant-numeric: tabular-nums; }
+.race-meta svg { flex-shrink: 0; }
 .race-location { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
 .race-location img { width: 15px; height: 15px; }
 .distance-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 16px 0; }
-.distance-tags span { padding: 3px 8px; border-radius: 5%; background: var(--surface-muted); color: #59644f; border-radius: 5px; font-size: 11px; font-weight: 700; animation-delay: 100ms; }
+.distance-tags span { padding: 3px 8px; border-radius: 5%; background: var(--surface-muted); color: #59644f; border-radius: 5px; font-size: 12px; font-weight: 700; animation-delay: 100ms; }
 .race-card-bottom { display: flex; justify-content: space-between; gap: 12px; padding-top: 14px; border-top: 1px solid var(--surface-muted); }
 .race-card-bottom small, .race-card-bottom strong { display: block; }
-.race-card-bottom small { color: var(--muted); font-size: 11px; }
+.race-card-bottom small { color: var(--muted); font-size: 12px; }
 .race-card-bottom b { color: var(--accent-strong); }
 .pagination { display: flex; justify-content: center; gap: 8px; margin: 30px 0; }
 .pagination button, .pagination a { padding: 7px 13px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
@@ -132,6 +138,8 @@ body .birthday-confirmation input[type="checkbox"] { appearance: auto; width: 18
 .event-cover-content { position: absolute; inset: 0; width: 100%; max-width: 1200px; margin: auto; padding: 150px 24px 32px; color: #fff; }
 .event-cover-content h1 { font-size: 36px; margin: 12px 0; }
 .event-cover-content p { font-size: 14px; opacity: .95; }
+.event-cover-meta,.event-cover-meta span { display:flex; align-items:center; gap:8px; }
+.event-cover-meta { flex-wrap:wrap; column-gap:24px; }
 .event-layout, .results-layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 32px; max-width: 1200px; margin: 0 auto; padding: 32px 24px; align-items: start; }
 .event-copy { min-width: 0; }
 .event-copy h2 { margin: 28px 0 12px; }
@@ -143,7 +151,7 @@ body .birthday-confirmation input[type="checkbox"] { appearance: auto; width: 18
 .checklist li { margin: 8px 0; }
 .order-card { padding: 24px; }
 .order-card h2 { margin-bottom: 18px; }
-.order-card > small { display: block; font-size: 11px; color: var(--muted); margin-bottom: 12px; }
+.order-card > small { display: block; font-size: 12px; color: var(--muted); margin-bottom: 12px; }
 .choice { display: flex; justify-content: space-between; gap: 10px; padding: 12px; margin-bottom: 10px; border: 1px solid var(--border); border-radius: var(--radius-control); font-size: 13px; }
 .choice.selected { border-color: var(--accent); background: #fbe8dc; }
 .order-card .button-primary { width: 100%; margin-top: 10px; }
@@ -175,10 +183,10 @@ body .birthday-confirmation input[type="checkbox"] { appearance: auto; width: 18
 .site-footer { margin-top: 40px; background: var(--surface); border-top: 1px solid var(--border); }
 .footer-grid { display: grid; grid-template-columns: 1.7fr 1fr 1fr 1fr; gap: 44px; max-width: 1200px; margin: auto; padding: 40px 24px; }
 .footer-grid p { font-size: 12px; color: var(--muted); max-width: 300px; margin-top: 16px; }
-.footer-grid h3 { font-size: 11px; letter-spacing: 1px; margin-bottom: 16px; }
+.footer-grid h3 { font-size: 12px; letter-spacing: 1px; margin-bottom: 16px; }
 .footer-grid a { display: block; color: var(--muted); font-size: 12px; margin: 9px 0; }
 .footer-grid a:hover { color: var(--accent-strong); }
-.footer-bottom { display: flex; justify-content: space-between; gap: 16px; max-width: 1152px; margin: auto; padding: 20px 0; border-top: 1px solid var(--border); color: var(--muted); font-size: 11px; }
+.footer-bottom { display: flex; justify-content: space-between; gap: 16px; max-width: 1152px; margin: auto; padding: 20px 0; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
 .account-layout > *, .account-stats > * { min-width: 0; }
 @media (max-width: 1200px) {
   .app-header { flex-wrap: wrap; gap: 12px 24px; padding: 14px 24px; }

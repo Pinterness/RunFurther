@@ -600,3 +600,35 @@ Nguồn model: [Quaternius](https://quaternius.com/packs/ultimatemodularcharacte
 - Đối soát vẫn thủ công; chưa có webhook SePay/Casso, hoàn tiền tự động hay ảnh biên lai.
 - Rate limit và giới hạn 3 lệnh là bảo vệ trong một tiến trình; nhiều instance cần kho dùng chung.
 - Hàng đợi admin hiển thị 100 lệnh mới nhất theo bộ lọc; lệnh cũ hơn tìm bằng mã.
+
+## UX/UI — đợt sửa Unslop 19/11/2026
+
+Nhánh `fix/unslop-ui-polish`, tiếp nối báo cáo trong `UX_UI_AUDIT_UNSLOP.md`. Áp dụng hướng của [Unslop / Damir Sokolovsky](https://github.com/heydamir/unslop), CC BY 4.0, giữ nhận diện và trải nghiệm 3D.
+
+**Công nghệ và cách xử lý**
+
+- React giữ trạng thái panel; `HTMLDialogElement.showModal()` đưa bảng nội dung lên top layer và khóa tương tác với nền. Chế độ tĩnh dùng `div`, nên nội dung vẫn đọc được khi không có WebGL/reduced motion.
+- Điều hướng Tab/Shift+Tab bao quanh danh sách control đang hiển thị và không inert; Escape do native `cancel` xử lý. Cleanup đóng dialog, trả scroll lock và focus sau khi React cập nhật DOM; bỏ requestAnimationFrame khôi phục focus gây tranh chấp khi nhấn Escape liên tiếp.
+- CSS `:has(dialog:modal)` ẩn widget hỗ trợ khi có modal. Escape của chat chỉ có hiệu lực khi không còn modal. Hội thoại giữ nguyên khi bảng khác mở; không phát sinh request thanh toán hay thay đổi trạng thái tài khoản.
+- Responsive: control tối thiểu 44px, nhãn hành trình 13–14px, metadata 12px; CSS Grid xếp checkout 2 → 1 cột tại 800px và nhóm trường nhập 2 → 1 cột tại 480px. Chat tận dụng chiều cao màn hình dưới 720px để thông báo dữ liệu vẫn đọc được.
+- Thẻ giải đọc `dateInfo.raceDate`; `Intl.DateTimeFormat` thông qua `toLocaleDateString` dùng locale `vi-VN`, múi giờ `Asia/Ho_Chi_Minh`. Ngày thiếu/sai có nhãn riêng, không dùng ngày hiện tại làm dữ liệu dự phòng.
+- Token màu/bo góc dùng chung; giá tiền có tương phản cao trên nền giấy. Lucide dùng cho thao tác hero, ngày/địa điểm và trạng thái checkout. Giá, RunPoints, giữ chỗ, SePay, role và quy tắc ngày sinh/quốc tịch giữ nguyên.
+
+**Kiểm tra trong môi trường riêng**
+
+`scripts/uiPolishFixtures.cjs` chỉ chứa dữ liệu mô phỏng. `scripts/uiPolishSsr.cjs` dùng riêng cho preview test, chặn ghi API và fetch ngoài; không preload script này ở dev/production đang phục vụ người dùng. `scripts/checkUiPolish.js` còn chặn request ngoài trong browser và kiểm tra modal/chat, Tab/Escape/focus, kích thước điều khiển, ngày giải, nhãn form, responsive và reduced motion ở 1440/1024/768/390/360px.
+
+Chuẩn bị một checkout sạch không có `.env` thật, cài dependency theo `CONTRIBUTING.md`, rồi chạy (PowerShell):
+
+```powershell
+$env:NEXT_PUBLIC_API_URL='https://runfurther-deployment-check.example/api'
+npm run build:web
+node --require ./scripts/uiPolishSsr.cjs node_modules/next/dist/bin/next start --port 3103
+# Ở terminal khác, cùng checkout:
+$env:WEB_TEST_URL='http://localhost:3103'
+npm run test:ui-polish
+```
+
+Ảnh được lưu vào `artifacts/ui-polish/` và không commit dữ liệu test vào ứng dụng. Các bộ hồi quy liên quan: `test:event-calendar`, `test:support-chat`, `test:trail-scene`, `test:runner-ui`, `test:layout`; tất cả dùng API fixture. Không thay kiểm thử thanh toán thật. Chưa xác nhận trên iOS/Safari và bàn phím ảo thiết bị thật.
+
+**Phần cần làm tiếp:** U06 — dịch vụ ảnh/Pasta Party đang có giá cố định. Đề xuất cấu hình dịch vụ theo từng chủ giải, lưu giá tại thời điểm tạo đơn và chỉ bán mục đang bật; không thay nghiệp vụ này trong nhánh sửa giao diện.

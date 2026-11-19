@@ -2,7 +2,7 @@
 
 Ngày: 19/11/2026. Nhánh: `chore/unslop-ui-review`. Mã nguồn được đánh giá: `73406ec` trên `main`.
 
-Đây là kết quả rà soát và hướng sửa đề xuất, chưa phải các thay đổi đã áp dụng vào giao diện.
+Đây là bản rà soát gốc. Trạng thái triển khai đợt đầu được cập nhật ở cuối tài liệu; bảng bằng chứng giữ lại để so sánh trước/sau.
 
 ## Skill và cách đánh giá
 
@@ -92,4 +92,22 @@ Chưa kiểm thử iOS/Safari, bàn phím ảo trên thiết bị thật, 200% z
 
 Skill dùng được từ lượt chat tiếp theo. Có thể yêu cầu: “Dùng Unslop, sửa U01–U05 theo hướng đã thống nhất trong UX_UI_AUDIT_UNSLOP.md”.
 
-Skill có bước chốt hướng trước khi sửa giao diện. Lượt này hoàn tất yêu cầu cài skill, tạo nhánh và rà soát; các đề xuất ở đây chưa thay thế quy tắc đang áp dụng trong `UI_DESIGN.md`. Đợt triển khai chỉ bắt đầu khi người dùng chọn hướng/phạm vi sửa.
+Người dùng đã yêu cầu bắt đầu sửa theo bản rà soát. Các quy tắc đã áp dụng được cập nhật trong `UI_DESIGN.md`.
+
+## Đợt sửa đầu — 19/11/2026
+
+Nhánh: `fix/unslop-ui-polish`. Hướng thiết kế giữ nguyên năm điểm đã đề xuất ở trên.
+
+| Mục | Thay đổi |
+| --- | --- |
+| U01–U02 | Bảng 3D dùng native modal, giữ Tab và khôi phục focus; Hỗ trợ ẩn dưới modal, Escape không đóng đồng thời cả hai. Mobile ẩn launcher khi nhập liệu. |
+| U03 | Nâng chữ điều khiển/metadata; vùng bấm hành trình, nút đóng và carousel 44px trở lên; dành chỗ cho Hỗ trợ ở hàng cuối. |
+| U04 | Thêm ngày thi đấu và trạng thái chưa công bố vào EventCard, dùng dữ liệu thật và múi giờ Việt Nam. |
+| U05 | Giá/tổng tiền dùng màu chữ chính, RunPoints dùng nền chung; sửa nhãn, label/input và bố cục checkout mobile. |
+| U07–U09 | Bỏ đường tắt cự ly lặp ở chân hero; chỉnh nhãn checkout, footer và tiêu đề tác vụ; giảm phần giới thiệu trên đăng ký/marketplace mobile. Một số nhãn trang trí landing vẫn giữ để không đổi toàn bộ nhận diện. |
+| U10–U12 | Chuẩn hóa token bo góc, dùng Lucide ở điều khiển hero và metadata sự kiện/checkout, bỏ nâng thẻ marketplace/vé khi hover. Các glyph hướng dẫn nhỏ ở màn khác chưa được thay toàn bộ. |
+| U06 | Chưa thay đổi: dịch vụ ảnh/Pasta Party và giá cố định là logic nghiệp vụ. Đề xuất cho chủ giải cấu hình danh mục, giá, bật/tắt và chụp giá vào đơn; cần xác định phạm vi trước khi triển khai. |
+
+Chín lượt tinh chỉnh: khoảng cách/vùng bấm → màu checkout → icon hành động → nhãn tác vụ → cỡ chữ → bố cục mobile → focus/radius/selection → giữ ảnh và 3D sẵn có → giảm chuyển động phụ. Không sinh ảnh mới, không đổi số tiền hay phân quyền. Kiểm thử và giới hạn được ghi tại `TECHNOLOGY_AND_LOGIC.md`.
+
+Ảnh sau sửa, cùng dữ liệu mô phỏng: [hero mobile](docs/ux/unslop-2026-11-19/after-hero-mobile.png), [lịch giải mobile](docs/ux/unslop-2026-11-19/after-calendar-mobile.png), [checkout desktop](docs/ux/unslop-2026-11-19/after-checkout-desktop.png). Carousel được tạm dừng khi chụp để không ghi lại giữa chuyển cảnh; mặc định sản phẩm vẫn tự chuyển 2 giây.

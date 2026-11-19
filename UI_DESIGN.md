@@ -205,4 +205,17 @@ Kiểm tra 1440, 1024, 768, 390, 360px; không tràn ngang; đăng nhập/đăng
 
 ## Rà soát Unslop — 19/11/2026
 
-Đã rà soát giao diện hiện tại theo [Unslop của Damir Sokolovsky](https://github.com/heydamir/unslop) (CC BY 4.0). Kết quả, bằng chứng và hướng đề xuất nằm trong [UX_UI_AUDIT_UNSLOP.md](UX_UI_AUDIT_UNSLOP.md). Đây là đề xuất chờ chốt hướng; các quy tắc và giao diện hiện tại vẫn là phiên bản đang áp dụng. Giữ yêu cầu hành trình 3D và lịch giải tự chuyển 2 giây khi triển khai tinh chỉnh.
+Đã rà soát giao diện theo [Unslop của Damir Sokolovsky](https://github.com/heydamir/unslop) (CC BY 4.0). Kết quả và bằng chứng ban đầu nằm trong [UX_UI_AUDIT_UNSLOP.md](UX_UI_AUDIT_UNSLOP.md). Đợt sửa đầu áp dụng trên nhánh `fix/unslop-ui-polish`; giữ bảng màu, hành trình 3D và lịch giải tự chuyển 2 giây.
+
+### Quy tắc sau đợt sửa đầu
+
+- Lịch giải và các bảng trong cảnh 3D dùng `dialog.showModal()`: nền bị inert, Tab ở trong hộp thoại, Escape chỉ đóng lớp trên. Khi đóng, focus về nút mở ngay sau khi bỏ inert; không để callback trễ lấy lại focus từ thao tác kế tiếp.
+- Hỗ trợ là panel không khóa nền. Launcher/chat ẩn khi có `dialog:modal`, giữ nguyên cuộc trò chuyện; Escape của chat bỏ qua khi modal đang mở. Mobile ẩn launcher lúc focus input/select/textarea để không che nhập liệu; panel chat đang mở vẫn cho nhập bình thường.
+- Điều khiển hành trình, nút đóng, mũi tên lịch giải, chấm chọn giải và thao tác chính có vùng bấm tối thiểu 44px. Chữ điều khiển hành trình 13–14px, metadata tối thiểu 12px. Bỏ đường tắt chọn cự ly lặp ở hàng dưới; dành chỗ riêng cho nút Hỗ trợ.
+- Radius theo vai trò: control 8px, card/panel 12px, overlay 16px. Các token trong `globals.css` là nguồn chung; ngoại lệ như avatar, chấm trạng thái và thẻ minh họa có thể giữ hình riêng.
+- Trang tài khoản, tổ chức và marketplace đặt tiêu đề theo tác vụ. Mobile thu gọn phần giới thiệu đăng ký, ẩn hình trang trí marketplace, đưa biểu mẫu/danh sách lên sớm hơn.
+- Thẻ giải có ngày chạy từ `dateInfo.raceDate`, định dạng ngày Việt Nam theo múi giờ `Asia/Ho_Chi_Minh`; thiếu/ngày không hợp lệ hiện “Ngày chạy chưa công bố”. Không dựng ngày giả.
+- Checkout dùng chữ chính cho giá, nền trung tính cho RunPoints, sentence case cho nhãn; cự ly/cỡ áo có `aria-pressed`, label gắn với input. Bố cục xuống một cột ở 800px, trường nhập một cột ở 480px. Không thay giá, hạn giữ chỗ, tuổi, quốc tịch hay logic thanh toán.
+- Card vé/marketplace hover đổi viền và bóng nhẹ; không nâng cả thẻ. Hero và carousel vẫn giữ chuyển động đặc trưng; reduced motion giữ đầy đủ HTML.
+
+Kiểm thử hồi quy mới: `npm run test:ui-polish`. Chạy trên production preview dùng `scripts/uiPolishSsr.cjs` để mô phỏng SSR; `WEB_TEST_URL` trỏ preview local. Ảnh nằm ở `artifacts/ui-polish/`. Chi tiết chuẩn bị preview xem phần cập nhật trong `TECHNOLOGY_AND_LOGIC.md`.
