@@ -202,3 +202,7 @@ Kiểm tra 1440, 1024, 768, 390, 360px; không tràn ngang; đăng nhập/đăng
 - /admin → Nạp ví: khối "Tài khoản nhận nạp ví" (BankFields có xem trước QR, lịch sử thay đổi) đặt trên hàng đợi "Đối soát nạp ví" (lọc trạng thái, tìm mã, cờ Quá hạn, hộp thoại xác nhận có ô số tiền thực nhận không điền sẵn).
 - Style nằm trong `src/components/site/topup.css`, chỉ dùng token của `globals.css`.
 - Kiểm thử: `npm run test:wallet-ui` (Chrome, web đang chạy, API fixtures); xem ảnh `artifacts/wallet-topup-*.png`, `artifacts/admin-topup-*.png`.
+
+## Rà soát Unslop — 19/11/2026
+
+Đã rà soát giao diện hiện tại theo [Unslop của Damir Sokolovsky](https://github.com/heydamir/unslop) (CC BY 4.0). Kết quả, bằng chứng và hướng đề xuất nằm trong [UX_UI_AUDIT_UNSLOP.md](UX_UI_AUDIT_UNSLOP.md). Đây là đề xuất chờ chốt hướng; các quy tắc và giao diện hiện tại vẫn là phiên bản đang áp dụng. Giữ yêu cầu hành trình 3D và lịch giải tự chuyển 2 giây khi triển khai tinh chỉnh.
