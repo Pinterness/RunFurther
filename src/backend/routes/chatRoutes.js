@@ -10,5 +10,9 @@ router.use(verifyUserToken);
 router.get('/me', chat.me);
 router.put('/me/consent', chat.giveConsent);
 router.delete('/me/consent', chat.withdrawConsent);
+router.post('/invites', chat.invite);
+router.post('/conversations/:id/accept', chat.accept);
+router.post('/conversations/:id/decline', chat.decline);
+router.use(chat.errors);
 
 module.exports = router;
