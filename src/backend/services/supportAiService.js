@@ -19,13 +19,23 @@ const DEFAULT_SUGGESTIONS = ['Làm sao mua vé giải chạy?', 'Chuyển khoả
 const plain = (value, limit = 200) => (typeof value === 'string' ? value : '').replace(/[\u0000-\u001f<>]/g, ' ').trim().slice(0, limit);
 
 const CITIES = ['Hà Nội', 'Đà Nẵng', 'Đà Lạt', 'Hồ Chí Minh', 'Sa Pa', 'Huế', 'Nha Trang', 'Vũng Tàu', 'Cần Thơ'];
-// Người hỏi nhắc tới giải đã qua thì mới đưa giải cũ; mặc định lịch giải chỉ gồm giải chưa diễn ra.
-const PAST_WORDS = /\b(?:da dien ra|da chay|da ket thuc|da xong|vua roi|nam ngoai|truoc day)\b/;
+// Tên gọi khác người dùng hay gõ (đã bỏ dấu) → tên thành phố như lưu trong giải.
+const CITY_ALIASES = { 'tp hcm': 'Hồ Chí Minh', tphcm: 'Hồ Chí Minh', hcm: 'Hồ Chí Minh', 'sai gon': 'Hồ Chí Minh', sapa: 'Sa Pa' };
+// Người hỏi nhắc tới giải đã qua thì mới đưa giải cũ; mặc định lịch giải chỉ gồm giải chưa diễn ra. Câu vừa có chữ
+// quá khứ vừa có chữ tương lai ("trước đây mình chưa chạy, có giải nào sắp tới không") là đang hỏi giải sắp tới.
+// Không dùng "đã chạy", "đã xong": "tôi đã chạy 21km", "đăng ký đã xong" không hỏi về giải đã qua (phản biện 25-11).
+const PAST_WORDS = /\b(?:da dien ra|da ket thuc|da qua|vua qua|vua roi|nam ngoai|nam truoc|thang truoc|truoc day)\b/;
+const FUTURE_WORDS = /\b(?:sap|tiep theo|dang mo|con mo|toi day|nam nay|thang nay|thang sau|thang toi)\b/;
+const asksPast = query => PAST_WORDS.test(query) && !FUTURE_WORDS.test(query);
 const DAY_MS = 24 * 60 * 60 * 1000;
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
 // 0 giờ hôm nay theo giờ Việt Nam: giải chạy hôm nay vẫn tính là "sắp diễn ra" cho tới hết ngày.
 const vnToday = now => new Date(Math.floor((now.getTime() + VN_OFFSET_MS) / DAY_MS) * DAY_MS - VN_OFFSET_MS);
-const cityIn = query => CITIES.find(value => (' ' + query + ' ').includes(' ' + normalizeSupportText(value) + ' '));
+const hasPhrase = (query, phrase) => (' ' + query + ' ').includes(' ' + phrase + ' ');
+function cityIn(query) {
+  const alias = Object.keys(CITY_ALIASES).find(name => hasPhrase(query, name));
+  return alias ? CITY_ALIASES[alias] : CITIES.find(value => hasPhrase(query, normalizeSupportText(value)));
+}
 
 // Giải người dùng được thấy (không ẩn, không tạm ngừng, không nháp, không hủy), lọc theo thành phố nếu câu hỏi có nêu.
 function visibleEvents(query) {
@@ -40,7 +50,7 @@ function publicEventFilter(message, page = '/', now = new Date()) {
   if (eventPage) return { ...availableEvent, status: { $in: PUBLIC_STATUSES }, slug: eventPage[1].slice(0, 160) };
   const query = normalizeSupportText(message);
   const today = vnToday(now);
-  return { ...visibleEvents(query), 'dateInfo.raceDate': PAST_WORDS.test(query) ? { $lt: today } : { $gte: today } };
+  return { ...visibleEvents(query), 'dateInfo.raceDate': asksPast(query) ? { $lt: today } : { $gte: today } };
 }
 
 async function retrievePublicEvents({ message, page, now = new Date() }) {
@@ -68,17 +78,26 @@ async function retrievePublicEvents({ message, page, now = new Date() }) {
 }
 
 /**
- * Câu hỏi đếm giải ("hiện có bao nhiêu giải chạy", "có mấy giải", "số lượng giải"). Chỉ nhận khi chữ đếm đứng ngay
- * trước "giải" và câu đang hỏi "có bao nhiêu", để "giá vé giải này bao nhiêu" (hỏi giá), "bao nhiêu giải thưởng" hay
- * "đăng ký bao nhiêu giải thì được giảm giá" không bị kéo vào.
+ * Câu hỏi đếm giải ("hiện có bao nhiêu giải chạy", "có mấy giải", "số lượng giải"), viết chặt theo phản biện 25-11.
+ * Sau khi bỏ dấu, "giai đoạn", "giải pháp", "giải thưởng" vẫn chứa "giai", còn "sợ", "hồ sơ", "mã số" đều thành "so".
+ * Vì vậy:
+ *   - chữ đếm (bao nhiêu, mấy, số lượng, tổng số) phải đứng ngay trước "giải", và ngay sau "giải" (hay "giải chạy")
+ *     chỉ được là hết câu hoặc một chữ trong COUNT_TAIL;
+ *   - câu hỏi về giải của chính người hỏi ("tôi có mấy giải", "giải của tôi", "đã đăng ký") không phải câu đếm;
+ *   - câu có điều kiện mà số đếm chưa lọc được (tháng, cự ly, thành phố ngoài danh sách, giải đã qua) không được trả
+ *     một con số toàn sàn như thể đã lọc; các câu đó đi tiếp tới bài lịch giải.
  * @param {string} query Câu đã chuẩn hóa (normalizeSupportText).
  * @returns {boolean}
  */
+const COUNT_TAIL = '(?:chay|dang|sap|hien|tren|o|tai|vay|the|a|nhi|nhe|khong|nua|con|cong khai|mo|trong)';
+const COUNT_PHRASE = new RegExp(`\\b(?:bao nhieu|may|so luong|tong so) giai(?: chay)?(?= ${COUNT_TAIL}\\b|$)`);
+const OWN_EVENTS = /\bcua (?:toi|minh|em)\b|\b(?:toi|minh|em) (?:co|da)\b|\bda (?:dang ky|mua|chay|tham gia)\b/;
+const UNFILTERED = /\bthang (?:\d{1,2}|nay|sau|toi|truoc)\b|\b\d+(?:[.,]\d+)? ?(?:k|km)\b|\bcu ly\b|\b(?:hm|fm|half|full|marathon)\b/;
 function isEventCountQuestion(query) {
   const text = typeof query === 'string' ? query : '';
-  return /\bco (?:tat ca |tong cong )?(?:bao nhieu|may) giai\b(?! thuong)/.test(text)
-    || /^(?:bao nhieu|may) giai\b(?! thuong)/.test(text)
-    || /\bso (?:luong )?giai\b(?! thuong)/.test(text);
+  if (!COUNT_PHRASE.test(text) || OWN_EVENTS.test(text) || UNFILTERED.test(text) || PAST_WORDS.test(text)) return false;
+  // Có nêu nơi chốn ("ở …", "tại …") mà không phải thành phố bot lọc được thì không đếm.
+  return !/\b(?:o|tai) [a-z]/.test(text) || Boolean(cityIn(text));
 }
 
 /**
@@ -209,7 +228,7 @@ function createSupportResponder({ findArticles = loadPublishedArticles, findEven
       // Cố ý trả về ở đây, trước khi tạo bất kỳ dữ liệu nào gửi cho AI.
       return result;
     }
-    if (isEventCountQuestion(query)) {
+    if (isEventCountQuestion(query) && !route?.ambiguous) {
       // Câu hỏi đếm trả bằng số đếm thật, không qua AI: AI chỉ thấy 5 giải nên không đếm được, và không được đoán số.
       try {
         const stats = await countEvents({ message: question, now: now() });

@@ -103,24 +103,29 @@ function normalizeSupportText(value) {
 // Scores each article by the whole term phrases found in the question; longer phrases score more.
 // Equal scores fall back to `priority` (higher first), then keep the input order, which the store
 // fixes by creation time, so the same question always gets the same answer. At most two articles.
-// Cách nói tương đương được quy về một dạng trước khi so cụm từ khóa, áp cho cả câu hỏi lẫn từ khóa của bài. Người
-// dùng hay nói "giải chạy nào", "giải chạy sắp tới", còn bài viết cụm "giải nào", "giải sắp": chữ "chạy" chen giữa làm
-// cụm không còn liền nhau nên không khớp (phát hiện 25-11 khi thử 35 câu trên production).
+// Cách nói tương đương của câu hỏi. Người dùng hay nói "giải chạy nào", "giải chạy sắp tới", còn bài viết cụm "giải
+// nào", "giải sắp": chữ "chạy" chen giữa làm cụm không còn liền nhau nên không khớp (phát hiện 25-11 khi thử 35 câu trên
+// production). Chỉ câu hỏi được quy đổi, từ khóa của bài thì không: một từ khóa "giải chạy" do admin viết mà bị rút
+// thành "giai" thì sẽ khớp mọi câu có chữ "giải" (phản biện 25-11). Mỗi từ khóa được so với cả câu gốc lẫn câu đã quy
+// đổi, nên từ khóa "giải chạy" vẫn khớp câu có đúng cụm đó.
 const SAME_MEANING = [[/\bgiai chay\b/g, 'giai']];
 const unifyPhrasing = text => SAME_MEANING.reduce((result, [pattern, replacement]) => result.replace(pattern, replacement), text);
 
 function rankArticles(articles, message, history = []) {
-  const query = unifyPhrasing(normalizeSupportText(message));
-  const rank = text => articles.map(entry => ({ entry, score: entry.terms.reduce((total, term) => {
-    const normalized = unifyPhrasing(normalizeSupportText(term));
-    return total + ((' ' + text + ' ').includes(' ' + normalized + ' ') ? Math.min(5, Math.max(2.8, normalized.split(' ').length * 1.4)) : 0);
-  }, 0) })).filter(item => item.score >= 2.5).sort((a, b) => b.score - a.score || (b.entry.priority || 0) - (a.entry.priority || 0));
+  const query = normalizeSupportText(message);
+  const rank = text => {
+    const variants = [...new Set([text, unifyPhrasing(text)])].map(variant => ' ' + variant + ' ');
+    return articles.map(entry => ({ entry, score: entry.terms.reduce((total, term) => {
+      const normalized = normalizeSupportText(term);
+      return total + (variants.some(variant => variant.includes(' ' + normalized + ' ')) ? Math.min(5, Math.max(2.8, normalized.split(' ').length * 1.4)) : 0);
+    }, 0) })).filter(item => item.score >= 2.5).sort((a, b) => b.score - a.score || (b.entry.priority || 0) - (a.entry.priority || 0));
+  };
   let ranked = rank(query);
   // Only genuine short follow-ups borrow the last user question. Assistant
   // messages supplied by clients are never treated as trusted knowledge.
   if (!ranked.length && query.length < 80 && /^(con|vay|the|sau do|tai sao|bao lau|ai duyet|duoc khong|roi sao|lam sao)( |$)/.test(query)) {
     const previous = Array.isArray(history) ? history.slice(-6).reverse().find(item => item?.role === 'user' && typeof item.content === 'string') : null;
-    if (previous) ranked = rank(unifyPhrasing(normalizeSupportText(previous.content)) + ' ' + query);
+    if (previous) ranked = rank(normalizeSupportText(previous.content) + ' ' + query);
   }
   return ranked.slice(0, 2).map(item => item.entry);
 }
