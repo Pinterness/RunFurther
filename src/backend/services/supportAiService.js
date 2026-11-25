@@ -18,24 +18,38 @@ const FALLBACK = 'Mình chưa có thông tin đã xác thực để trả lời 
 const DEFAULT_SUGGESTIONS = ['Làm sao mua vé giải chạy?', 'Chuyển khoản rồi sao chưa có vé?', 'Kiểm tra vé của tôi'];
 const plain = (value, limit = 200) => (typeof value === 'string' ? value : '').replace(/[\u0000-\u001f<>]/g, ' ').trim().slice(0, limit);
 
-function publicEventFilter(message, page = '/') {
+const CITIES = ['Hà Nội', 'Đà Nẵng', 'Đà Lạt', 'Hồ Chí Minh', 'Sa Pa', 'Huế', 'Nha Trang', 'Vũng Tàu', 'Cần Thơ'];
+// Người hỏi nhắc tới giải đã qua thì mới đưa giải cũ; mặc định lịch giải chỉ gồm giải chưa diễn ra.
+const PAST_WORDS = /\b(?:da dien ra|da chay|da ket thuc|da xong|vua roi|nam ngoai|truoc day)\b/;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
+// 0 giờ hôm nay theo giờ Việt Nam: giải chạy hôm nay vẫn tính là "sắp diễn ra" cho tới hết ngày.
+const vnToday = now => new Date(Math.floor((now.getTime() + VN_OFFSET_MS) / DAY_MS) * DAY_MS - VN_OFFSET_MS);
+const cityIn = query => CITIES.find(value => (' ' + query + ' ').includes(' ' + normalizeSupportText(value) + ' '));
+
+// Giải người dùng được thấy (không ẩn, không tạm ngừng, không nháp, không hủy), lọc theo thành phố nếu câu hỏi có nêu.
+function visibleEvents(query) {
   const filter = { ...availableEvent, status: { $in: PUBLIC_STATUSES } };
-  const eventPage = typeof page === 'string' && page.match(/^\/events\/([a-z0-9]+(?:-[a-z0-9]+)*)(?:\/(?:register|results))?\/?$/);
-  if (eventPage) filter.slug = eventPage[1].slice(0, 160);
-  else {
-    const query = normalizeSupportText(message);
-    if (/sap|dang mo|tiep theo/.test(query)) filter['dateInfo.raceDate'] = { $gte: new Date() };
-    const cities = ['Hà Nội', 'Đà Nẵng', 'Đà Lạt', 'Hồ Chí Minh', 'Sa Pa', 'Huế', 'Nha Trang', 'Vũng Tàu', 'Cần Thơ'];
-    const city = cities.find(value => (' ' + query + ' ').includes(' ' + normalizeSupportText(value) + ' '));
-    if (city) filter['location.city'] = { $regex: escapeRegex(city), $options: 'i' };
-  }
+  const city = cityIn(query);
+  if (city) filter['location.city'] = { $regex: escapeRegex(city), $options: 'i' };
   return filter;
 }
 
-async function retrievePublicEvents({ message, page }) {
-  const events = await Event.find(publicEventFilter(message, page))
+function publicEventFilter(message, page = '/', now = new Date()) {
+  const eventPage = typeof page === 'string' && page.match(/^\/events\/([a-z0-9]+(?:-[a-z0-9]+)*)(?:\/(?:register|results))?\/?$/);
+  if (eventPage) return { ...availableEvent, status: { $in: PUBLIC_STATUSES }, slug: eventPage[1].slice(0, 160) };
+  const query = normalizeSupportText(message);
+  const today = vnToday(now);
+  return { ...visibleEvents(query), 'dateInfo.raceDate': PAST_WORDS.test(query) ? { $lt: today } : { $gte: today } };
+}
+
+async function retrievePublicEvents({ message, page, now = new Date() }) {
+  const filter = publicEventFilter(message, page, now);
+  // Giải chưa diễn ra: gần nhất trước. Giải đã qua: vừa xong trước.
+  const direction = filter['dateInfo.raceDate']?.$lt ? -1 : 1;
+  const events = await Event.find(filter)
     .select('_id slug name status dateInfo.raceDate dateInfo.registrationStart dateInfo.registrationEnd location.city')
-    .sort({ 'dateInfo.raceDate': 1 }).limit(LIMITS.events).maxTimeMS(LIMITS.queryMs).lean();
+    .sort({ 'dateInfo.raceDate': direction }).limit(LIMITS.events).maxTimeMS(LIMITS.queryMs).lean();
   if (!events.length) return [];
   const categories = await EventCategory.find({ eventId: { $in: events.map(event => event._id) } })
     .select('-_id eventId code distance price').sort({ distance: 1 })
@@ -51,6 +65,52 @@ async function retrievePublicEvents({ message, page }) {
       price: Number.isSafeInteger(category.price) && category.price >= 0 ? category.price : null,
     })),
   }));
+}
+
+/**
+ * Câu hỏi đếm giải ("hiện có bao nhiêu giải chạy", "có mấy giải", "số lượng giải"). Chỉ nhận khi chữ đếm đứng ngay
+ * trước "giải" và câu đang hỏi "có bao nhiêu", để "giá vé giải này bao nhiêu" (hỏi giá), "bao nhiêu giải thưởng" hay
+ * "đăng ký bao nhiêu giải thì được giảm giá" không bị kéo vào.
+ * @param {string} query Câu đã chuẩn hóa (normalizeSupportText).
+ * @returns {boolean}
+ */
+function isEventCountQuestion(query) {
+  const text = typeof query === 'string' ? query : '';
+  return /\bco (?:tat ca |tong cong )?(?:bao nhieu|may) giai\b(?! thuong)/.test(text)
+    || /^(?:bao nhieu|may) giai\b(?! thuong)/.test(text)
+    || /\bso (?:luong )?giai\b(?! thuong)/.test(text);
+}
+
+/**
+ * Số giải thật trong database cho câu hỏi đếm: sắp diễn ra, đang mở đăng ký, đã diễn ra, và tối đa 5 giải gần nhất.
+ * Bốn truy vấn chạy song song, mỗi truy vấn có giới hạn thời gian. Event chưa có index cho status và ngày chạy: với số
+ * giải của dự án (vài chục) quét collection chỉ mất vài mili giây; khi số giải tăng thì nhờ Pinterness thêm index
+ * { status: 1, 'dateInfo.raceDate': 1 } vào Event.js (file của bạn ấy).
+ * @returns {Promise<{ upcoming: number, open: number, past: number, city: string | undefined, events: object[] }>}
+ */
+async function countPublicEvents({ message, now = new Date() }) {
+  const query = normalizeSupportText(message);
+  const base = visibleEvents(query);
+  const today = vnToday(now);
+  const upcomingFilter = { ...base, 'dateInfo.raceDate': { $gte: today } };
+  const count = filter => Event.countDocuments(filter).maxTimeMS(LIMITS.queryMs);
+  const [upcoming, open, past, events] = await Promise.all([
+    count(upcomingFilter),
+    count({ ...upcomingFilter, status: 'REGISTRATION_OPEN', 'dateInfo.registrationStart': { $lte: now }, 'dateInfo.registrationEnd': { $gt: now } }),
+    count({ ...base, 'dateInfo.raceDate': { $lt: today } }),
+    retrievePublicEvents({ message: cityIn(query) ?? '', page: '/', now }),
+  ]);
+  return { upcoming, open, past, city: cityIn(query), events };
+}
+
+// Câu trả lời cho câu hỏi đếm, dựng hoàn toàn từ số liệu (không có chữ nào do AI viết).
+function eventCountReply({ upcoming, open, past, city, events }) {
+  const where = city ? ` ở ${city}` : '';
+  const pastNote = past ? ` Ngoài ra có ${past} giải đã diễn ra.` : '';
+  if (!upcoming) return `Hiện RunFurther chưa có giải công khai nào sắp diễn ra${where}.${pastNote} Bạn mở danh sách giải để xem khi có giải mới nhé.`;
+  const lines = events.map(event => `- ${event.name} — ${event.city || 'Chờ địa điểm'} — ${event.date}${event.registrationOpen ? ' (đang mở đăng ký)' : ''}`);
+  const more = upcoming > events.length ? `\n… và ${upcoming - events.length} giải khác trong danh sách giải.` : '';
+  return `Hiện RunFurther có ${upcoming} giải sắp diễn ra${where}, trong đó ${open} giải đang mở đăng ký.${pastNote}\nCác giải gần nhất:\n${lines.join('\n')}${more}`;
 }
 
 const AI_LIMITS = { maxTokens: 700, temperature: 0.2, timeoutMs: 15000, inFlight: 4, bodyCharacters: 32000, articles: 2 };
@@ -125,7 +185,8 @@ function createChatAdapter({ env = process.env, fetchImpl = (...args) => fetch(.
 // và lệnh nạp quá hạn. Test truyền vào một thời điểm cố định.
 // `recordMiss` ghi câu bot chưa trả lời được vào hàng chờ của admin; truyền null để không ghi (xem thử của admin, test).
 // `canUseAi` là cổng AI 7 điều kiện (supportAiGate.js): chỉ khi qua cổng thì câu hỏi chung mới được gửi cho Gemini.
-function createSupportResponder({ findArticles = loadPublishedArticles, findEvents = retrievePublicEvents, runTask = defaultTaskRunner, generateReply = createChatAdapter(), canUseAi = createAiGate(), recordMiss = recordUnanswered, now = () => new Date() } = {}) {
+// `countEvents` trả số giải cho câu hỏi đếm; test thay bằng hàm ném lỗi để kiểm câu báo chưa tải được.
+function createSupportResponder({ findArticles = loadPublishedArticles, findEvents = retrievePublicEvents, countEvents = countPublicEvents, runTask = defaultTaskRunner, generateReply = createChatAdapter(), canUseAi = createAiGate(), recordMiss = recordUnanswered, now = () => new Date() } = {}) {
   return async function answerSupport({ message, history = [], userId = null, page = '/' } = {}) {
     if (typeof message !== 'string' || !message.trim() || message.length > SUPPORT_MESSAGE_LIMIT) {
       throw httpError(400, `Tin nhắn phải có từ 1 đến ${SUPPORT_MESSAGE_LIMIT} ký tự.`);
@@ -146,6 +207,20 @@ function createSupportResponder({ findArticles = loadPublishedArticles, findEven
       }
       result.reply = answer.reply; result.actions = toActions(answer.actions); result.sources = [];
       // Cố ý trả về ở đây, trước khi tạo bất kỳ dữ liệu nào gửi cho AI.
+      return result;
+    }
+    if (isEventCountQuestion(query)) {
+      // Câu hỏi đếm trả bằng số đếm thật, không qua AI: AI chỉ thấy 5 giải nên không đếm được, và không được đoán số.
+      try {
+        const stats = await countEvents({ message: question, now: now() });
+        result.reply = eventCountReply(stats);
+        result.sources = [{ title: 'Danh sách giải', url: '/events' }, ...stats.events.map(event => ({ title: event.name, url: event.url }))].slice(0, 5);
+        result.actions = toActions([{ label: 'Danh sách giải', url: '/events' }, ...stats.events.map(event => ({ label: actionLabel(event.name), url: event.url }))]);
+        result.suggestions = ['Giải nào đang mở đăng ký?', 'Làm sao mua vé giải chạy?'];
+      } catch (error) {
+        console.error('Support event count failed:', error.message);
+        result.reply = 'Hiện chưa tải được thông tin giải. Bạn hãy mở danh sách giải để thử lại; mình chưa thể xác nhận số giải lúc này.';
+      }
       return result;
     }
     let published;
@@ -173,7 +248,7 @@ function createSupportResponder({ findArticles = loadPublishedArticles, findEven
       // câu trả lời từ các bài được gửi cho nó thì key được gắn lại ở bước AI bên dưới.
       result.articleKeys = [];
       try {
-        events = (await findEvents({ message: question, page })).slice(0, LIMITS.events);
+        events = (await findEvents({ message: question, page, now: now() })).slice(0, LIMITS.events);
         if (events.length) {
           const details = events.map(event => `${event.name} — ${event.city || 'Chờ địa điểm'} — ${event.date}. ${event.registrationOpen ? 'Đang trong thời gian đăng ký.' : 'Xem thời gian đăng ký tại trang giải.'} ${event.categories.map(category => `${category.code || category.distance + ' km'}${category.price === null ? '' : ': ' + category.price.toLocaleString('vi-VN') + 'đ'}`).join(' / ')}`);
           result.reply = 'Thông tin công khai hiện có:\n' + details.join('\n') + '\n\nGiá và số chỗ cần kiểm tra lại trên trang giải trước khi tạo đơn.';
@@ -217,4 +292,4 @@ function createSupportResponder({ findArticles = loadPublishedArticles, findEven
 }
 
 const answerSupport = createSupportResponder();
-module.exports = { answerSupport, createSupportResponder, createChatAdapter, publicEventFilter, retrievePublicEvents };
+module.exports = { answerSupport, createSupportResponder, createChatAdapter, publicEventFilter, retrievePublicEvents, isEventCountQuestion, countPublicEvents };
