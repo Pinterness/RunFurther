@@ -8,6 +8,8 @@ const User = require('../models/User');
 const RunnerProfile = require('../models/RunnerProfile');
 const CommunityProfile = require('../models/CommunityProfile');
 const Registration = require('../models/Registration');
+const Block = require('../models/Block');
+const { blockedBetween } = require('./chatGate');
 require('../models/EventCategory'); // populate('categoryId') cần model này đã đăng ký
 const { HANDLE_PATTERN, isReservedHandle, foldName, createProfileWithHandle } = require('./communityHandle');
 const { isAtLeastAge, latestBirthday } = require('../lib/age');
@@ -85,7 +87,8 @@ async function summarizeResults(userIds, now) {
 
 /**
  * Người đang xem có được thấy hồ sơ này không: phải đăng nhập, chủ hồ sơ còn ACTIVE và đủ 16 tuổi theo ngày sinh hiện
- * tại. Từ P12 thêm điều kiện không có Block ở chiều nào.
+ * tại, và không có Block ở chiều nào giữa hai người (từ P12). Bị chặn thì nhận cùng 404 như hồ sơ không tồn tại, nên
+ * người bị chặn không biết mình bị chặn.
  * @param {string} viewerId Người đang xem.
  * @param {{ userId: unknown }} profile Hồ sơ cộng đồng.
  * @param {{ now?: Date, owner?: { user: object, runner: object } }} [options] `owner` đã nạp sẵn thì không đọc lại DB.
@@ -93,8 +96,21 @@ async function summarizeResults(userIds, now) {
  */
 async function canSeeProfile(viewerId, profile, { now = new Date(), owner } = {}) {
   if (!viewerId || !profile) return false;
-  const { user, runner } = owner ?? await loadOwner(profile.userId);
-  return ownerVisible(user, runner, now);
+  const [{ user, runner }, blocked] = await Promise.all([
+    owner ?? loadOwner(profile.userId),
+    blockedBetween(viewerId, profile.userId),
+  ]);
+  return ownerVisible(user, runner, now) && !blocked;
+}
+
+/**
+ * Những người có Block với người xem ở bất kỳ chiều nào, để danh sách /community bỏ họ ra.
+ * Nhánh blockerId dùng index { blockerId, blockedId }, nhánh blockedId dùng index { blockedId }.
+ * @returns {Promise<Array<unknown>>} userId cần ẩn.
+ */
+async function blockedWith(viewerId) {
+  const rows = await Block.find({ $or: [{ blockerId: viewerId }, { blockedId: viewerId }] }).select({ blockerId: 1, blockedId: 1 }).lean();
+  return rows.map(row => (String(row.blockerId) === String(viewerId) ? row.blockedId : row.blockerId));
 }
 
 /**
@@ -256,7 +272,8 @@ function visibleProfilesPipeline(now) {
 async function listProfiles(viewerId, { page: rawPage, q, now = new Date() } = {}) {
   const page = readPage(rawPage);
   const words = readQuery(q);
-  const visible = visibleProfilesPipeline(now);
+  const hidden = await blockedWith(viewerId);
+  const visible = [...visibleProfilesPipeline(now), ...(hidden.length ? [{ $match: { userId: { $nin: hidden } } }] : [])];
   const start = (page - 1) * PAGE_SIZE;
   const rows = words.length
     ? (await CommunityProfile.aggregate([...visible, { $limit: SEARCH_SCAN }])).filter(row => matchesQuery(row, words)).slice(start, start + PAGE_SIZE + 1)

@@ -10,5 +10,7 @@ const blockSchema = new mongoose.Schema({
 });
 
 blockSchema.index({ blockerId: 1, blockedId: 1 }, { unique: true });
+// Tìm "ai đã chặn tôi" (danh sách /community ẩn họ): blockedId đứng thứ hai trong index trên nên không dùng được nó.
+blockSchema.index({ blockedId: 1 });
 
 module.exports = mongoose.models.Block || mongoose.model('Block', blockSchema);

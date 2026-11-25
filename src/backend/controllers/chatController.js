@@ -36,6 +36,20 @@ exports.messages = handle(async (req, res) => {
   res.json(await chat.listMessages(req.userId, req.params.id, req.query));
 });
 
+exports.block = handle(async (req, res) => {
+  await chat.blockConversation(req.userId, req.params.id);
+  res.status(204).end();
+});
+
+exports.blocks = handle(async (req, res) => {
+  res.json(await chat.listBlocks(req.userId));
+});
+
+exports.unblock = handle(async (req, res) => {
+  await chat.unblock(req.userId, req.params.id);
+  res.status(204).end();
+});
+
 exports.send = handle(async (req, res) => {
   const { status, message } = await chat.sendMessage(req.userId, req.params.id, req.body);
   res.status(status).json({ message });

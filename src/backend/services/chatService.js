@@ -7,6 +7,7 @@ const RunnerProfile = require('../models/RunnerProfile');
 const CommunityProfile = require('../models/CommunityProfile');
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
+const Block = require('../models/Block');
 const { pairKeyOf, LAST_TEXT_MAX } = require('../models/Conversation');
 const { TEXT_MAX } = require('../models/Message');
 const { CHAT_CONSENT } = require('../../lib/communityConsent.cjs');
@@ -461,9 +462,56 @@ async function listConversations(userId, query = {}) {
   return { conversations: shown.map(row => presentConversation(row, userId, people)), hasMore: rows.length > CONVERSATION_PAGE };
 }
 
+/**
+ * Chặn người kia trong một cuộc (POST /conversations/:id/block). Người nhận lời mời chặn được ngay từ hộp Lời mời.
+ * Không cần cổng chat: người bị khóa hay đã rút đồng ý vẫn phải chặn được kẻ quấy rối (T13). Chặn lần hai không lỗi.
+ * Người chặn được bỏ khỏi unreadBy, để cuộc này không còn hiện là chưa đọc.
+ * Từ lúc này chatGate thấy Block: hai bên không gửi tin, không mời nhau và không xem hồ sơ của nhau được nữa.
+ * @returns {Promise<void>}
+ */
+async function blockConversation(userId, rawId) {
+  const conversation = await findMine(userId, rawId);
+  try {
+    await Block.create({ blockerId: userId, blockedId: otherOf(conversation, userId) });
+  } catch (error) {
+    if (!isDuplicateOf(error, 'blockerId')) throw error; // đã chặn từ trước
+  }
+  await Conversation.updateOne({ _id: conversation._id, participants: userId }, { $pull: { unreadBy: userId } });
+}
+
+const BLOCK_LIST_MAX = 200;
+
+/**
+ * Những người mình đã chặn (GET /blocks), mới nhất trước. `id` là id của bản ghi chặn (dùng để bỏ chặn), không phải id
+ * người dùng (T2). Người bị chặn không thấy gì ở đây.
+ * @returns {Promise<{ blocks: Array<{ id: string, displayName: string, avatarTheme: string }> }>}
+ */
+async function listBlocks(userId) {
+  const rows = await Block.find({ blockerId: userId }).sort({ createdAt: -1 }).limit(BLOCK_LIST_MAX).lean();
+  const people = await loadPeople(rows.map(row => row.blockedId));
+  return {
+    blocks: rows.map(row => {
+      const { displayName, avatarTheme } = people.get(String(row.blockedId)) ?? UNKNOWN_PERSON;
+      return { id: String(row._id), displayName, avatarTheme };
+    }),
+  };
+}
+
+/**
+ * Bỏ chặn (DELETE /blocks/:id). Chỉ xóa được bản ghi chặn của chính mình; id sai định dạng, không tồn tại hay của người
+ * khác đều nhận cùng một 404.
+ * @returns {Promise<void>}
+ */
+async function unblock(userId, rawId) {
+  const missing = () => httpError(404, 'Không tìm thấy người trong danh sách chặn.', errorCodes.CHAT_NOT_FOUND);
+  if (typeof rawId !== 'string' || !OBJECT_ID.test(rawId)) throw missing();
+  const { deletedCount } = await Block.deleteOne({ _id: rawId, blockerId: userId });
+  if (!deletedCount) throw missing();
+}
+
 module.exports = {
   getMe, giveConsent, withdrawConsent, createInvite, acceptConversation, declineConversation,
-  sendMessage, listMessages, listConversations,
+  sendMessage, listMessages, listConversations, blockConversation, listBlocks, unblock,
   // dùng lại ở các task sau (gửi tin, lấy tin, chặn)
   readMessageInput, findMine, otherOf, loadPeople, presentConversation, presentMessage, notFound, notActive,
 };
