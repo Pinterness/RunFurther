@@ -12,8 +12,10 @@ const { TEXT_MAX } = require('../models/Message');
 const { CHAT_CONSENT } = require('../../lib/communityConsent.cjs');
 const { isAtLeastAge } = require('../lib/age');
 const { MIN_AGE, inviteTarget, pairOpen, assertSelfEligible, unavailable } = require('./chatGate');
-const { assertInviteQuota, assertDailyMessageQuota } = require('./chatLimits');
+const { assertInviteQuota, assertDailyMessageQuota, assertMessageQuota } = require('./chatLimits');
+const chatNotifier = require('./chatNotifier');
 const transaction = require('./transaction');
+const mongoose = require('mongoose');
 const { httpError } = require('../lib/errors');
 const errorCodes = require('../lib/errorCodes');
 
@@ -246,6 +248,8 @@ async function createInvite(senderId, body, { now = new Date() } = {}) {
       }], { session });
       return { conversation: createdConversation.toObject(), message: createdMessage.toObject() };
     });
+    // Sau commit, ngoài transaction, không chờ: báo người nhận có lời mời mới.
+    chatNotifier.notify([targetId], { conversationId: conversation._id, seq: 1 });
     return { status: 201, conversation: await presentOne(conversation, senderId), message: presentMessage(message, senderId) };
   } catch (error) {
     // Hai request đua nhau và cùng qua các bước kiểm phía trên. Transaction thua đã bị hủy, nên đọc lại thứ bên thắng
@@ -305,8 +309,161 @@ async function declineConversation(userId, rawId) {
   throw notActive();
 }
 
+/**
+ * Tin đã gửi trước đó với cùng clientMessageId. Cùng cuộc → 200 tin đó (gửi lại); cuộc khác → 409.
+ * @returns {Promise<{ status: 200, message: object } | null>} null khi mã chưa được dùng.
+ */
+async function previousMessage(senderId, conversationId, clientMessageId) {
+  const message = await Message.findOne({ senderId, clientMessageId }).lean();
+  if (!message) return null;
+  if (!same(message.conversationId, conversationId)) throw clientIdReused();
+  return { status: 200, message: presentMessage(message, senderId) };
+}
+
+/**
+ * Gửi một tin vào cuộc ACTIVE (spec 4.4). Đây là hàm P14 gọi lại; socket không có đường ghi tin nào khác.
+ *
+ * Vì sao seq không trùng dù nhiều tin gửi cùng lúc: bước (a) tăng lastSeq của cuộc trò chuyện bằng một lệnh ghi
+ * nguyên tử (atomic, MongoDB làm trọn trong một bước) và lấy về giá trị mới. Hai transaction cùng sửa một cuộc thì cái
+ * sau phải chờ cái trước commit hoặc bị hủy rồi chạy lại, nên mỗi tin nhận một số khác nhau, liền mạch. Nếu bước (b)
+ * ghi tin lỗi thì cả transaction bị hủy, lastSeq quay về như cũ, không để lại lỗ hổng.
+ *
+ * @param {string} userId Người gửi (từ token).
+ * @param {string} rawId Id cuộc trò chuyện (từ URL).
+ * @param {{ text: unknown, clientMessageId: unknown }} body
+ * @param {{ now?: Date }} [options]
+ * @returns {Promise<{ status: 200 | 201, message: object }>}
+ */
+async function sendMessage(userId, rawId, body, { now = new Date() } = {}) {
+  const { text, clientMessageId } = readMessageInput(body);
+  const conversation = await findMine(userId, rawId);
+
+  // Gửi lại (mất mạng, bấm đúp) được nhận ra trước mọi giới hạn, để tin đã lưu không bị báo lỗi oan.
+  const retried = await previousMessage(userId, conversation._id, clientMessageId);
+  if (retried) return retried;
+
+  await assertSelfEligible(userId, { now });
+  if (conversation.status !== 'ACTIVE') throw notActive();
+  const otherId = otherOf(conversation, userId);
+  if (!(await pairOpen(userId, otherId, { now }))) throw unavailable();
+  await assertMessageQuota(userId, now);
+
+  let saved;
+  try {
+    saved = await transaction(async session => {
+      // (a) Tăng lastSeq và cập nhật phần xem trước trong một lệnh. Dùng update pipeline để lastMessage.seq lấy đúng
+      // giá trị lastSeq mới. Trong pipeline, chuỗi bắt đầu bằng "$" là tên trường, nên nội dung tin phải bọc $literal.
+      const nextSeq = { $add: ['$lastSeq', 1] };
+      const updated = await Conversation.findOneAndUpdate(
+        { _id: conversation._id, participants: userId, status: 'ACTIVE' },
+        [{ $set: {
+          lastSeq: nextSeq,
+          lastMessage: { seq: nextSeq, senderId: new mongoose.Types.ObjectId(String(userId)), text: { $literal: preview(text) } },
+          lastMessageAt: now,
+          updatedAt: now,
+          unreadBy: { $setUnion: ['$unreadBy', [new mongoose.Types.ObjectId(String(otherId))]] },
+        } }],
+        { new: true, session, timestamps: false },
+      ).lean();
+      if (!updated) throw notActive(); // vừa bị chuyển trạng thái giữa lúc kiểm và lúc ghi
+      // (b) Ghi tin với seq vừa cấp.
+      const [message] = await Message.create([{
+        conversationId: conversation._id, seq: updated.lastSeq, senderId: userId, clientMessageId, text, createdAt: now,
+      }], { session });
+      return message.toObject();
+    });
+  } catch (error) {
+    // Hai lần gửi cùng mã chạy song song: transaction thua đã bị hủy (lastSeq không tăng), đọc tin của bên thắng.
+    if (!isDuplicateOf(error, 'clientMessageId')) throw error;
+    const again = await previousMessage(userId, conversation._id, clientMessageId);
+    if (again) return again;
+    throw error;
+  }
+
+  // Sau commit, ngoài transaction, không chờ. Phát cho cả người gửi để tab thứ hai của chính họ cũng cập nhật.
+  chatNotifier.notify([otherId, userId], { conversationId: conversation._id, seq: saved.seq });
+  return { status: 201, message: presentMessage(saved, userId) };
+}
+
+const MESSAGE_PAGE_MAX = 50;
+const CONVERSATION_PAGE = 20;
+const SEQ_PATTERN = /^(0|[1-9]\d{0,8})$/;
+
+function invalidQuery(message) {
+  return httpError(400, message, errorCodes.INVALID_QUERY);
+}
+
+// Số nguyên không âm từ query string; mảng hay object (ví dụ ?afterSeq[$gt]=0) đều bị từ chối.
+function readSeq(raw, name, min) {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== 'string' || !SEQ_PATTERN.test(raw) || Number(raw) < min) throw invalidQuery(`${name} không hợp lệ.`);
+  return Number(raw);
+}
+
+/**
+ * Lấy tin của một cuộc (GET /conversations/:id/messages). Người tham gia luôn đọc được, ở mọi trạng thái, kể cả khi
+ * bị chặn hay đã rút đồng ý (T13).
+ *
+ * Phân trang bằng con trỏ seq thay vì "trang số N": afterSeq=X lấy các tin có seq > X (lấy bù tin mới), beforeSeq=X
+ * lấy các tin có seq < X (cuộn lên xem tin cũ). Seq của một tin không bao giờ đổi, nên tin mới tới giữa hai lần lấy
+ * không làm các trang trượt đi: không trùng, không sót. Với "trang số N" (skip), một tin mới đẩy mọi tin lùi một chỗ và
+ * trang sau lặp lại tin cuối của trang trước.
+ *
+ * @param {{ afterSeq?: string, beforeSeq?: string, limit?: string }} query
+ * @returns {Promise<{ messages: object[], hasMore: boolean }>} Tin theo seq tăng dần.
+ */
+async function listMessages(userId, rawId, query = {}) {
+  const afterSeq = readSeq(query.afterSeq, 'afterSeq', 0);
+  const beforeSeq = readSeq(query.beforeSeq, 'beforeSeq', 1);
+  const limit = readSeq(query.limit, 'limit', 1) ?? MESSAGE_PAGE_MAX;
+  if (limit > MESSAGE_PAGE_MAX) throw invalidQuery(`limit tối đa ${MESSAGE_PAGE_MAX}.`);
+  if (afterSeq !== undefined && beforeSeq !== undefined) throw invalidQuery('Chỉ dùng một trong afterSeq hoặc beforeSeq.');
+
+  const conversation = await findMine(userId, rawId);
+  const present = rows => rows.map(message => presentMessage(message, userId));
+  // Đọc dư một tin để biết còn trang nữa hay không (hasMore).
+  if (afterSeq !== undefined) {
+    const rows = await Message.find({ conversationId: conversation._id, seq: { $gt: afterSeq } }).sort({ seq: 1 }).limit(limit + 1).lean();
+    return { messages: present(rows.slice(0, limit)), hasMore: rows.length > limit };
+  }
+  // Không có con trỏ thì lấy trang mới nhất; beforeSeq lấy trang ngay trước đó. Đọc từ mới về cũ rồi đảo lại.
+  const seq = beforeSeq !== undefined ? { seq: { $lt: beforeSeq } } : {};
+  const newestFirst = await Message.find({ conversationId: conversation._id, ...seq }).sort({ seq: -1 }).limit(limit + 1).lean();
+  return { messages: present(newestFirst.slice(0, limit).reverse()), hasMore: newestFirst.length > limit };
+}
+
+/**
+ * Danh sách cuộc trò chuyện (GET /conversations?box=chats|invites&before=<ISO>), 20 cuộc mới nhất trước.
+ *   - invites: lời mời người khác gửi tới mình, đang chờ trả lời.
+ *   - chats: cuộc đã ACTIVE, cộng lời mời mình đã gửi (REQUEST hay DECLINED, giao diện ghi "Chưa được chấp nhận").
+ * Lời mời mình đã từ chối không nằm ở hộp nào; bấm "Nhắn tin" với người đó sẽ được trỏ về cuộc này (T14).
+ * @returns {Promise<{ conversations: object[], hasMore: boolean }>}
+ */
+async function listConversations(userId, query = {}) {
+  const box = query.box ?? 'chats';
+  if (box !== 'chats' && box !== 'invites') throw invalidQuery('box chỉ là chats hoặc invites.');
+  let before;
+  if (query.before !== undefined) {
+    before = typeof query.before === 'string' ? new Date(query.before) : null;
+    if (!before || !Number.isFinite(before.getTime())) throw invalidQuery('before phải là thời điểm dạng ISO.');
+  }
+  const me = new mongoose.Types.ObjectId(String(userId));
+  const filter = {
+    participants: me,
+    ...(box === 'invites'
+      ? { status: 'REQUEST', requesterId: { $ne: me } }
+      : { $or: [{ status: 'ACTIVE' }, { requesterId: me }] }),
+    ...(before ? { lastMessageAt: { $lt: before } } : {}),
+  };
+  const rows = await Conversation.find(filter).sort({ lastMessageAt: -1 }).limit(CONVERSATION_PAGE + 1).lean();
+  const shown = rows.slice(0, CONVERSATION_PAGE);
+  const people = await loadPeople(shown.map(row => otherOf(row, userId)));
+  return { conversations: shown.map(row => presentConversation(row, userId, people)), hasMore: rows.length > CONVERSATION_PAGE };
+}
+
 module.exports = {
   getMe, giveConsent, withdrawConsent, createInvite, acceptConversation, declineConversation,
+  sendMessage, listMessages, listConversations,
   // dùng lại ở các task sau (gửi tin, lấy tin, chặn)
   readMessageInput, findMine, otherOf, loadPeople, presentConversation, presentMessage, notFound, notActive,
 };

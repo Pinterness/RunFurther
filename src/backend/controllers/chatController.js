@@ -28,6 +28,19 @@ exports.decline = handle(async (req, res) => {
   res.json({ conversation: await chat.declineConversation(req.userId, req.params.id) });
 });
 
+exports.conversations = handle(async (req, res) => {
+  res.json(await chat.listConversations(req.userId, req.query));
+});
+
+exports.messages = handle(async (req, res) => {
+  res.json(await chat.listMessages(req.userId, req.params.id, req.query));
+});
+
+exports.send = handle(async (req, res) => {
+  const { status, message } = await chat.sendMessage(req.userId, req.params.id, req.body);
+  res.status(status).json({ message });
+});
+
 // Hai loại lỗi của chat mang thêm thông tin mà errorHandler chung không trả: 409 CHAT_CONVERSATION_EXISTS kèm
 // conversationId (để giao diện mở đúng cuộc đã có), và 429 kèm header Retry-After (số giây nên chờ). Lỗi khác đi tiếp
 // tới errorHandler chung.
