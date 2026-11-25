@@ -53,8 +53,9 @@ conversationSchema.pre('validate', function sortParticipants() {
   if (this.pairKey !== pairKeyOf(sorted[0], sorted[1])) this.invalidate('pairKey', 'pairKey không khớp hai người tham gia.');
 });
 
-// Danh sách cuộc trò chuyện của một người, mới nhất trước.
-conversationSchema.index({ participants: 1, lastMessageAt: -1 });
+// Danh sách cuộc trò chuyện của một người, mới nhất trước. _id phá hòa khi hai cuộc trùng lastMessageAt; index có đủ
+// ba trường thì MongoDB sắp bằng index, không phải sắp trong bộ nhớ.
+conversationSchema.index({ participants: 1, lastMessageAt: -1, _id: -1 });
 // Đếm số cuộc có tin chưa đọc (P13).
 conversationSchema.index({ unreadBy: 1 });
 // Đếm số lời mời một người đã gửi trong ngày (giới hạn 5 lời mời/ngày).

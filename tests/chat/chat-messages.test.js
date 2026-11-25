@@ -64,6 +64,24 @@ test('gửi tin: 201 với seq mới, lastSeq và lastMessage của cuộc đổ
   assert.deepEqual(saved.unreadBy.map(String), [a.id]);
 });
 
+test('người trả lời được bỏ khỏi unreadBy, người kia được thêm vào', async () => {
+  const { a, b, id } = await activePair();
+  await send(a, id, 'b ơi');
+  assert.deepEqual((await Conversation.findById(id).lean()).unreadBy.map(String), [b.id]);
+  await send(b, id, 'mình đây');
+  assert.deepEqual((await Conversation.findById(id).lean()).unreadBy.map(String), [a.id]);
+  assert.equal((await list(b)).body.conversations.find(c => c.id === id).unread, false);
+});
+
+test('gửi lại cùng UUID nhưng khác hoa thường vẫn là cùng một tin', async () => {
+  const { a, id } = await activePair();
+  const clientMessageId = uuid();
+  const first = await send(a, id, 'một lần', clientMessageId);
+  const again = await send(a, id, 'một lần', clientMessageId.toUpperCase());
+  assert.equal(again.status, 200);
+  assert.equal(again.body.message.seq, first.body.message.seq);
+});
+
 test('nội dung tin bắt đầu bằng $ được lưu nguyên văn, không bị hiểu là tên trường', async () => {
   const { a, id } = await activePair();
   for (const text of ['$lastSeq', '$$ROOT', '{ "$gt": 1 }']) {
@@ -392,12 +410,43 @@ test('danh sách phân trang 20 cuộc theo before; tham số sai thì 400', asy
   }
 });
 
+test('nhiều cuộc trùng đúng một mốc lastMessageAt: phân trang bằng before + beforeId không trùng, không sót', async () => {
+  const me = await member();
+  const same = new Date(Date.UTC(2026, 10, 2));
+  for (let i = 0; i < 25; i += 1) {
+    const other = await member();
+    const r = await request('/chat/invites', { method: 'POST', as: other, body: { handle: me.handle, text: 'chào', clientMessageId: uuid() } });
+    await Conversation.updateOne({ _id: r.body.conversation.id }, { $set: { lastMessageAt: same } });
+  }
+  const seen = [];
+  let query = '?box=invites';
+  for (let guard = 0; guard < 5; guard += 1) {
+    const page = await list(me, query);
+    assert.equal(page.status, 200);
+    seen.push(...page.body.conversations.map(c => c.id));
+    if (!page.body.hasMore) break;
+    const last = page.body.conversations.at(-1);
+    query = `?box=invites&before=${encodeURIComponent(last.lastMessageAt)}&beforeId=${last.id}`;
+  }
+  assert.equal(seen.length, 25);
+  assert.equal(new Set(seen).size, 25);
+  for (const bad of ['&beforeId=khong-phai-id', '&beforeId=0123456789abcdef01234567']) {
+    // beforeId chỉ có nghĩa đi kèm before; sai định dạng hay đứng một mình thì 400.
+    const r = await list(me, `?box=invites${bad.startsWith('&beforeId=k') ? `&before=${same.toISOString()}` : ''}${bad}`);
+    assert.equal(r.status, 400, bad);
+  }
+});
+
 test('truy vấn danh sách, lấy tin và đếm giới hạn dùng index (IXSCAN, không quét cả collection)', async () => {
   const { a, id } = await activePair();
   const me = new mongoose.Types.ObjectId(a.id);
   const plans = {
-    'danh sách chats': await Conversation.find({ participants: me, $or: [{ status: 'ACTIVE' }, { requesterId: me }] }).sort({ lastMessageAt: -1 }).limit(21).explain('queryPlanner'),
-    'danh sách invites': await Conversation.find({ participants: me, status: 'REQUEST', requesterId: { $ne: me } }).sort({ lastMessageAt: -1 }).limit(21).explain('queryPlanner'),
+    'danh sách chats': await Conversation.find({ participants: me, $or: [{ status: 'ACTIVE' }, { requesterId: me }] }).sort({ lastMessageAt: -1, _id: -1 }).limit(21).explain('queryPlanner'),
+    'danh sách invites': await Conversation.find({ participants: me, status: 'REQUEST', requesterId: { $ne: me } }).sort({ lastMessageAt: -1, _id: -1 }).limit(21).explain('queryPlanner'),
+    'danh sách trang sau (con trỏ kép)': await Conversation.find({ participants: me, $and: [
+      { $or: [{ status: 'ACTIVE' }, { requesterId: me }] },
+      { $or: [{ lastMessageAt: { $lt: new Date() } }, { lastMessageAt: new Date(), _id: { $lt: me } }] },
+    ] }).sort({ lastMessageAt: -1, _id: -1 }).limit(21).explain('queryPlanner'),
     'lấy tin afterSeq': await Message.find({ conversationId: id, seq: { $gt: 0 } }).sort({ seq: 1 }).limit(51).explain('queryPlanner'),
     'đếm tin theo phút': await Message.find({ senderId: me, createdAt: { $gte: new Date(Date.now() - 60000) } }).explain('queryPlanner'),
     'đếm lời mời theo ngày': await Conversation.find({ requesterId: me, createdAt: { $gte: vnDayStart(new Date()) } }).explain('queryPlanner'),

@@ -106,7 +106,7 @@ test('index và TTL 12 tháng có thật trong database', async () => {
   assert.ok(hasIndex(messages, { senderId: 1, createdAt: -1 }));
   assert.ok(hasIndex(conversations, { lastMessageAt: 1 }, { expireAfterSeconds: YEAR_SECONDS }), 'TTL của Conversation');
   assert.ok(hasIndex(conversations, { pairKey: 1 }, { unique: true }));
-  assert.ok(hasIndex(conversations, { participants: 1, lastMessageAt: -1 }));
+  assert.ok(hasIndex(conversations, { participants: 1, lastMessageAt: -1, _id: -1 }));
   assert.ok(hasIndex(conversations, { unreadBy: 1 }));
   assert.ok(hasIndex(conversations, { requesterId: 1, createdAt: -1 }));
   assert.ok(hasIndex(blocks, { blockerId: 1, blockedId: 1 }, { unique: true }));

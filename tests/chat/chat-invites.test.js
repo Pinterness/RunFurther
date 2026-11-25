@@ -95,6 +95,31 @@ test('gửi lại cùng clientMessageId (tuần tự và song song) trả cùng 
   assert.equal(await Conversation.countDocuments({ pairKey: pairKeyOf(a.id, c.id) }), 0);
 });
 
+test('gửi lại lời mời sau khi người nhận đã xóa hồ sơ vẫn trả 200 lời mời cũ; mã viết hoa vẫn là cùng mã', async () => {
+  const a = await member(), b = await member();
+  const clientMessageId = crypto.randomUUID();
+  const first = await invite(a, b, { clientMessageId });
+  assert.equal(first.status, 201);
+  const upper = await invite(a, b, { clientMessageId: clientMessageId.toUpperCase() });
+  assert.equal(upper.status, 200, 'cùng UUID khác hoa thường là gửi lại');
+  assert.equal(upper.body.conversation.id, first.body.conversation.id);
+
+  await CommunityProfile.deleteOne({ userId: b.id });
+  const again = await invite(a, b, { clientMessageId });
+  assert.equal(again.status, 200);
+  assert.equal(again.body.conversation.id, first.body.conversation.id);
+  assert.equal(await Message.countDocuments({ senderId: a.id }), 1);
+});
+
+test('chấp nhận lần hai trên cuộc ACTIVE trả 200 cho cả người mời', async () => {
+  const a = await member(), b = await member();
+  const id = (await invite(a, b)).body.conversation.id;
+  await accept(b, id);
+  const r = await accept(a, id);
+  assert.equal(r.status, 200);
+  assert.equal(r.body.conversation.status, 'ACTIVE');
+});
+
 test('cùng một mã gửi song song cho hai người khác nhau: một lời mời, một 409 CHAT_CLIENT_ID_REUSED, không 500', async () => {
   for (let round = 0; round < 5; round += 1) {
     const a = await member(), b = await member(), c = await member();

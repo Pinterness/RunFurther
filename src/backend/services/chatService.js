@@ -43,11 +43,12 @@ function readMessageInput(body) {
   if (!text || text.length > TEXT_MAX) {
     throw httpError(400, `Tin nhắn phải có từ 1 đến ${TEXT_MAX} ký tự.`, errorCodes.CHAT_MESSAGE_INVALID);
   }
-  const clientMessageId = body?.clientMessageId;
-  if (typeof clientMessageId !== 'string' || !UUID.test(clientMessageId)) {
+  const raw = body?.clientMessageId;
+  if (typeof raw !== 'string' || !UUID.test(raw)) {
     throw httpError(400, 'Mã tin nhắn không hợp lệ.', errorCodes.CHAT_MESSAGE_INVALID);
   }
-  return { text, clientMessageId };
+  // UUID không phân biệt hoa thường; lưu chữ thường để lần gửi lại viết hoa vẫn được nhận ra là cùng một tin.
+  return { text, clientMessageId: raw.toLowerCase() };
 }
 
 // 120 ký tự đầu cho phần xem trước trong danh sách; không cắt đôi một emoji (cặp surrogate UTF-16).
@@ -192,8 +193,10 @@ async function previousInvite(senderId, clientMessageId, targetId) {
   const message = await Message.findOne({ senderId, clientMessageId }).lean();
   if (!message) return null;
   const conversation = await Conversation.findOne({ _id: message.conversationId, participants: senderId }).lean();
+  // targetId null nghĩa là handle không còn trỏ tới ai (người nhận vừa xóa hồ sơ): vẫn là lần gửi lại hợp lệ. Chỉ khi
+  // handle trỏ tới một người khác thì mới là dùng lại mã.
   const sameInvite = conversation && message.seq === 1 && same(conversation.requesterId, senderId)
-    && targetId && same(otherOf(conversation, senderId), targetId);
+    && (!targetId || same(otherOf(conversation, senderId), targetId));
   if (!sameInvite) throw clientIdReused();
   return { status: 200, conversation: await presentOne(conversation, senderId), message: presentMessage(message, senderId) };
 }
@@ -272,9 +275,8 @@ async function createInvite(senderId, body, { now = new Date() } = {}) {
  */
 async function acceptConversation(userId, rawId, { now = new Date() } = {}) {
   const current = await findMine(userId, rawId);
-  const isRecipient = !same(current.requesterId, userId);
-  if (isRecipient && current.status === 'ACTIVE') return presentOne(current, userId);
-  if (!isRecipient) throw notActive();
+  if (current.status === 'ACTIVE') return presentOne(current, userId); // bấm đúp hay giao diện cũ: không thành lỗi
+  if (same(current.requesterId, userId)) throw notActive();
 
   await assertSelfEligible(userId, { now });
   if (!(await pairOpen(userId, otherOf(current, userId), { now }))) throw unavailable();
@@ -362,7 +364,11 @@ async function sendMessage(userId, rawId, body, { now = new Date() } = {}) {
           lastMessage: { seq: nextSeq, senderId: new mongoose.Types.ObjectId(String(userId)), text: { $literal: preview(text) } },
           lastMessageAt: now,
           updatedAt: now,
-          unreadBy: { $setUnion: ['$unreadBy', [new mongoose.Types.ObjectId(String(otherId))]] },
+          // Người kia có tin chưa đọc; người gửi thì đang xem cuộc này nên không còn tính là chưa đọc.
+          unreadBy: { $setUnion: [
+            { $setDifference: ['$unreadBy', [new mongoose.Types.ObjectId(String(userId))]] },
+            [new mongoose.Types.ObjectId(String(otherId))],
+          ] },
         } }],
         { new: true, session, timestamps: false },
       ).lean();
@@ -434,7 +440,26 @@ async function listMessages(userId, rawId, query = {}) {
 }
 
 /**
- * Danh sách cuộc trò chuyện (GET /conversations?box=chats|invites&before=<ISO>), 20 cuộc mới nhất trước.
+ * Con trỏ của danh sách cuộc trò chuyện: lastMessageAt và _id của cuộc cuối trang trước. Chỉ lastMessageAt thì chưa
+ * đủ, vì hai cuộc có thể trùng đúng một mili giây và cuộc thứ hai bị bỏ sót ở ranh giới trang; _id phá hòa, nên cặp
+ * (lastMessageAt, _id) là duy nhất. `before` đứng một mình (không beforeId) vẫn được nhận, theo spec 4.3.
+ * @returns {object | null} Điều kiện "đứng sau con trỏ" khi sắp { lastMessageAt: -1, _id: -1 }.
+ */
+function readConversationCursor({ before: rawBefore, beforeId } = {}) {
+  if (rawBefore === undefined) {
+    if (beforeId !== undefined) throw invalidQuery('beforeId phải đi kèm before.');
+    return null;
+  }
+  const before = typeof rawBefore === 'string' ? new Date(rawBefore) : null;
+  if (!before || !Number.isFinite(before.getTime())) throw invalidQuery('before phải là thời điểm dạng ISO.');
+  if (beforeId === undefined) return { lastMessageAt: { $lt: before } };
+  if (typeof beforeId !== 'string' || !OBJECT_ID.test(beforeId)) throw invalidQuery('beforeId không hợp lệ.');
+  const id = new mongoose.Types.ObjectId(beforeId);
+  return { $or: [{ lastMessageAt: { $lt: before } }, { lastMessageAt: before, _id: { $lt: id } }] };
+}
+
+/**
+ * Danh sách cuộc trò chuyện (GET /conversations?box=chats|invites&before=<ISO>&beforeId=<id>), 20 cuộc mới nhất trước.
  *   - invites: lời mời người khác gửi tới mình, đang chờ trả lời.
  *   - chats: cuộc đã ACTIVE, cộng lời mời mình đã gửi (REQUEST hay DECLINED, giao diện ghi "Chưa được chấp nhận").
  * Lời mời mình đã từ chối không nằm ở hộp nào; bấm "Nhắn tin" với người đó sẽ được trỏ về cuộc này (T14).
@@ -443,20 +468,13 @@ async function listMessages(userId, rawId, query = {}) {
 async function listConversations(userId, query = {}) {
   const box = query.box ?? 'chats';
   if (box !== 'chats' && box !== 'invites') throw invalidQuery('box chỉ là chats hoặc invites.');
-  let before;
-  if (query.before !== undefined) {
-    before = typeof query.before === 'string' ? new Date(query.before) : null;
-    if (!before || !Number.isFinite(before.getTime())) throw invalidQuery('before phải là thời điểm dạng ISO.');
-  }
+  const cursor = readConversationCursor(query);
   const me = new mongoose.Types.ObjectId(String(userId));
-  const filter = {
-    participants: me,
-    ...(box === 'invites'
-      ? { status: 'REQUEST', requesterId: { $ne: me } }
-      : { $or: [{ status: 'ACTIVE' }, { requesterId: me }] }),
-    ...(before ? { lastMessageAt: { $lt: before } } : {}),
-  };
-  const rows = await Conversation.find(filter).sort({ lastMessageAt: -1 }).limit(CONVERSATION_PAGE + 1).lean();
+  const boxFilter = box === 'invites'
+    ? { status: 'REQUEST', requesterId: { $ne: me } }
+    : { $or: [{ status: 'ACTIVE' }, { requesterId: me }] };
+  const filter = { participants: me, ...(cursor ? { $and: [boxFilter, cursor] } : boxFilter) };
+  const rows = await Conversation.find(filter).sort({ lastMessageAt: -1, _id: -1 }).limit(CONVERSATION_PAGE + 1).lean();
   const shown = rows.slice(0, CONVERSATION_PAGE);
   const people = await loadPeople(shown.map(row => otherOf(row, userId)));
   return { conversations: shown.map(row => presentConversation(row, userId, people)), hasMore: rows.length > CONVERSATION_PAGE };
@@ -477,6 +495,12 @@ async function blockConversation(userId, rawId) {
     if (!isDuplicateOf(error, 'blockerId')) throw error; // đã chặn từ trước
   }
   await Conversation.updateOne({ _id: conversation._id, participants: userId }, { $pull: { unreadBy: userId } });
+  // Người nhận chặn ngay từ hộp Lời mời: coi như từ chối luôn, để lời mời rời hộp (nếu không, nó nằm đó mà bấm Chấp
+  // nhận thì bị cổng chặn). Bỏ chặn rồi vẫn chấp nhận lại được như mọi lời mời đã từ chối (T14).
+  await Conversation.updateOne(
+    { _id: conversation._id, participants: userId, status: 'REQUEST', requesterId: { $ne: userId } },
+    { $set: { status: 'DECLINED' } },
+  );
 }
 
 const BLOCK_LIST_MAX = 200;

@@ -148,6 +148,27 @@ test('tìm Block theo người chặn và theo người bị chặn đều dùng
   }
 });
 
+test('chặn từ hộp Lời mời thì lời mời rời hộp (thành DECLINED); bỏ chặn rồi vẫn chấp nhận lại được', async () => {
+  const a = await member(), b = await member();
+  const id = (await invite(a, b)).body.conversation.id;
+  const inbox = async () => (await request('/chat/conversations?box=invites', { as: b })).body.conversations.map(c => c.id);
+  assert.deepEqual(await inbox(), [id]);
+  assert.equal((await block(b, id)).status, 204);
+  assert.deepEqual(await inbox(), [], 'không còn lời mời không xử lý được trong hộp');
+  assert.equal((await Conversation.findById(id).lean()).status, 'DECLINED');
+
+  // Người mời chặn lời mời của chính mình thì trạng thái không đổi.
+  const c = await member(), d = await member();
+  const own = (await invite(c, d)).body.conversation.id;
+  await block(c, own);
+  assert.equal((await Conversation.findById(own).lean()).status, 'REQUEST');
+
+  await unblock(b, (await blocks(b)).body.blocks[0].id);
+  const accepted = await request(`/chat/conversations/${id}/accept`, { method: 'POST', as: b });
+  assert.equal(accepted.status, 200);
+  assert.equal(accepted.body.conversation.status, 'ACTIVE');
+});
+
 test('người bị khóa hay đã rút đồng ý vẫn chặn được (T13)', async () => {
   const { a, id } = await activePair();
   await require('../../src/backend/models/ChatMember').updateOne({ userId: a.id }, { $set: { consentAt: null, lockedAt: new Date() } });
