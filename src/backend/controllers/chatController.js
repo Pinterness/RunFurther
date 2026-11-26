@@ -50,6 +50,15 @@ exports.unblock = handle(async (req, res) => {
   res.status(204).end();
 });
 
+exports.read = handle(async (req, res) => {
+  await chat.markRead(req.userId, req.params.id, req.body);
+  res.status(204).end();
+});
+
+exports.unread = handle(async (req, res) => {
+  res.json(await chat.unreadCount(req.userId));
+});
+
 exports.send = handle(async (req, res) => {
   const { status, message } = await chat.sendMessage(req.userId, req.params.id, req.body);
   res.status(status).json({ message });

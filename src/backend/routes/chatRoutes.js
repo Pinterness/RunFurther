@@ -14,6 +14,8 @@ router.post('/invites', chat.invite);
 router.get('/conversations', chat.conversations);
 router.get('/conversations/:id/messages', chat.messages);
 router.post('/conversations/:id/messages', chat.send);
+router.post('/conversations/:id/read', chat.read);
+router.get('/unread', chat.unread);
 router.post('/conversations/:id/block', chat.block);
 router.get('/blocks', chat.blocks);
 router.delete('/blocks/:id', chat.unblock);

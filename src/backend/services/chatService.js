@@ -548,9 +548,47 @@ async function unblock(userId, rawId) {
   if (!deletedCount) throw missing();
 }
 
+/**
+ * Đánh dấu đã đọc (POST /conversations/:id/read, spec 4.5). Client gửi upToSeq là seq lớn nhất đang hiện trên màn hình.
+ * Server chỉ bỏ người đọc khỏi unreadBy khi lastSeq của cuộc đúng bằng upToSeq: nếu có tin mới tới sau lúc client vẽ
+ * màn hình thì lastSeq đã lớn hơn, lệnh không khớp, và cuộc vẫn còn chưa đọc. Không cần cổng chat, vì người tham gia
+ * luôn đọc được cuộc của mình (T13).
+ * Đường thường gặp tốn đúng một lệnh cập nhật; chỉ khi không khớp mới đọc thêm để phân biệt "chưa đọc hết" với "không
+ * phải cuộc của bạn" (404 giống hệt các chỗ khác).
+ * @param {string} userId Người đọc (từ token).
+ * @param {string} rawId Id cuộc trò chuyện (từ URL).
+ * @param {{ upToSeq: unknown }} body
+ * @returns {Promise<void>}
+ */
+async function markRead(userId, rawId, body) {
+  const id = readConversationId(rawId);
+  const upToSeq = body?.upToSeq;
+  if (!Number.isSafeInteger(upToSeq) || upToSeq < 1) {
+    throw httpError(400, 'upToSeq phải là số nguyên dương.', errorCodes.CHAT_READ_INVALID);
+  }
+  const me = new mongoose.Types.ObjectId(String(userId));
+  // timestamps: false vì đọc tin không phải là thay đổi của cuộc trò chuyện.
+  const result = await Conversation.updateOne(
+    { _id: id, participants: me, lastSeq: upToSeq },
+    { $pull: { unreadBy: me } },
+    { timestamps: false },
+  );
+  if (!result.matchedCount) await findMine(userId, id);
+}
+
+/**
+ * Số cuộc trò chuyện có tin chưa đọc, cho huy hiệu "Tin nhắn" (GET /api/chat/unread, D6). Lời mời đang chờ đã có người
+ * nhận trong unreadBy nên được đếm luôn; cuộc DECLINED không đếm. Một lệnh đếm trên index { unreadBy: 1 }.
+ * @returns {Promise<{ count: number }>}
+ */
+async function unreadCount(userId) {
+  const count = await Conversation.countDocuments({ unreadBy: userId, status: { $ne: 'DECLINED' } }).maxTimeMS(1500);
+  return { count };
+}
+
 module.exports = {
   getMe, giveConsent, withdrawConsent, createInvite, acceptConversation, declineConversation,
-  sendMessage, listMessages, listConversations, blockConversation, listBlocks, unblock,
+  sendMessage, listMessages, listConversations, blockConversation, listBlocks, unblock, markRead, unreadCount,
   // dùng lại ở các task sau (gửi tin, lấy tin, chặn)
   readMessageInput, findMine, otherOf, loadPeople, presentConversation, presentMessage, notFound, notActive,
 };
