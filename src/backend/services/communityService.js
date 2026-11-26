@@ -9,7 +9,7 @@ const RunnerProfile = require('../models/RunnerProfile');
 const CommunityProfile = require('../models/CommunityProfile');
 const Registration = require('../models/Registration');
 const Block = require('../models/Block');
-const { blockedBetween } = require('./chatGate');
+const { blockedBetween, senderEligible, inviteTarget } = require('./chatGate');
 require('../models/EventCategory'); // populate('categoryId') cần model này đã đăng ký
 const { HANDLE_PATTERN, isReservedHandle, foldName, createProfileWithHandle } = require('./communityHandle');
 const { isAtLeastAge, latestBirthday } = require('../lib/age');
@@ -294,9 +294,24 @@ async function getProfile(viewerId, rawHandle, { now = new Date() } = {}) {
   if (!profile) throw notFound();
   const owner = await loadOwner(profile.userId);
   if (!(await canSeeProfile(viewerId, profile, { now, owner }))) throw notFound();
-  const results = profile.showResults ? (await summarizeResults([profile.userId], now)).get(String(profile.userId)) : undefined;
-  // canMessage luôn false tới P13 (Task 13.3 tính thật).
-  return presentProfile({ profile, ...owner, results, canMessage: false });
+  const [results, canMessage] = await Promise.all([
+    profile.showResults ? summarizeResults([profile.userId], now).then(map => map.get(String(profile.userId))) : undefined,
+    messageable(viewerId, handle, profile, now),
+  ]);
+  return presentProfile({ profile, ...owner, results, canMessage });
+}
+
+/**
+ * Người xem có gửi được lời mời nhắn tin cho chủ hồ sơ này không (nút "Nhắn tin", P13.3). Dùng đúng phép kiểm của API
+ * lời mời: cổng của chính người xem (senderEligible) và inviteTarget (chủ hồ sơ đủ điều kiện nhận, không có Block), nên
+ * nút và API không bao giờ lệch nhau. Chỉ trả true/false, không nói lý do (spec T9). Danh sách /community luôn trả false
+ * để không tốn thêm lệnh cho mỗi thẻ.
+ * @returns {Promise<boolean>}
+ */
+async function messageable(viewerId, handle, profile, now) {
+  if (String(profile.userId) === String(viewerId)) return false;
+  const [self, target] = await Promise.all([senderEligible(viewerId, { now }), inviteTarget(viewerId, { handle }, { now })]);
+  return self.ok && target !== null;
 }
 
 module.exports = { MIN_AGE, canSeeProfile, presentProfile, getMine, saveMine, deleteMine, listProfiles, getProfile, visibleProfilesPipeline };

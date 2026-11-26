@@ -233,3 +233,39 @@ test('khách chưa đăng nhập nhận 401', async () => {
     assert.equal((await request(path, { method, body: method === 'PUT' ? CONSENT : undefined })).status, 401, `${method} ${path}`);
   }
 });
+
+// P13.3: canMessage tính thật trên trang hồ sơ, bằng đúng phép kiểm của lời mời (chatGate.inviteTarget) cộng cổng của
+// chính người xem. Danh sách /community vẫn trả false để không tốn thêm lệnh cho mỗi thẻ.
+const ChatMember = require('../../src/backend/models/ChatMember');
+const Block = require('../../src/backend/models/Block');
+const allowChat = (user, extra = {}) => ChatMember.updateOne({ userId: user.id }, { $set: { consentAt: new Date(), consentVersion: 'chat-v1', ...extra } }, { upsert: true });
+
+test('canMessage: true khi cả hai đã đồng ý nhắn tin; false khi người xem hay chủ hồ sơ chưa đồng ý, người xem bị khóa, hay là hồ sơ của chính mình', async () => {
+  const fan = await createUser({ dob: '1992-05-05' });
+  const { user: owner, handle } = await withProfile({}, { fullName: 'Người Nhận Tin' });
+  const asFan = () => request('/community/profiles/' + handle, { as: fan });
+
+  assert.equal((await asFan()).body.canMessage, false, 'chưa ai đồng ý nhắn tin');
+  await allowChat(fan);
+  assert.equal((await asFan()).body.canMessage, false, 'chủ hồ sơ chưa đồng ý nhận lời mời');
+  await allowChat(owner);
+  assert.equal((await asFan()).body.canMessage, true);
+  assert.equal((await request('/community/profiles', { as: fan })).body.profiles.find(p => p.handle === handle).canMessage, false, 'danh sách luôn false');
+  assert.equal((await request('/community/profiles/' + handle, { as: owner })).body.canMessage, false, 'hồ sơ của chính mình');
+  await allowChat(fan, { lockedAt: new Date() });
+  assert.equal((await asFan()).body.canMessage, false, 'người xem bị khóa nhắn tin');
+  await allowChat(fan, { lockedAt: null });
+  await ChatMember.updateOne({ userId: owner.id }, { $set: { consentAt: null, consentVersion: null } });
+  assert.equal((await asFan()).body.canMessage, false, 'chủ hồ sơ rút đồng ý');
+});
+
+test('canMessage: có Block ở bất kỳ chiều nào thì hồ sơ trả 404, không có nút Nhắn tin nào để lộ', async () => {
+  const fan = await createUser({ dob: '1992-05-05' });
+  const { user: owner, handle } = await withProfile();
+  await allowChat(fan); await allowChat(owner);
+  assert.equal((await request('/community/profiles/' + handle, { as: fan })).body.canMessage, true);
+  await Block.create({ blockerId: owner.id, blockedId: fan.id });
+  const blocked = await request('/community/profiles/' + handle, { as: fan });
+  assert.equal(blocked.status, 404);
+  assert.equal(blocked.body.code, 'COMMUNITY_NOT_FOUND');
+});

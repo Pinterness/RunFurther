@@ -5,6 +5,13 @@ const post = (path, body) => api(path, { method: 'POST', body: JSON.stringify(bo
 const conv = id => '/chat/conversations/' + encodeURIComponent(id);
 
 export const chatMe = () => api('/chat/me');
+export const giveChatConsent = consentVersion => api('/chat/me/consent', { method: 'PUT', body: JSON.stringify({ consentVersion }) });
+export const withdrawChatConsent = () => api('/chat/me/consent', { method: 'DELETE' });
+export const listBlocks = () => api('/chat/blocks');
+export const unblock = id => api('/chat/blocks/' + encodeURIComponent(id), { method: 'DELETE' });
+// Lời mời kèm tin đầu tới chủ một hồ sơ cộng đồng (spec 4.4). 409 CHAT_CONVERSATION_EXISTS mang conversationId trong
+// error.data để giao diện mở cuộc đã có.
+export const sendInvite = (handle, text, clientMessageId) => post('/chat/invites', { handle, text, clientMessageId });
 
 // box: 'chats' | 'invites'. Trang sau dùng con trỏ kép before + beforeId của cuộc cuối đang hiện.
 export function listConversations(box, cursor) {

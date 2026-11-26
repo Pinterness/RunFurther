@@ -24,7 +24,8 @@ export default function ChatThread({ conversation, onChanged, onBack, onExpired,
   const sendingRef = useRef(false), alive = useRef(true), markedRef = useRef(0);
   const logRef = useRef(null), headingRef = useRef(null), inputRef = useRef(null), confirmRef = useRef(null), keepScroll = useRef(null);
 
-  const isInvite = conversation.status === 'REQUEST' && !conversation.isRequester;
+  // Người nhận trả lời bằng thẻ lời mời, kể cả khi đã từ chối trước đó (đổi ý thì vẫn chấp nhận được, spec T14).
+  const isInvite = !conversation.isRequester && (conversation.status === 'REQUEST' || conversation.status === 'DECLINED');
   // Người mời chỉ thấy "đang chờ" (API đã che DECLINED thành REQUEST với họ).
   const waiting = conversation.isRequester && conversation.status !== 'ACTIVE';
   const canWrite = conversation.status === 'ACTIVE';
@@ -193,7 +194,7 @@ export default function ChatThread({ conversation, onChanged, onBack, onExpired,
     </div>}
 
     {isInvite
-      ? <InviteCard conversation={conversation} firstText={messages[0]?.text} busy={busy}
+      ? <InviteCard conversation={conversation} firstText={messages[0]?.text} busy={busy} declined={conversation.status === 'DECLINED'}
         onAccept={() => act(async () => (await chat.accept(id)).conversation, () => inputRef.current?.focus())}
         onDecline={() => act(async () => (await chat.decline(id)).conversation)}
         onBlock={() => act(async () => { await chat.block(id); return null; })} />

@@ -81,3 +81,18 @@
   .chat-bubble { max-width: 88%; }
 }
 @media (prefers-reduced-motion: reduce) { .chat-row { transition: none; } }
+
+/* P13.3: hộp soạn lời mời trên hồ sơ, phần Tin nhắn trong tab Cộng đồng */
+.community-message { margin: 20px 0; }
+.community-message-hint { font-size: 13px; color: var(--muted); }
+.chat-invite-composer { display: grid; gap: 8px; max-width: 640px; padding: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-panel); }
+.chat-invite-composer h2 { font-size: 16px; line-height: 1.5; }
+.chat-invite-composer label { font-size: 13px; font-weight: 600; }
+.chat-invite-composer textarea { width: 100%; box-sizing: border-box; border-color: #829278; resize: vertical; }
+.chat-invite-help { font-size: 13px; color: var(--muted); }
+.chat-settings { margin-top: 32px; }
+.chat-settings-on { display: grid; gap: 12px; justify-items: start; }
+.chat-blocks-title { font-size: 16px; margin: 20px 0 8px; }
+.chat-blocks { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.chat-blocks li { display: flex; align-items: center; gap: 12px; }
+.chat-blocks-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }

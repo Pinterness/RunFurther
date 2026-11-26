@@ -7,6 +7,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import RunnerAvatar from '../../../../components/site/RunnerAvatar';
 import { api } from '../../../../lib/clientApi';
+import InviteComposer from '../../../../components/site/chat/InviteComposer';
+import { chatMe } from '../../../../lib/chatClient';
 import { bestTimeEntries, loginHref, memberSinceLabel } from '../../../../lib/communityClient';
 import '../../../../components/site/community.css';
 
@@ -14,6 +16,9 @@ export default function CommunityProfilePage({ params }) {
   const { handle } = use(params);
   const router = useRouter();
   const [profile, setProfile] = useState(null), [state, setState] = useState('loading'), [error, setError] = useState('');
+  // Nút "Nhắn tin" (P13.3): hiện khi API báo canMessage. Không nhắn được thì không nói lý do của người kia (spec T9);
+  // chỉ nhắc khi lý do là của chính người xem (chưa bật nhắn tin).
+  const [composing, setComposing] = useState(false), [myChat, setMyChat] = useState(null);
   // Đổi handle hay rời trang thì phản hồi của lần tải cũ bị bỏ qua (kể cả lỗi 401 về muộn).
   const latest = useRef(0);
 
@@ -35,6 +40,8 @@ export default function CommunityProfilePage({ params }) {
   useEffect(() => {
     if (!localStorage.getItem('rf_token')) { router.replace(loginHref('/community/' + handle)); return; }
     load();
+    chatMe().then(setMyChat).catch(() => {});
+    setComposing(false);
     return () => { latest.current += 1; };
   }, [handle]);
 
@@ -56,6 +63,11 @@ export default function CommunityProfilePage({ params }) {
         <small>Tham gia từ {memberSinceLabel(profile.memberSince)}</small>
       </div>
     </section>
+    <div className="community-message">
+      {profile.canMessage && !composing && <button type="button" className="button-primary" onClick={() => setComposing(true)}>Nhắn tin</button>}
+      {profile.canMessage && composing && <InviteComposer handle={profile.handle} name={profile.displayName} onCancel={() => setComposing(false)} />}
+      {!profile.canMessage && myChat?.eligible && !myChat.consent && <p className="community-message-hint">Muốn nhắn tin với người chạy khác, bạn bật “Cho phép nhắn tin” trong <Link href="/account#community">tab Cộng đồng</Link>.</p>}
+    </div>
     {profile.results && <section className="runner-metrics community-results" aria-label="Thành tích">
       <div><span>{profile.results.completedRaces}</span><small>Giải đã hoàn thành</small></div>
       <div><span>{profile.results.totalKm.toLocaleString('vi-VN')}<em> km</em></span><small>Quãng đường hoàn thành</small></div>

@@ -9,7 +9,8 @@ export async function api(path, options = {}) {
   const data = await readApiJson(response);
   if (!response.ok) {
     if (response.status === 401) { localStorage.removeItem('rf_token'); localStorage.removeItem('rf_user'); window.dispatchEvent(new Event('rf-auth')); }
-    throw Object.assign(new Error(data.message || 'Không thể thực hiện yêu cầu.'), { status: response.status, code: data.code });
+    // `data`: cả body lỗi, cho các lỗi mang thêm thông tin (ví dụ 409 CHAT_CONVERSATION_EXISTS kèm conversationId).
+    throw Object.assign(new Error(data.message || 'Không thể thực hiện yêu cầu.'), { status: response.status, code: data.code, data });
   }
   return data;
 }
