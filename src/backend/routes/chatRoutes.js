@@ -3,7 +3,7 @@
 // đúng sau khi Render ngủ dậy. Ngoài ra mọi route có một giới hạn tốc độ rộng theo token (chatRateLimit), đặt trước
 // bước xác thực, để polling bị lạm dụng không làm chậm database của cả site.
 const router = require('express').Router();
-const { verifyUserToken } = require('../middlewares/authMiddleware');
+const { verifyUserToken, requireSuperAdmin } = require('../middlewares/authMiddleware');
 const createChatRateLimit = require('../middlewares/chatRateLimit');
 const chat = require('../controllers/chatController');
 
@@ -25,6 +25,11 @@ router.get('/blocks', chat.blocks);
 router.delete('/blocks/:id', chat.unblock);
 router.post('/conversations/:id/accept', chat.accept);
 router.post('/conversations/:id/decline', chat.decline);
+// Báo cáo vi phạm (P15): người tham gia báo cáo; chỉ Super Admin xem hàng chờ, xử lý và bỏ khóa.
+router.post('/conversations/:id/reports', chat.report);
+router.get('/admin/reports', requireSuperAdmin, chat.adminReports);
+router.post('/admin/reports/:id/resolve', requireSuperAdmin, chat.resolveReport);
+router.post('/admin/members/:reportId/unlock', requireSuperAdmin, chat.unlockMember);
 router.use(chat.errors);
 
 module.exports = router;

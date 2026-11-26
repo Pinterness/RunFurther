@@ -1,6 +1,7 @@
 // Route /api/chat chỉ đọc request và trả kết quả; mọi luật nằm trong chatService và chatGate.
 const { handle } = require('../lib/asyncHandler');
 const chat = require('../services/chatService');
+const reports = require('../services/chatReports');
 
 exports.me = handle(async (req, res) => {
   res.json(await chat.getMe(req.userId));
@@ -61,6 +62,24 @@ exports.read = handle(async (req, res) => {
 
 exports.unread = handle(async (req, res) => {
   res.json(await chat.unreadCount(req.userId));
+});
+
+exports.report = handle(async (req, res) => {
+  const { status, report } = await reports.createReport(req.userId, req.params.id, req.body);
+  res.status(status).json({ report });
+});
+
+exports.adminReports = handle(async (req, res) => {
+  res.json(await reports.listReports({ status: typeof req.query.status === 'string' ? req.query.status : undefined }));
+});
+
+exports.resolveReport = handle(async (req, res) => {
+  res.json(await reports.resolveReport(req.userId, req.params.id, req.body));
+});
+
+exports.unlockMember = handle(async (req, res) => {
+  await reports.unlockFromReport(req.params.reportId);
+  res.status(204).end();
 });
 
 exports.send = handle(async (req, res) => {
