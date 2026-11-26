@@ -32,6 +32,10 @@ exports.conversations = handle(async (req, res) => {
   res.json(await chat.listConversations(req.userId, req.query));
 });
 
+exports.conversation = handle(async (req, res) => {
+  res.json({ conversation: await chat.getConversation(req.userId, req.params.id) });
+});
+
 exports.messages = handle(async (req, res) => {
   res.json(await chat.listMessages(req.userId, req.params.id, req.query));
 });

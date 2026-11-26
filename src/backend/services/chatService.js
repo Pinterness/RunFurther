@@ -100,10 +100,13 @@ const UNKNOWN_PERSON = { displayName: 'Người dùng RunFurther', avatarTheme: 
  * Cuộc trò chuyện như người gọi thấy (spec 4.3). Không có id người dùng nào: người gửi tin cuối chỉ còn cờ `mine`.
  */
 function presentConversation(conversation, userId, people) {
+  const isRequester = same(conversation.requesterId, userId);
   return {
     id: String(conversation._id),
-    status: conversation.status,
-    isRequester: same(conversation.requesterId, userId),
+    // Người mời không được biết lời mời bị từ chối hay bị chặn từ hộp Lời mời (spec T9, phản biện 26-11): với họ,
+    // DECLINED vẫn hiện là REQUEST ("Đang chờ chấp nhận"). Người nhận vẫn thấy đúng DECLINED.
+    status: isRequester && conversation.status === 'DECLINED' ? 'REQUEST' : conversation.status,
+    isRequester,
     other: people.get(String(otherOf(conversation, userId))) ?? UNKNOWN_PERSON,
     lastMessage: {
       seq: conversation.lastMessage.seq,
@@ -111,7 +114,7 @@ function presentConversation(conversation, userId, people) {
       text: conversation.lastMessage.text,
     },
     lastMessageAt: conversation.lastMessageAt,
-    unread: conversation.unreadBy.some(id => same(id, userId)),
+    unread: (conversation.unreadBy ?? []).some(id => same(id, userId)),
     ...(conversation.context?.listingId ? { context: { listingId: String(conversation.context.listingId) } } : {}),
   };
 }
@@ -381,7 +384,8 @@ async function sendMessage(userId, rawId, body, { now = new Date() } = {}) {
           updatedAt: now,
           // Người kia có tin chưa đọc; người gửi thì đang xem cuộc này nên không còn tính là chưa đọc.
           unreadBy: { $setUnion: [
-            { $setDifference: ['$unreadBy', [new mongoose.Types.ObjectId(String(userId))]] },
+            // $ifNull: cuộc thiếu trường unreadBy (dữ liệu cũ) không làm pipeline ghi null rồi hỏng lệnh $pull khi đọc.
+            { $setDifference: [{ $ifNull: ['$unreadBy', []] }, [new mongoose.Types.ObjectId(String(userId))]] },
             [new mongoose.Types.ObjectId(String(otherId))],
           ] },
         } }],
@@ -581,6 +585,15 @@ async function markRead(userId, rawId, body) {
  * nhận trong unreadBy nên được đếm luôn; cuộc DECLINED không đếm. Một lệnh đếm trên index { unreadBy: 1 }.
  * @returns {Promise<{ count: number }>}
  */
+/**
+ * Một cuộc trò chuyện như người gọi thấy (GET /conversations/:id), để liên kết /messages?c=<id> mở được cả cuộc không
+ * nằm ở trang đầu của hai hộp. Người ngoài cuộc nhận cùng một 404 như mọi chỗ khác.
+ * @returns {Promise<object>}
+ */
+async function getConversation(userId, rawId) {
+  return presentOne(await findMine(userId, rawId), userId);
+}
+
 async function unreadCount(userId) {
   const count = await Conversation.countDocuments({ unreadBy: userId, status: { $ne: 'DECLINED' } }).maxTimeMS(1500);
   return { count };
@@ -588,7 +601,7 @@ async function unreadCount(userId) {
 
 module.exports = {
   getMe, giveConsent, withdrawConsent, createInvite, acceptConversation, declineConversation,
-  sendMessage, listMessages, listConversations, blockConversation, listBlocks, unblock, markRead, unreadCount,
+  sendMessage, listMessages, listConversations, blockConversation, listBlocks, unblock, markRead, unreadCount, getConversation,
   // dùng lại ở các task sau (gửi tin, lấy tin, chặn)
   readMessageInput, findMine, otherOf, loadPeople, presentConversation, presentMessage, notFound, notActive,
 };

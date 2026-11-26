@@ -1,17 +1,21 @@
 // /api/chat (spec 4.3): mọi route cần đăng nhập. Giới hạn số tin và số lời mời đếm trong MongoDB theo tài khoản
 // (chatLimits, từ lời mời trở đi), không dùng rateLimit theo IP, để người dùng chung mạng (cùng IP) không chặn lẫn nhau và giới hạn vẫn
-// đúng sau khi Render ngủ dậy.
+// đúng sau khi Render ngủ dậy. Ngoài ra mọi route có một giới hạn tốc độ rộng theo token (chatRateLimit), đặt trước
+// bước xác thực, để polling bị lạm dụng không làm chậm database của cả site.
 const router = require('express').Router();
 const { verifyUserToken } = require('../middlewares/authMiddleware');
+const createChatRateLimit = require('../middlewares/chatRateLimit');
 const chat = require('../controllers/chatController');
 
 router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
+router.use(createChatRateLimit());
 router.use(verifyUserToken);
 router.get('/me', chat.me);
 router.put('/me/consent', chat.giveConsent);
 router.delete('/me/consent', chat.withdrawConsent);
 router.post('/invites', chat.invite);
 router.get('/conversations', chat.conversations);
+router.get('/conversations/:id', chat.conversation);
 router.get('/conversations/:id/messages', chat.messages);
 router.post('/conversations/:id/messages', chat.send);
 router.post('/conversations/:id/read', chat.read);

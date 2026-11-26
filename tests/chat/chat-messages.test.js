@@ -492,8 +492,9 @@ test('danh sách cuộc trò chuyện: chia hộp chats/invites, mới nhất tr
   const invites = await list(me, '?box=invites');
   assert.deepEqual(invites.body.conversations.map(c => c.id), [idToMe]);
   assert.deepEqual((await list(me)).body.conversations.map(c => c.id), [idActive, idSent], 'mặc định là chats');
-  // Người mời bị từ chối vẫn thấy cuộc của mình ở chats (giao diện ghi "Chưa được chấp nhận").
-  assert.deepEqual((await list(declinedByMe)).body.conversations.map(c => [c.id, c.status]), [[idDeclined, 'DECLINED']]);
+  // Người mời bị từ chối vẫn thấy cuộc của mình ở chats, và API trả REQUEST chứ không phải DECLINED (spec 4.4: người
+  // gửi thấy "Chưa được chấp nhận" cho cả hai; phản biện 26-11: trả DECLINED thì mở DevTools là biết mình bị từ chối).
+  assert.deepEqual((await list(declinedByMe)).body.conversations.map(c => [c.id, c.status]), [[idDeclined, 'REQUEST']]);
 
   const allowed = new Set(['conversations', 'hasMore', 'id', 'status', 'isRequester', 'other', 'lastMessage', 'lastMessageAt', 'unread', 'displayName', 'avatarTheme', 'handle', 'seq', 'mine', 'text']);
   for (const body of [chats.body, invites.body]) {
