@@ -20,7 +20,7 @@ const plain = (value, limit = 200) => (typeof value === 'string' ? value : '').r
 
 const CITIES = ['Hà Nội', 'Đà Nẵng', 'Đà Lạt', 'Hồ Chí Minh', 'Sa Pa', 'Huế', 'Nha Trang', 'Vũng Tàu', 'Cần Thơ'];
 // Tên gọi khác người dùng hay gõ (đã bỏ dấu) → tên thành phố như lưu trong giải.
-const CITY_ALIASES = { 'tp hcm': 'Hồ Chí Minh', tphcm: 'Hồ Chí Minh', hcm: 'Hồ Chí Minh', 'sai gon': 'Hồ Chí Minh', sapa: 'Sa Pa' };
+const CITY_ALIASES = { 'tp hcm': 'Hồ Chí Minh', tphcm: 'Hồ Chí Minh', hcm: 'Hồ Chí Minh', 'sai gon': 'Hồ Chí Minh', sapa: 'Sa Pa', hn: 'Hà Nội' };
 // Người hỏi nhắc tới giải đã qua thì mới đưa giải cũ; mặc định lịch giải chỉ gồm giải chưa diễn ra. Câu vừa có chữ
 // quá khứ vừa có chữ tương lai ("trước đây mình chưa chạy, có giải nào sắp tới không") là đang hỏi giải sắp tới.
 // Không dùng "đã chạy", "đã xong": "tôi đã chạy 21km", "đăng ký đã xong" không hỏi về giải đã qua (phản biện 25-11).
@@ -36,6 +36,11 @@ function cityIn(query) {
   const alias = Object.keys(CITY_ALIASES).find(name => hasPhrase(query, name));
   return alias ? CITY_ALIASES[alias] : CITIES.find(value => hasPhrase(query, normalizeSupportText(value)));
 }
+// "hiện tại", "tại sao", "tài khoản"… sau khi bỏ dấu đều chứa chữ "tai", không phải "tại + địa danh" (phản biện 26-11:
+// "hiện tại có bao nhiêu giải" từng bị loại vì luật nơi chốn).
+const NOT_PLACE = /\b(?:hien tai|tai sao|tai khoan|tai lieu|tai xe|tai ve|tai app)\b/g;
+// Câu có nêu nơi chốn ("ở …", "tại …") thì nơi đó phải là thành phố bot lọc được; không nêu thì luôn đạt.
+const placeKnown = text => { const rest = text.replace(NOT_PLACE, ' '); return !/\b(?:o|tai) [a-z]/.test(rest) || Boolean(cityIn(rest)); };
 
 // Giải người dùng được thấy (không ẩn, không tạm ngừng, không nháp, không hủy), lọc theo thành phố nếu câu hỏi có nêu.
 function visibleEvents(query) {
@@ -54,27 +59,40 @@ function publicEventFilter(message, page = '/', now = new Date()) {
 }
 
 // Giải đang trong hạn đăng ký: trạng thái REGISTRATION_OPEN chưa đủ, vì ban tổ chức có thể quên đóng khi đã hết hạn.
-const openNow = now => ({ status: 'REGISTRATION_OPEN', 'dateInfo.registrationStart': { $lte: now }, 'dateInfo.registrationEnd': { $gt: now } });
+// Giải đã chạy (raceDate đã qua, kể cả sáng nay) cũng không còn "đang mở" dù hạn đăng ký chưa hết (phản biện 26-11).
+const openNow = now => ({
+  status: 'REGISTRATION_OPEN', 'dateInfo.registrationStart': { $lte: now }, 'dateInfo.registrationEnd': { $gt: now }, 'dateInfo.raceDate': { $gt: now },
+});
+const isOpenNow = (event, now) => event.status === 'REGISTRATION_OPEN' && new Date(event.dateInfo?.registrationStart) <= now
+  && new Date(event.dateInfo?.registrationEnd) > now && new Date(event.dateInfo?.raceDate) > now;
 
-// `openOnly`: chỉ lấy giải đang trong hạn đăng ký (câu "giải nào đang mở đăng ký").
-async function retrievePublicEvents({ message, page, now = new Date(), openOnly = false }) {
-  const filter = { ...publicEventFilter(message, page, now), ...(openOnly ? openNow(now) : {}) };
-  // Giải chưa diễn ra: gần nhất trước. Giải đã qua: vừa xong trước.
+const EVENT_FIELDS = '_id slug name status dateInfo.raceDate dateInfo.registrationStart dateInfo.registrationEnd location.city';
+const validSlug = event => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(event.slug);
+// Một giải như trợ lý được thấy: chỉ thông tin công khai, chữ đã làm sạch.
+const toPublicEvent = (event, now) => ({
+  name: plain(event.name, 160), url: '/events/' + event.slug, city: plain(event.location?.city, 100),
+  date: Number.isFinite(new Date(event.dateInfo?.raceDate).getTime())
+    ? new Date(event.dateInfo.raceDate).toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : 'Chờ công bố',
+  registrationOpen: isOpenNow(event, now),
+});
+// Tối đa 5 giải theo bộ lọc, gần nhất trước (đã qua: vừa xong trước). Một lệnh find, không lấy cự ly.
+async function findPublicEvents(filter, now) {
   const direction = filter['dateInfo.raceDate']?.$lt ? -1 : 1;
-  const events = await Event.find(filter)
-    .select('_id slug name status dateInfo.raceDate dateInfo.registrationStart dateInfo.registrationEnd location.city')
+  const events = await Event.find(filter).select(EVENT_FIELDS)
     .sort({ 'dateInfo.raceDate': direction }).limit(LIMITS.events).maxTimeMS(LIMITS.queryMs).lean();
+  return events.filter(validSlug).map(event => ({ ...toPublicEvent(event, now), _id: event._id }));
+}
+
+// Giải công khai cho ngữ cảnh của AI và câu đếm, kèm cự ly và giá (thêm một lệnh đọc EventCategory).
+async function retrievePublicEvents({ message, page, now = new Date() }) {
+  const events = await findPublicEvents(publicEventFilter(message, page, now), now);
   if (!events.length) return [];
   const categories = await EventCategory.find({ eventId: { $in: events.map(event => event._id) } })
     .select('-_id eventId code distance price').sort({ distance: 1 })
     .limit(LIMITS.categories).maxTimeMS(LIMITS.queryMs).lean();
-  return events.filter(event => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(event.slug)).map(event => ({
-    name: plain(event.name, 160), url: '/events/' + event.slug, city: plain(event.location?.city, 100),
-    date: Number.isFinite(new Date(event.dateInfo?.raceDate).getTime())
-      ? new Date(event.dateInfo.raceDate).toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : 'Chờ công bố',
-    registrationOpen: event.status === 'REGISTRATION_OPEN'
-      && new Date(event.dateInfo?.registrationStart) <= now && new Date(event.dateInfo?.registrationEnd) > now,
-    categories: categories.filter(category => String(category.eventId) === String(event._id)).slice(0, 8).map(category => ({
+  return events.map(({ _id, ...event }) => ({
+    ...event,
+    categories: categories.filter(category => String(category.eventId) === String(_id)).slice(0, 8).map(category => ({
       code: plain(category.code, 20), distance: Number.isFinite(category.distance) ? category.distance : null,
       price: Number.isSafeInteger(category.price) && category.price >= 0 ? category.price : null,
     })),
@@ -101,7 +119,7 @@ function isEventCountQuestion(query) {
   const text = typeof query === 'string' ? query : '';
   if (!COUNT_PHRASE.test(text) || OWN_EVENTS.test(text) || UNFILTERED.test(text) || PAST_WORDS.test(text)) return false;
   // Có nêu nơi chốn ("ở …", "tại …") mà không phải thành phố bot lọc được thì không đếm.
-  return !/\b(?:o|tai) [a-z]/.test(text) || Boolean(cityIn(text));
+  return placeKnown(text);
 }
 
 /**
@@ -137,36 +155,51 @@ function eventCountReply({ upcoming, open, past, city, events }) {
 }
 
 /**
- * Câu hỏi "giải nào đang mở đăng ký" (25-11: trước đây câu này ra bài hướng dẫn đăng ký, kể cả khi người dùng bấm
- * đúng câu gợi ý bot đưa sau câu đếm). Cần đủ hai ý:
- *   - hỏi về các giải: "giải (chạy) nào", "những/các giải", "danh sách giải", "còn giải", "giải đang/còn …";
- *   - nói tới việc mở đăng ký: "mở đăng ký", "mở bán (vé)", "nhận đăng ký", "mở cổng đăng ký".
- * Không nhận câu hỏi cách làm hay thời điểm ("làm sao", "như thế nào", "khi nào"), và cùng các luật loại trừ với câu
- * đếm: dữ liệu riêng, điều kiện chưa lọc được, giải đã qua, nơi chốn ngoài danh sách thành phố.
+ * Câu hỏi "giải nào đang mở đăng ký". Bản đầu (PR #15) chỉ cần câu có hai cụm "giải nào" và "mở đăng ký", nên cướp cả
+ * câu hỏi của bài khác ("các giải mở bán vé có hoàn tiền không" → danh sách giải). Từ phản biện 26-11, câu phải khớp
+ * TRỌN một khuôn, sau khi:
+ *   1. đổi cách viết tắt về chuẩn ("đăng kí", "đk" → "đăng ký"; "ko" → "không"; "list" → "danh sách"; "hn" → "hà nội");
+ *   2. bỏ nơi chốn là thành phố bot lọc được ("ở Huế", "tại TP HCM", "Đà Lạt" ở đầu câu); nơi lạ thì không nhận;
+ *   3. bỏ chữ đệm đầu câu ("cho mình hỏi", "hiện tại"…) và chữ đuôi ("không", "ạ", "vậy", "rồi"…).
+ * Phần còn lại phải là: [có/còn] [những/các/danh sách] giải [chạy] [nào/gì] [sắp tới] [đang/còn/vừa] <mở đăng ký | mở |
+ * mở bán (vé) | nhận/cho đăng ký | bán vé | đăng ký được | còn vé/slot/chỗ | còn hạn đăng ký | chưa hết hạn đăng ký>.
+ * Câu có thêm ý khác (hoàn tiền, tuổi, thanh toán, hủy vé…) không khớp và đi tiếp tới bài tri thức.
  * @param {string} query Câu đã chuẩn hóa (normalizeSupportText).
  * @returns {boolean}
  */
-const WHICH_EVENTS = /\bgiai(?: chay)? nao\b|\b(?:nhung|cac|danh sach|con) giai\b|\bgiai(?: chay)? (?:dang|con)\b/;
-const OPENING = /\b(?:mo (?:dang ky|ban|cong dang ky)|nhan dang ky)\b/;
-const HOW_OR_WHEN = /\b(?:lam sao|lam the nao|nhu the nao|the nao|cach|huong dan|khi nao|bao gio|luc nao|o dau)\b/;
+const OPEN_SYNONYMS = [[/\bdang ki\b/g, 'dang ky'], [/\bdk\b/g, 'dang ky'], [/\b(?:ko|k|hong|khum)\b/g, 'khong'], [/\blist\b/g, 'danh sach'], [/\bhn\b/g, 'ha noi']];
+const CITY_PHRASES = [...Object.keys(CITY_ALIASES), ...CITIES.map(city => normalizeSupportText(city))].sort((a, b) => b.length - a.length);
+const CITY_PLACE = new RegExp(`(?:^| )(?:(?:o|tai) )?(?:tp |thanh pho )?(?:${CITY_PHRASES.join('|')})(?= |$)`);
+const OPEN_LEAD = /^(?:cho (?:minh|em|toi|to) hoi|xin hoi|ban oi|ad oi|admin oi|hien tai|hien nay|hien|bay gio|gio) /;
+const OPEN_TAIL = / (?:khong|a|nhi|vay|the|ha|nhe|roi|chua|nua|ban|ad|admin|hien tai|bay gio)$/;
+const OPEN_CORE = new RegExp('^(?:(?:dang )?co |con )?(?:(?:nhung|cac) |danh sach )?giai(?: chay)?(?: (?:nao|gi))?(?: sap toi)?(?: (?:nao|gi))? '
+  + '(?:(?:dang|con|van con|vua) )?(?:mo(?: dang ky| ban(?: ve)?| cong dang ky| cho dang ky)?|nhan dang ky|cho dang ky|ban ve|(?:con )?dang ky duoc'
+  + '|con (?:ve|slot|cho)|con han dang ky|chua het han dang ky)$');
 function isOpenEventsQuestion(query) {
-  const text = typeof query === 'string' ? query : '';
-  if (!WHICH_EVENTS.test(text) || !OPENING.test(text) || HOW_OR_WHEN.test(text)) return false;
-  if (OWN_EVENTS.test(text) || UNFILTERED.test(text) || PAST_WORDS.test(text)) return false;
-  return !/\b(?:o|tai) [a-z]/.test(text) || Boolean(cityIn(text));
+  let text = typeof query === 'string' ? query : '';
+  for (const [pattern, replacement] of OPEN_SYNONYMS) text = text.replace(pattern, replacement);
+  text = text.replace(CITY_PLACE, ' ').replace(/\s+/g, ' ').trim();
+  if (!placeKnown(text)) return false;
+  for (let previous = ''; previous !== text;) { previous = text; text = text.replace(OPEN_LEAD, '').replace(OPEN_TAIL, ''); }
+  return OPEN_CORE.test(text);
 }
 
 /**
- * Giải đang mở đăng ký cho câu hỏi trên: số đếm như câu đếm, cộng tối đa 5 giải đang trong hạn đăng ký (gần nhất trước).
- * @returns {Promise<{ upcoming: number, open: number, past: number, city: string | undefined, events: object[], openEvents: object[] }>}
+ * Giải đang mở đăng ký cho câu hỏi trên. Đường thường gặp (có giải đang mở) chỉ tốn 2 lệnh: đếm và lấy tối đa 5 giải
+ * gần nhất, không lấy cự ly. Chưa có giải nào đang mở thì mới đếm và lấy thêm giải sắp diễn ra để kể cho người hỏi.
+ * Event chưa có index cho status và ngày chạy (xem countPublicEvents).
+ * @returns {Promise<{ open: number, openEvents: object[], upcoming: number, events: object[], city: string | undefined }>}
  */
 async function listOpenEvents({ message, now = new Date() }) {
-  const city = cityIn(normalizeSupportText(message));
-  const [stats, openEvents] = await Promise.all([
-    countPublicEvents({ message, now }),
-    retrievePublicEvents({ message: city ?? '', page: '/', now, openOnly: true }),
-  ]);
-  return { ...stats, openEvents };
+  const query = normalizeSupportText(message);
+  const base = visibleEvents(query), city = cityIn(query);
+  const count = filter => Event.countDocuments(filter).maxTimeMS(LIMITS.queryMs);
+  const openFilter = { ...base, ...openNow(now) };
+  const [open, openEvents] = await Promise.all([count(openFilter), findPublicEvents(openFilter, now)]);
+  if (open) return { open, openEvents, upcoming: open, events: [], city };
+  const upcomingFilter = { ...base, 'dateInfo.raceDate': { $gte: vnToday(now) } };
+  const [upcoming, events] = await Promise.all([count(upcomingFilter), findPublicEvents(upcomingFilter, now)]);
+  return { open: 0, openEvents: [], upcoming, events, city };
 }
 
 // Câu trả lời dựng hoàn toàn từ số liệu. Chưa có giải nào đang mở thì nói thẳng, rồi kể các giải sắp diễn ra để người

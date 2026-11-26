@@ -13,7 +13,7 @@ const { createSupportResponder, isEventCountQuestion, isOpenEventsQuestion } = r
 const { rankArticles, seedArticles, normalizeSupportText } = require('../../src/backend/services/supportKnowledge');
 const { createBackendHarness } = require('../helpers/backendHarness');
 
-const harness = createBackendHarness({ app, dbName: 'runfurther_support_events' });
+const harness = createBackendHarness({ app, dbName: 'runfurther_support_events', monitorCommands: true });
 const DAY = 24 * 60 * 60 * 1000;
 // Trưa 20-11-2026 giờ Việt Nam. 0 giờ hôm nay giờ Việt Nam là 2026-11-19T17:00Z; 0 giờ UTC là 2026-11-20T00:00Z.
 const NOW = new Date('2026-11-20T05:00:00Z');
@@ -255,4 +255,89 @@ test('A3: hỏi giải đã diễn ra thì có giải cũ, vừa xong trước',
   assert.ok(order.every(index => index >= 0), past.reply);
   assert.ok(order[0] < order[1], 'giải vừa xong đứng trước');
   assert.doesNotMatch(past.reply, /Giải công bố Đà Nẵng|Giải đúng không giờ/);
+});
+
+// Phản biện 26-11 (sau PR #15): bộ nhận câu hỏi phải khớp trọn một khuôn, không cướp câu hỏi của bài khác; luật nơi
+// chốn không nhầm "hiện tại", "tại sao"; giải đã chạy sáng nay không còn "đang mở"; đường thường gặp tốn 2 lệnh.
+const mongoose = require('mongoose');
+
+test('B2: nhận các cách hỏi thật (viết tắt, không dấu, "đăng kí", còn slot, bán vé, hiện tại, thành phố viết tắt)', () => {
+  const yes = ['giai nao dang mo dk', 'giải nào đang mở đk', 'giải nào đang mở', 'giải nào còn đăng ký được', 'giải nào còn đăng ký được không',
+    'giải nào đang cho đăng ký', 'giải nào còn vé', 'còn giải nào còn slot không', 'giải nào đang mở bán vé', 'giải nào đang bán vé',
+    'có giải nào đang bán vé không', 'giải gì đang mở đăng ký', 'giải chạy gì đang mở đăng ký', 'đang có giải nào mở đăng ký',
+    'có giải chạy nào mở đăng ký không ạ', 'các giải đang nhận đăng ký', 'giải nào còn hạn đăng ký', 'giải nào chưa hết hạn đăng ký',
+    'list giải đang mở đăng ký', 'giải nào mở đăng ký rồi', 'hiện tại có giải nào mở đăng ký không', 'giải sắp tới nào đang mở đăng ký',
+    'giải nào đang mở đăng kí', 'giai nao dang mo dang ki ko', 'ở HN có giải nào đang mở đăng ký không', 'Đà Lạt có giải nào đang mở đăng ký không',
+    'giải nào ở Huế đang mở đăng ký', 'giải nào ở Vũng Tàu còn mở bán vé', 'cho mình hỏi giải nào còn mở đăng ký vậy', 'giải nào vừa mở đăng ký'];
+  for (const question of yes) assert.equal(isOpen(question), true, question);
+});
+
+test('B2: không cướp câu hỏi có thêm ý khác (hoàn tiền, tuổi, thanh toán, hủy vé, hóa đơn...) — các câu đó đi tới bài tri thức', () => {
+  const no = ['các giải mở bán vé có hoàn tiền không', 'giải đang mở đăng ký có giới hạn tuổi không', 'giải đang mở bán vé sao tôi không mua được',
+    'những giải mở đăng ký có được chuyển nhượng vé không', 'giải đang mở đăng ký thì thanh toán bằng gì', 'các giải mở đăng ký có cần giấy khám sức khỏe không',
+    'giải đang mở đăng ký có xuất hóa đơn không', 'giải nào mở đăng ký mà hết chỗ thì sao', 'giải đang mở bán vé có giảm giá nhóm không',
+    'vì sao giải nào cũng mở đăng ký muộn', 'giải nào còn mở đăng ký có bao nhiêu chỗ', 'giải chạy nào đang mở đăng ký giá rẻ nhất',
+    'tại sao giải đang mở đăng ký mà tôi không thấy nút mua', 'tôi muốn hủy vé giải đang mở đăng ký', 'giải nào đang mở đăng ký sáng nay'];
+  for (const question of no) assert.equal(isOpen(question), false, question);
+  // Hai câu tiêu biểu vẫn đến đúng bài như trước PR #15.
+  assert.equal(keysFor('các giải mở bán vé có hoàn tiền không')[0], 'payment');
+  assert.equal(keysFor('những giải mở đăng ký có được chuyển nhượng vé không')[0], 'marketplace');
+});
+
+test('B2: "hiện tại", "tại sao", "tài khoản" không bị luật nơi chốn hiểu là "tại + địa danh" (cả câu đếm)', () => {
+  assert.equal(isCount('hiện tại có bao nhiêu giải'), true);
+  assert.equal(isCount('hiện tại có bao nhiêu giải chạy ở Huế'), true);
+  assert.equal(isOpen('hiện tại có giải nào mở đăng ký không'), true);
+  assert.equal(isCount('có bao nhiêu giải ở Quy Nhơn'), false, 'nơi chốn lạ vẫn bị loại');
+  assert.equal(isOpen('ở Quy Nhơn có giải nào đang mở đăng ký không'), false);
+});
+
+test('B2: câu "bao nhiêu giải đang mở đăng ký" đi đường đếm (được xét trước), trả số đếm', async () => {
+  const result = await answer({ message: 'có bao nhiêu giải đang mở đăng ký' });
+  assert.match(result.reply, /giải sắp diễn ra, trong đó 1 giải đang mở đăng ký/);
+});
+
+// Tạo tạm các giải, chạy thử, rồi xóa, để không làm lệch số đếm của các test khác.
+async function withEvents(specs, run) {
+  const created = [];
+  try { for (const spec of specs) created.push(await makeEvent(...spec)); await run(); }
+  finally { await Event.deleteMany({ _id: { $in: created.map(event => event._id) } }); }
+}
+
+test('B2: hơn 5 giải đang mở: liệt kê 5 giải gần nhất trước, ghi "… và N giải khác"', async () => {
+  const specs = [3, 6, 9, 12, 15, 18].map(days => ['Giải mở thêm ' + days, { race: days + 30, status: 'REGISTRATION_OPEN', city: 'Hà Nội', open: [-2, 20] }]);
+  await withEvents(specs, async () => {
+    const result = await answer({ message: 'giải nào còn mở đăng ký' });
+    assert.match(result.reply, /Hiện RunFurther có 7 giải đang mở đăng ký/);
+    assert.match(result.reply, /… và 2 giải khác/);
+    const names = ['Giải mở đăng ký Cần Thơ', 'Giải mở thêm 3', 'Giải mở thêm 6', 'Giải mở thêm 9', 'Giải mở thêm 12'];
+    const order = names.map(name => result.reply.indexOf(name));
+    assert.ok(order.every(index => index >= 0), result.reply);
+    assert.deepEqual([...order].sort((x, y) => x - y), order, 'gần nhất trước');
+    assert.doesNotMatch(result.reply, /Giải mở thêm 15|Giải mở thêm 18/);
+  });
+});
+
+test('B2: biên thời gian: hết hạn đúng lúc này thì không còn mở, mở đúng lúc này thì đã mở, giải chạy sáng nay không còn "đang mở"', async () => {
+  await withEvents([
+    ['Giải vừa hết hạn', { race: 20, status: 'REGISTRATION_OPEN', city: 'Huế', open: [-10, 0] }],
+    ['Giải vừa mở', { race: 21, status: 'REGISTRATION_OPEN', city: 'Huế', open: [0, 10] }],
+    // 07:00 sáng 20-11 giờ Việt Nam, trước NOW (12:00): đã chạy xong dù hạn đăng ký tới mai.
+    ['Giải chạy sáng nay', { race: new Date('2026-11-20T00:00:00Z'), status: 'REGISTRATION_OPEN', city: 'Huế', open: [-10, 1] }],
+  ], async () => {
+    const result = await answer({ message: 'giải nào ở Huế đang mở đăng ký' });
+    assert.match(result.reply, /Giải vừa mở/);
+    assert.doesNotMatch(result.reply, /Giải vừa hết hạn|Giải chạy sáng nay/);
+    const counted = await answer({ message: 'có bao nhiêu giải ở Huế' });
+    assert.match(counted.reply, /trong đó 1 giải đang mở đăng ký/);
+  });
+});
+
+test('B2: có giải đang mở thì chỉ tốn 2 lệnh MongoDB (một lệnh đếm, một lệnh lấy giải)', async () => {
+  const names = [];
+  const client = mongoose.connection.getClient();
+  const onStart = event => names.push(event.commandName + ':' + (event.command[event.commandName] || ''));
+  client.on('commandStarted', onStart);
+  try { await answer({ message: 'giải nào còn mở đăng ký' }); } finally { client.off('commandStarted', onStart); }
+  assert.equal(names.length, 2, names.join(' '));
 });
