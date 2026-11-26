@@ -13,10 +13,11 @@ const RunnerProfile = require('../../src/backend/models/RunnerProfile');
 const ChatMember = require('../../src/backend/models/ChatMember');
 const Conversation = require('../../src/backend/models/Conversation');
 const Message = require('../../src/backend/models/Message');
+const Block = require('../../src/backend/models/Block');
 const CommunityProfile = require('../../src/backend/models/CommunityProfile');
 const chatNotifier = require('../../src/backend/services/chatNotifier');
 const { sendMessage } = require('../../src/backend/services/chatService');
-const { vnDayStart } = require('../../src/backend/services/chatLimits');
+const { vnDayStart, messageQuotaPipeline } = require('../../src/backend/services/chatLimits');
 const { createBackendHarness } = require('../helpers/backendHarness');
 const { createChatFixtures } = require('../helpers/chatFixtures');
 const { yearsAgo } = require('../helpers/dates');
@@ -236,6 +237,72 @@ test('tin 21 trong một phút bị 429 kèm Retry-After; người khác cùng I
   assert.equal((await send(b, id, 'mình vẫn gửi được')).status, 201);
 });
 
+test('giới hạn phút vẫn tính khi 60 giây vắt qua 0 giờ: 20 tin lúc 23:59:40 thì tin lúc 00:00:10 bị 429', async () => {
+  // Chặn một cách tối ưu sai: "đếm ngày trước, dưới 20 thì khỏi đếm phút". Sang ngày mới, số tin trong ngày là 0
+  // nhưng 20 tin của 30 giây trước vẫn nằm trong cửa sổ một phút.
+  const { a, id } = await activePair();
+  // Mốc 0 giờ của ngày kia, xa giờ thật ít nhất 24 giờ: tin mời của activePair (tạo theo giờ thật) không bao giờ lọt
+  // vào cửa sổ, kể cả khi test chạy đúng lúc gần nửa đêm.
+  const midnight = new Date(vnDayStart(new Date()).getTime() + 48 * 60 * 60 * 1000);
+  // 20 tin rải từ 23:59:40,0 tới 23:59:41,9: Retry-After phải theo tin cũ nhất, không theo tin mới nhất.
+  for (let i = 0; i < 20; i += 1) {
+    const at = new Date(midnight.getTime() - 20 * 1000 + i * 100);
+    assert.equal((await sendMessage(a.id, id, { text: 'khuya ' + i, clientMessageId: uuid() }, { now: at })).status, 201, String(i));
+  }
+  await assert.rejects(
+    sendMessage(a.id, id, { text: 'qua 0 giờ', clientMessageId: uuid() }, { now: new Date(midnight.getTime() + 10 * 1000) }),
+    // Tin cũ nhất (23:59:40) rơi khỏi cửa sổ lúc 00:00:40, tức 30 giây sau 00:00:10.
+    { statusCode: 429, code: 'CHAT_RATE_LIMITED', retryAfter: 30 },
+  );
+});
+
+// Ghi lại các lệnh MongoDB một thao tác gửi đi và số lượt chờ nối tiếp. Một lượt mới bắt đầu khi có lệnh được gửi lúc
+// không còn lệnh nào đang chờ trả lời; các lệnh chạy song song nằm chung một lượt.
+async function measureCommands(action) {
+  const names = [];
+  let inFlight = 0, rounds = 0;
+  const client = mongoose.connection.getClient();
+  const onStart = event => {
+    if (inFlight === 0) rounds += 1;
+    inFlight += 1;
+    names.push(event.commandName === 'find' ? 'find:' + event.command.find : event.commandName);
+  };
+  const onEnd = () => { inFlight -= 1; };
+  client.on('commandStarted', onStart);
+  client.on('commandSucceeded', onEnd);
+  client.on('commandFailed', onEnd);
+  let response;
+  try {
+    response = await action();
+  } finally {
+    client.off('commandStarted', onStart);
+    client.off('commandSucceeded', onEnd);
+    client.off('commandFailed', onEnd);
+  }
+  const times = name => names.filter(item => item === name).length;
+  return { response, names, rounds, times, list: `${names.length} lệnh, ${rounds} lượt: ${names.join(' ')}` };
+}
+
+test('gửi tin và chấp nhận lời mời đọc tư cách mỗi người đúng một lần, các phần kiểm chạy song song', async () => {
+  const { a, id } = await activePair();
+  const sent = await measureCommands(() => send(a, id, 'đếm lệnh'));
+  assert.equal(sent.response.status, 201);
+  // Người gửi và người nhận, mỗi người một lần đọc ngày sinh và một lần đọc trạng thái nhắn tin.
+  assert.equal(sent.times('find:runnerprofiles'), 2, sent.list);
+  assert.equal(sent.times('find:chatmembers'), 2, sent.list);
+  assert.ok(sent.names.length <= 14, sent.list);
+  // Xác thực, tìm cuộc, một lượt kiểm song song, rồi ba bước của transaction.
+  assert.ok(sent.rounds <= 6, sent.list);
+
+  const c = await member(), d = await member();
+  const invited = await request('/chat/invites', { method: 'POST', as: c, body: { handle: d.handle, text: 'chào', clientMessageId: uuid() } });
+  const accepted = await measureCommands(() => request(`/chat/conversations/${invited.body.conversation.id}/accept`, { method: 'POST', as: d }));
+  assert.equal(accepted.response.status, 200);
+  assert.equal(accepted.times('find:runnerprofiles'), 2, accepted.list);
+  assert.equal(accepted.times('find:chatmembers'), 2, accepted.list);
+  assert.ok(accepted.names.length <= 12, accepted.list);
+});
+
 test('tin 501 trong ngày (giờ Việt Nam) bị 429 CHAT_DAILY_LIMIT; tin đầu của lời mời cũng được tính', async () => {
   const { a, id } = await activePair();
   const dayStart = vnDayStart(new Date());
@@ -281,6 +348,57 @@ test('người gửi tự không đạt cổng thì nhận đúng lý do của m
   const r = await send(a, id, 'xin chào');
   assert.equal(r.status, 403);
   assert.equal(r.body.code, 'CHAT_CONSENT_REQUIRED');
+});
+
+test('thứ tự lỗi khi gửi tin: gửi lại → cổng của mình → trạng thái cuộc → cổng hai phía → giới hạn', async () => {
+  // sendMessage đọc các phần kiểm song song, nên thứ tự báo lỗi chỉ còn do thứ tự các dòng if giữ.
+  const { a, b, id } = await activePair();
+  const now = new Date();
+  const sent = range(19).map(() => uuid());
+  for (const clientMessageId of sent) assert.equal((await sendMessage(a.id, id, { text: 'tin', clientMessageId }, { now })).status, 201);
+  await assert.rejects(sendMessage(a.id, id, { text: 'quá nhanh', clientMessageId: uuid() }, { now }), { code: 'CHAT_RATE_LIMITED' });
+  // Gửi lại tin đã lưu vẫn được 200 dù đang chạm giới hạn phút.
+  assert.equal((await sendMessage(a.id, id, { text: 'tin', clientMessageId: sent[18] }, { now })).status, 200);
+  // Người kia rút đồng ý: cổng hai phía báo trước giới hạn.
+  await ChatMember.updateOne({ userId: b.id }, { $set: { consentAt: null } });
+  await assert.rejects(sendMessage(a.id, id, { text: 'x', clientMessageId: uuid() }, { now }), { statusCode: 403, code: 'CHAT_UNAVAILABLE' });
+  // Cuộc chưa được chấp nhận: lỗi của chính người gửi báo trước lỗi trạng thái cuộc.
+  const c = await member(), d = await member();
+  const invited = await request('/chat/invites', { method: 'POST', as: c, body: { handle: d.handle, text: 'chào', clientMessageId: uuid() } });
+  const pending = invited.body.conversation.id;
+  assert.equal((await send(c, pending, 'chưa nhận')).body.code, 'CHAT_NOT_ACTIVE');
+  await ChatMember.updateOne({ userId: c.id }, { $set: { consentAt: null } });
+  assert.equal((await send(c, pending, 'chưa nhận')).body.code, 'CHAT_CONSENT_REQUIRED');
+});
+
+test('lệnh đọc phụ lỗi không làm hỏng lần gửi lại: tin đã lưu vẫn 200, mã dùng lại vẫn 409', async () => {
+  // Các phần kiểm chạy song song. Lệnh đếm giới hạn hay đọc Block lỗi (mất kết nối tạm thời) không được che kết quả
+  // của phần đứng trước nó theo thứ tự xét, giống code cũ chạy nối tiếp.
+  const { a, id } = await activePair();
+  const clientMessageId = uuid();
+  assert.equal((await send(a, id, 'đã lưu', clientMessageId)).status, 201);
+  // Cuộc thứ hai của chính a, để kiểm dùng lại mã ở cuộc khác.
+  const c = await member();
+  const second = await request('/chat/invites', { method: 'POST', as: a, body: { handle: c.handle, text: 'chào', clientMessageId: uuid() } });
+  await request(`/chat/conversations/${second.body.conversation.id}/accept`, { method: 'POST', as: c });
+  const originals = { aggregate: Message.aggregate, exists: Block.exists };
+  const fail = async () => { throw new Error('mất kết nối giả lập'); };
+  const quiet = console.error;
+  console.error = () => {};
+  try {
+    Message.aggregate = fail;
+    assert.equal((await send(a, id, 'đã lưu', clientMessageId)).status, 200, 'lệnh đếm giới hạn lỗi');
+    Message.aggregate = originals.aggregate;
+    Block.exists = fail;
+    assert.equal((await send(a, id, 'đã lưu', clientMessageId)).status, 200, 'lệnh đọc Block lỗi');
+    const reused = await send(a, second.body.conversation.id, 'mã cũ', clientMessageId);
+    assert.equal(reused.status, 409, 'lệnh đọc Block lỗi vẫn không che 409');
+    assert.equal(reused.body.code, 'CHAT_CLIENT_ID_REUSED');
+  } finally {
+    Message.aggregate = originals.aggregate;
+    Block.exists = originals.exists;
+    console.error = quiet;
+  }
 });
 
 test('afterSeq trả tin sau mốc, tăng dần, mine đúng; clientMessageId chỉ có ở tin của mình', async () => {
@@ -457,4 +575,12 @@ test('truy vấn danh sách, lấy tin và đếm giới hạn dùng index (IXSC
     assert.doesNotMatch(winning, /COLLSCAN/, name);
     assert.doesNotMatch(winning, /"stage":"SORT"/, `${name}: sắp xếp bằng index, không sắp trong bộ nhớ`);
   }
+  // Giới hạn tin đếm bằng đúng pipeline của chatLimits.messageQuotaError: phải đi trên index { senderId, createdAt }
+  // và được index phủ trọn (không FETCH, tức không đọc document nào), không quét cả collection.
+  // Chỉ xét kế hoạch được chọn: các kế hoạch bị loại (rejectedPlans) có FETCH là bình thường.
+  const explained = await Message.aggregate(messageQuotaPipeline(a.id, new Date())).explain('queryPlanner');
+  const quota = JSON.stringify(explained.queryPlanner?.winningPlan ?? explained.stages?.[0]?.$cursor?.queryPlanner?.winningPlan);
+  assert.match(quota, /"indexName":"senderId_1_createdAt_-1"/, 'đếm giới hạn tin');
+  assert.doesNotMatch(quota, /COLLSCAN/, 'đếm giới hạn tin');
+  assert.doesNotMatch(quota, /"stage":"FETCH"/, 'đếm giới hạn tin không đọc document');
 });

@@ -3,7 +3,8 @@
 //   - senderEligible: chính người này có được nhắn tin không (ACTIVE, đủ 16 tuổi theo ngày sinh hiện tại, đã đồng ý
 //     nhắn tin, không bị khóa). Kiểm lại ở mọi lệnh, vì ngày sinh và đồng ý đổi được bất cứ lúc nào.
 //   - pairOpen: hai người trong một cuộc còn nhắn cho nhau được không (cả hai đạt senderEligible, không có Block chiều
-//     nào). Hồ sơ công khai không cần ở đây: xóa hồ sơ không làm đóng cuộc đang có.
+//     nào). Hồ sơ công khai không cần ở đây: xóa hồ sơ không làm đóng cuộc đang có. Route gửi tin và chấp nhận dùng
+//     checkPair: cùng phép kiểm nhưng trả luôn lỗi của chính người gọi, nên tư cách người gọi chỉ đọc một lần.
 //   - inviteTarget: handle này có nhận lời mời của người gửi không (thêm điều kiện có hồ sơ công khai).
 // Luật "thiếu dữ liệu thì từ chối": không có RunnerProfile, không có ngày sinh hay không có ChatMember đều là chưa đạt.
 const User = require('../models/User');
@@ -49,12 +50,25 @@ async function blockedBetween(aId, bId) {
 }
 
 /**
+ * Đọc trong một lượt mọi thứ cổng hai phía cần: tư cách người gọi, tư cách người kia và Block. Trả cả lỗi của chính
+ * người gọi, để route không phải đọc lại tư cách người gọi lần nữa như khi gọi assertSelfEligible rồi pairOpen.
+ * @param {string} selfId Người gọi.
+ * @param {string} otherId Người kia trong cuộc.
+ * @returns {Promise<{ selfError: Error | null, open: boolean }>} open: hai người còn nhắn cho nhau được.
+ */
+async function checkPair(selfId, otherId, { now = new Date() } = {}) {
+  const [self, other, blocked] = await Promise.all([
+    senderEligible(selfId, { now }), senderEligible(otherId, { now }), blockedBetween(selfId, otherId),
+  ]);
+  return { selfError: selfError(self), open: self.ok && other.ok && !blocked };
+}
+
+/**
  * Hai người còn nhắn tin cho nhau được không (cổng hai phía, T13).
  * @returns {Promise<boolean>}
  */
 async function pairOpen(aId, bId, { now = new Date() } = {}) {
-  const [a, b, blocked] = await Promise.all([senderEligible(aId, { now }), senderEligible(bId, { now }), blockedBetween(aId, bId)]);
-  return a.ok && b.ok && !blocked;
+  return (await checkPair(aId, bId, { now })).open;
 }
 
 /**
@@ -91,14 +105,23 @@ function unavailable() {
 }
 
 /**
+ * Lỗi 403 ứng với kết quả senderEligible của chính người gọi, hoặc null khi đạt.
+ * @param {{ ok: boolean, reason?: string }} result
+ * @returns {Error | null}
+ */
+function selfError(result) {
+  if (result.ok) return null;
+  const known = SELF_ERRORS[result.reason];
+  return known ? httpError(403, known[1], known[0]) : unavailable();
+}
+
+/**
  * Ném lỗi 403 nếu chính người gọi không được nhắn tin.
  * @returns {Promise<void>}
  */
 async function assertSelfEligible(userId, { now = new Date() } = {}) {
-  const result = await senderEligible(userId, { now });
-  if (result.ok) return;
-  const known = SELF_ERRORS[result.reason];
-  throw known ? httpError(403, known[1], known[0]) : unavailable();
+  const error = selfError(await senderEligible(userId, { now }));
+  if (error) throw error;
 }
 
-module.exports = { MIN_AGE, senderEligible, pairOpen, inviteTarget, blockedBetween, assertSelfEligible, unavailable };
+module.exports = { MIN_AGE, senderEligible, pairOpen, checkPair, inviteTarget, blockedBetween, assertSelfEligible, unavailable };

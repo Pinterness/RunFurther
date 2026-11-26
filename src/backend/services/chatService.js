@@ -12,8 +12,8 @@ const { pairKeyOf, LAST_TEXT_MAX } = require('../models/Conversation');
 const { TEXT_MAX } = require('../models/Message');
 const { CHAT_CONSENT } = require('../../lib/communityConsent.cjs');
 const { isAtLeastAge } = require('../lib/age');
-const { MIN_AGE, inviteTarget, pairOpen, assertSelfEligible, unavailable } = require('./chatGate');
-const { assertInviteQuota, assertDailyMessageQuota, assertMessageQuota } = require('./chatLimits');
+const { MIN_AGE, inviteTarget, checkPair, assertSelfEligible, unavailable } = require('./chatGate');
+const { assertInviteQuota, assertDailyMessageQuota, messageQuotaError } = require('./chatLimits');
 const chatNotifier = require('./chatNotifier');
 const transaction = require('./transaction');
 const mongoose = require('mongoose');
@@ -278,8 +278,9 @@ async function acceptConversation(userId, rawId, { now = new Date() } = {}) {
   if (current.status === 'ACTIVE') return presentOne(current, userId); // bấm đúp hay giao diện cũ: không thành lỗi
   if (same(current.requesterId, userId)) throw notActive();
 
-  await assertSelfEligible(userId, { now });
-  if (!(await pairOpen(userId, otherOf(current, userId), { now }))) throw unavailable();
+  const gate = await checkPair(userId, otherOf(current, userId), { now });
+  if (gate.selfError) throw gate.selfError;
+  if (!gate.open) throw unavailable();
 
   const accepted = await Conversation.findOneAndUpdate(
     { _id: current._id, participants: userId, status: { $in: ['REQUEST', 'DECLINED'] }, requesterId: { $ne: userId } },
@@ -340,16 +341,30 @@ async function previousMessage(senderId, conversationId, clientMessageId) {
 async function sendMessage(userId, rawId, body, { now = new Date() } = {}) {
   const { text, clientMessageId } = readMessageInput(body);
   const conversation = await findMine(userId, rawId);
-
-  // Gửi lại (mất mạng, bấm đúp) được nhận ra trước mọi giới hạn, để tin đã lưu không bị báo lỗi oan.
-  const retried = await previousMessage(userId, conversation._id, clientMessageId);
-  if (retried) return retried;
-
-  await assertSelfEligible(userId, { now });
-  if (conversation.status !== 'ACTIVE') throw notActive();
   const otherId = otherOf(conversation, userId);
-  if (!(await pairOpen(userId, otherId, { now }))) throw unavailable();
-  await assertMessageQuota(userId, now);
+
+  // Ba phần kiểm (gửi lại, cổng hai phía, giới hạn) chỉ đọc và không phụ thuộc nhau, nên đọc song song trong một lượt
+  // chờ MongoDB thay vì bốn lượt nối tiếp như trước. Kết quả vẫn xét theo thứ tự cũ: gửi lại (mất mạng, bấm đúp) được nhận ra
+  // trước mọi giới hạn, để tin đã lưu không bị báo lỗi oan; rồi cổng của chính người gửi, trạng thái cuộc, cổng hai
+  // phía, giới hạn. Dùng allSettled chứ không dùng Promise.all: một lệnh đọc phụ lỗi (mất kết nối tạm thời) chỉ được
+  // báo khi tới lượt nó, không được che kết quả gửi lại hay 409 đứng trước, đúng như khi các bước còn chạy nối tiếp.
+  const settled = await Promise.allSettled([
+    previousMessage(userId, conversation._id, clientMessageId),
+    checkPair(userId, otherId, { now }),
+    messageQuotaError(userId, now),
+  ]);
+  const take = index => {
+    if (settled[index].status === 'rejected') throw settled[index].reason;
+    return settled[index].value;
+  };
+  const retried = take(0);
+  if (retried) return retried;
+  const gate = take(1);
+  if (gate.selfError) throw gate.selfError;
+  if (conversation.status !== 'ACTIVE') throw notActive();
+  if (!gate.open) throw unavailable();
+  const quotaError = take(2);
+  if (quotaError) throw quotaError;
 
   let saved;
   try {
