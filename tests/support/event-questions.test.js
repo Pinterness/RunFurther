@@ -9,7 +9,7 @@ process.env.JWT_SECRET = 'isolated-support-events-test-secret';
 
 const { app } = require('../../src/backend/server');
 const Event = require('../../src/backend/models/Event');
-const { createSupportResponder, isEventCountQuestion } = require('../../src/backend/services/supportAiService');
+const { createSupportResponder, isEventCountQuestion, isOpenEventsQuestion } = require('../../src/backend/services/supportAiService');
 const { rankArticles, seedArticles, normalizeSupportText } = require('../../src/backend/services/supportKnowledge');
 const { createBackendHarness } = require('../helpers/backendHarness');
 
@@ -165,6 +165,88 @@ test('A3: lịch giải mặc định chỉ có giải chưa diễn ra, gần nh
   const mixed = await guide({ message: 'trước đây tôi chưa chạy giải nào, có giải nào sắp tới không' });
   assert.match(mixed.reply, /Giải đúng không giờ Cần Thơ/);
   assert.doesNotMatch(mixed.reply, /tối qua|đã xong Huế/);
+});
+
+const isOpen = question => isOpenEventsQuestion(normalizeSupportText(question));
+const OPEN_REPLY = /giải đang mở đăng ký|chưa có giải nào đang mở đăng ký|chưa có giải nào sắp diễn ra/;
+
+test('B1: nhận ra câu hỏi "giải nào đang mở đăng ký"', () => {
+  const yes = ['giải nào còn mở đăng ký', 'Giải nào đang mở đăng ký?', 'có giải nào đang mở đăng ký không', 'những giải đang mở đăng ký',
+    'giải chạy nào còn nhận đăng ký', 'còn giải nào mở bán vé không', 'danh sách giải đang mở đăng ký', 'ở Đà Nẵng có giải nào đang mở đăng ký không'];
+  for (const question of yes) assert.equal(isOpen(question), true, question);
+});
+
+test('B1: không bắt nhầm câu hỏi cách đăng ký, câu dữ liệu riêng, câu có điều kiện chưa lọc được', () => {
+  const no = [
+    // Hỏi cách làm hay thời điểm, không hỏi danh sách giải.
+    'làm sao đăng ký giải chạy', 'đăng ký giải như thế nào', 'khi nào giải mở đăng ký', 'giai đoạn mở đăng ký là gì', 'mở đăng ký rồi mua vé ở đâu', 'giải đang mở đăng ký thì đăng ký như thế nào',
+    // Dữ liệu riêng, điều kiện chưa lọc được, giải đã qua, nơi chốn ngoài danh sách.
+    'giải tôi đã đăng ký còn mở không', 'giải nào của tôi còn mở đăng ký', 'giải nào mở đăng ký tháng 12', 'giải 21km nào còn mở đăng ký', 'năm ngoái giải nào mở đăng ký',
+    'ở Quy Nhơn có giải nào đang mở đăng ký không',
+  ];
+  for (const question of no) assert.equal(isOpen(question), false, question);
+});
+
+test('B1: trả danh sách giải đang trong hạn đăng ký từ database, không gọi AI', async () => {
+  aiCalls = 0;
+  const result = await answer({ message: 'giải nào còn mở đăng ký' });
+  assert.equal(aiCalls, 0);
+  assert.equal(result.mode, 'guide');
+  assert.deepEqual(result.articleKeys, []);
+  assert.match(result.reply, /Hiện RunFurther có 1 giải đang mở đăng ký/);
+  assert.match(result.reply, /Giải mở đăng ký Cần Thơ/);
+  // Trạng thái REGISTRATION_OPEN nhưng đã hết hạn, hay chưa tới ngày mở, đều không phải "đang mở".
+  assert.doesNotMatch(result.reply, /Giải hết hạn đăng ký Đà Nẵng|Giải công bố Đà Nẵng|bị ẩn|nháp|bị hủy/);
+  assert.ok(result.sources.some(source => source.title === 'Giải mở đăng ký Cần Thơ'));
+});
+
+test('B1: chưa có giải nào đang mở thì nói thẳng, kèm giải sắp diễn ra; lọc theo thành phố', async () => {
+  const danang = await answer({ message: 'ở Đà Nẵng có giải nào đang mở đăng ký không' });
+  assert.match(danang.reply, /chưa có giải nào đang mở đăng ký ở Đà Nẵng/);
+  assert.match(danang.reply, /Giải hết hạn đăng ký Đà Nẵng/);
+  assert.match(danang.reply, /Giải công bố Đà Nẵng/);
+  assert.doesNotMatch(danang.reply, /Cần Thơ|\(đang mở đăng ký\)/);
+  const hcm = await answer({ message: 'ở TP HCM có giải nào đang mở đăng ký không' });
+  assert.match(hcm.reply, /chưa có giải nào sắp diễn ra ở Hồ Chí Minh/);
+});
+
+test('B1: hai thành phố cùng có giải đang mở thì hỏi theo thành phố chỉ ra giải của thành phố đó', async () => {
+  // Tạo tạm rồi xóa ngay, để không làm lệch số đếm của các test khác trong file.
+  const extra = await makeEvent('Giải mở đăng ký Huế', { race: 12, status: 'REGISTRATION_OPEN', city: 'Huế', open: [-3, 6] });
+  try {
+    const canTho = await answer({ message: 'ở Cần Thơ có giải nào đang mở đăng ký không' });
+    assert.match(canTho.reply, /có 1 giải đang mở đăng ký ở Cần Thơ/);
+    assert.match(canTho.reply, /Giải mở đăng ký Cần Thơ/);
+    assert.doesNotMatch(canTho.reply, /Giải mở đăng ký Huế/);
+    const all = await answer({ message: 'giải nào còn mở đăng ký' });
+    assert.match(all.reply, /có 2 giải đang mở đăng ký/);
+  } finally {
+    await Event.deleteOne({ _id: extra._id });
+  }
+});
+
+test('B1: câu gợi ý bot đưa sau câu đếm dẫn tới đúng danh sách giải đang mở, không ra bài hướng dẫn', async () => {
+  const counted = await answer({ message: 'hiện có bao nhiêu giải chạy' });
+  const chip = counted.suggestions.find(text => /mở đăng ký/.test(text));
+  assert.ok(chip, JSON.stringify(counted.suggestions));
+  const followed = await answer({ message: chip });
+  assert.match(followed.reply, OPEN_REPLY);
+  assert.deepEqual(followed.articleKeys, []);
+});
+
+test('B1: database lỗi thì báo chưa tải được, không đoán', async () => {
+  const broken = createSupportResponder({
+    findArticles: async () => seedArticles(), recordMiss: null, generateReply: null, now: () => NOW,
+    countEvents: async () => { throw new Error('database unavailable'); },
+    listOpen: async () => { throw new Error('database unavailable'); },
+  });
+  const quiet = console.error;
+  console.error = () => {};
+  try {
+    const result = await broken({ message: 'giải nào còn mở đăng ký' });
+    assert.match(result.reply, /chưa tải được thông tin giải/);
+    assert.doesNotMatch(result.reply, /\d+ giải/);
+  } finally { console.error = quiet; }
 });
 
 test('A3: hỏi giải đã diễn ra thì có giải cũ, vừa xong trước', async () => {

@@ -53,8 +53,12 @@ function publicEventFilter(message, page = '/', now = new Date()) {
   return { ...visibleEvents(query), 'dateInfo.raceDate': asksPast(query) ? { $lt: today } : { $gte: today } };
 }
 
-async function retrievePublicEvents({ message, page, now = new Date() }) {
-  const filter = publicEventFilter(message, page, now);
+// Giải đang trong hạn đăng ký: trạng thái REGISTRATION_OPEN chưa đủ, vì ban tổ chức có thể quên đóng khi đã hết hạn.
+const openNow = now => ({ status: 'REGISTRATION_OPEN', 'dateInfo.registrationStart': { $lte: now }, 'dateInfo.registrationEnd': { $gt: now } });
+
+// `openOnly`: chỉ lấy giải đang trong hạn đăng ký (câu "giải nào đang mở đăng ký").
+async function retrievePublicEvents({ message, page, now = new Date(), openOnly = false }) {
+  const filter = { ...publicEventFilter(message, page, now), ...(openOnly ? openNow(now) : {}) };
   // Giải chưa diễn ra: gần nhất trước. Giải đã qua: vừa xong trước.
   const direction = filter['dateInfo.raceDate']?.$lt ? -1 : 1;
   const events = await Event.find(filter)
@@ -69,7 +73,7 @@ async function retrievePublicEvents({ message, page, now = new Date() }) {
     date: Number.isFinite(new Date(event.dateInfo?.raceDate).getTime())
       ? new Date(event.dateInfo.raceDate).toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : 'Chờ công bố',
     registrationOpen: event.status === 'REGISTRATION_OPEN'
-      && new Date(event.dateInfo?.registrationStart) <= new Date() && new Date(event.dateInfo?.registrationEnd) > new Date(),
+      && new Date(event.dateInfo?.registrationStart) <= now && new Date(event.dateInfo?.registrationEnd) > now,
     categories: categories.filter(category => String(category.eventId) === String(event._id)).slice(0, 8).map(category => ({
       code: plain(category.code, 20), distance: Number.isFinite(category.distance) ? category.distance : null,
       price: Number.isSafeInteger(category.price) && category.price >= 0 ? category.price : null,
@@ -115,7 +119,7 @@ async function countPublicEvents({ message, now = new Date() }) {
   const count = filter => Event.countDocuments(filter).maxTimeMS(LIMITS.queryMs);
   const [upcoming, open, past, events] = await Promise.all([
     count(upcomingFilter),
-    count({ ...upcomingFilter, status: 'REGISTRATION_OPEN', 'dateInfo.registrationStart': { $lte: now }, 'dateInfo.registrationEnd': { $gt: now } }),
+    count({ ...upcomingFilter, ...openNow(now) }),
     count({ ...base, 'dateInfo.raceDate': { $lt: today } }),
     retrievePublicEvents({ message: cityIn(query) ?? '', page: '/', now }),
   ]);
@@ -130,6 +134,52 @@ function eventCountReply({ upcoming, open, past, city, events }) {
   const lines = events.map(event => `- ${event.name} — ${event.city || 'Chờ địa điểm'} — ${event.date}${event.registrationOpen ? ' (đang mở đăng ký)' : ''}`);
   const more = upcoming > events.length ? `\n… và ${upcoming - events.length} giải khác trong danh sách giải.` : '';
   return `Hiện RunFurther có ${upcoming} giải sắp diễn ra${where}, trong đó ${open} giải đang mở đăng ký.${pastNote}\nCác giải gần nhất:\n${lines.join('\n')}${more}`;
+}
+
+/**
+ * Câu hỏi "giải nào đang mở đăng ký" (25-11: trước đây câu này ra bài hướng dẫn đăng ký, kể cả khi người dùng bấm
+ * đúng câu gợi ý bot đưa sau câu đếm). Cần đủ hai ý:
+ *   - hỏi về các giải: "giải (chạy) nào", "những/các giải", "danh sách giải", "còn giải", "giải đang/còn …";
+ *   - nói tới việc mở đăng ký: "mở đăng ký", "mở bán (vé)", "nhận đăng ký", "mở cổng đăng ký".
+ * Không nhận câu hỏi cách làm hay thời điểm ("làm sao", "như thế nào", "khi nào"), và cùng các luật loại trừ với câu
+ * đếm: dữ liệu riêng, điều kiện chưa lọc được, giải đã qua, nơi chốn ngoài danh sách thành phố.
+ * @param {string} query Câu đã chuẩn hóa (normalizeSupportText).
+ * @returns {boolean}
+ */
+const WHICH_EVENTS = /\bgiai(?: chay)? nao\b|\b(?:nhung|cac|danh sach|con) giai\b|\bgiai(?: chay)? (?:dang|con)\b/;
+const OPENING = /\b(?:mo (?:dang ky|ban|cong dang ky)|nhan dang ky)\b/;
+const HOW_OR_WHEN = /\b(?:lam sao|lam the nao|nhu the nao|the nao|cach|huong dan|khi nao|bao gio|luc nao|o dau)\b/;
+function isOpenEventsQuestion(query) {
+  const text = typeof query === 'string' ? query : '';
+  if (!WHICH_EVENTS.test(text) || !OPENING.test(text) || HOW_OR_WHEN.test(text)) return false;
+  if (OWN_EVENTS.test(text) || UNFILTERED.test(text) || PAST_WORDS.test(text)) return false;
+  return !/\b(?:o|tai) [a-z]/.test(text) || Boolean(cityIn(text));
+}
+
+/**
+ * Giải đang mở đăng ký cho câu hỏi trên: số đếm như câu đếm, cộng tối đa 5 giải đang trong hạn đăng ký (gần nhất trước).
+ * @returns {Promise<{ upcoming: number, open: number, past: number, city: string | undefined, events: object[], openEvents: object[] }>}
+ */
+async function listOpenEvents({ message, now = new Date() }) {
+  const city = cityIn(normalizeSupportText(message));
+  const [stats, openEvents] = await Promise.all([
+    countPublicEvents({ message, now }),
+    retrievePublicEvents({ message: city ?? '', page: '/', now, openOnly: true }),
+  ]);
+  return { ...stats, openEvents };
+}
+
+// Câu trả lời dựng hoàn toàn từ số liệu. Chưa có giải nào đang mở thì nói thẳng, rồi kể các giải sắp diễn ra để người
+// hỏi biết còn giải nào sắp mở hay đã hết hạn.
+function openEventsReply({ upcoming, open, city, events, openEvents }) {
+  const where = city ? ` ở ${city}` : '';
+  const line = event => `- ${event.name} — ${event.city || 'Chờ địa điểm'} — ${event.date}`;
+  if (open && openEvents.length) {
+    const more = open > openEvents.length ? `\n… và ${open - openEvents.length} giải khác trong danh sách giải.` : '';
+    return `Hiện RunFurther có ${open} giải đang mở đăng ký${where}:\n${openEvents.map(line).join('\n')}${more}\nBạn mở trang giải để chọn cự ly và mua vé.`;
+  }
+  if (!upcoming) return `Hiện RunFurther chưa có giải nào sắp diễn ra${where}, nên chưa có giải nào mở đăng ký. Bạn mở danh sách giải để xem khi có giải mới nhé.`;
+  return `Hiện chưa có giải nào đang mở đăng ký${where}. Các giải sắp diễn ra (chưa tới ngày mở hoặc đã hết hạn đăng ký):\n${events.map(line).join('\n')}`;
 }
 
 const AI_LIMITS = { maxTokens: 700, temperature: 0.2, timeoutMs: 15000, inFlight: 4, bodyCharacters: 32000, articles: 2 };
@@ -204,8 +254,9 @@ function createChatAdapter({ env = process.env, fetchImpl = (...args) => fetch(.
 // và lệnh nạp quá hạn. Test truyền vào một thời điểm cố định.
 // `recordMiss` ghi câu bot chưa trả lời được vào hàng chờ của admin; truyền null để không ghi (xem thử của admin, test).
 // `canUseAi` là cổng AI 7 điều kiện (supportAiGate.js): chỉ khi qua cổng thì câu hỏi chung mới được gửi cho Gemini.
-// `countEvents` trả số giải cho câu hỏi đếm; test thay bằng hàm ném lỗi để kiểm câu báo chưa tải được.
-function createSupportResponder({ findArticles = loadPublishedArticles, findEvents = retrievePublicEvents, countEvents = countPublicEvents, runTask = defaultTaskRunner, generateReply = createChatAdapter(), canUseAi = createAiGate(), recordMiss = recordUnanswered, now = () => new Date() } = {}) {
+// `countEvents` trả số giải cho câu hỏi đếm, `listOpen` trả giải đang mở đăng ký; test thay bằng hàm ném lỗi để kiểm
+// câu báo chưa tải được.
+function createSupportResponder({ findArticles = loadPublishedArticles, findEvents = retrievePublicEvents, countEvents = countPublicEvents, listOpen = listOpenEvents, runTask = defaultTaskRunner, generateReply = createChatAdapter(), canUseAi = createAiGate(), recordMiss = recordUnanswered, now = () => new Date() } = {}) {
   return async function answerSupport({ message, history = [], userId = null, page = '/' } = {}) {
     if (typeof message !== 'string' || !message.trim() || message.length > SUPPORT_MESSAGE_LIMIT) {
       throw httpError(400, `Tin nhắn phải có từ 1 đến ${SUPPORT_MESSAGE_LIMIT} ký tự.`);
@@ -239,6 +290,21 @@ function createSupportResponder({ findArticles = loadPublishedArticles, findEven
       } catch (error) {
         console.error('Support event count failed:', error.message);
         result.reply = 'Hiện chưa tải được thông tin giải. Bạn hãy mở danh sách giải để thử lại; mình chưa thể xác nhận số giải lúc này.';
+      }
+      return result;
+    }
+    if (isOpenEventsQuestion(query) && !route?.ambiguous) {
+      // Danh sách giải đang mở đăng ký lấy thẳng từ database, không qua AI, giống câu đếm.
+      try {
+        const stats = await listOpen({ message: question, now: now() });
+        const shown = stats.openEvents.length ? stats.openEvents : stats.events;
+        result.reply = openEventsReply(stats);
+        result.sources = [{ title: 'Danh sách giải', url: '/events' }, ...shown.map(event => ({ title: event.name, url: event.url }))].slice(0, 5);
+        result.actions = toActions([{ label: 'Danh sách giải', url: '/events' }, ...shown.map(event => ({ label: actionLabel(event.name), url: event.url }))]);
+        result.suggestions = ['Làm sao mua vé giải chạy?', 'Hiện có bao nhiêu giải chạy?'];
+      } catch (error) {
+        console.error('Support open events failed:', error.message);
+        result.reply = 'Hiện chưa tải được thông tin giải. Bạn hãy mở danh sách giải để thử lại; mình chưa thể xác nhận giải nào đang mở đăng ký lúc này.';
       }
       return result;
     }
@@ -311,4 +377,4 @@ function createSupportResponder({ findArticles = loadPublishedArticles, findEven
 }
 
 const answerSupport = createSupportResponder();
-module.exports = { answerSupport, createSupportResponder, createChatAdapter, publicEventFilter, retrievePublicEvents, isEventCountQuestion, countPublicEvents };
+module.exports = { answerSupport, createSupportResponder, createChatAdapter, publicEventFilter, retrievePublicEvents, isEventCountQuestion, countPublicEvents, isOpenEventsQuestion, listOpenEvents };
