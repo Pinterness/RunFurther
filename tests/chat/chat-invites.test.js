@@ -1,7 +1,7 @@
 // Lời mời nhắn tin, chấp nhận và từ chối (spec D3, T3, T4, T9, T10, T14; plan Task 12.3). Lời mời là một transaction
 // tạo cuộc REQUEST cùng tin seq 1; mỗi cặp người chỉ có một cuộc; người đã từ chối vẫn chấp nhận lại được.
 // Chạy trên MongoDB replica set trong bộ nhớ (tests/helpers), không đụng database thật.
-const { test, before, after } = require('node:test');
+const { test, before, after, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 
@@ -93,6 +93,27 @@ test('gửi lại cùng clientMessageId (tuần tự và song song) trả cùng 
   assert.equal(reused.status, 409);
   assert.equal(reused.body.code, 'CHAT_CLIENT_ID_REUSED');
   assert.equal(await Conversation.countDocuments({ pairKey: pairKeyOf(a.id, c.id) }), 0);
+});
+
+test('gửi lại rơi vào khe giữa hai bước kiểm (bên kia vừa commit): vẫn 200 lời mời cũ, không 409 cặp đã có cuộc', async () => {
+  // Tái hiện chắc chắn lần CI chập chờn: request thứ hai tìm tin cũ theo clientMessageId lúc request đầu chưa commit
+  // (không thấy), rồi tới bước kiểm cặp thì cuộc đã có. Giả lần tìm đầu tiên trả "không có".
+  const a = await member(), b = await member();
+  const clientMessageId = crypto.randomUUID();
+  const first = await invite(a, b, { clientMessageId });
+  assert.equal(first.status, 201);
+  const realFindOne = Message.findOne.bind(Message);
+  let missed = false;
+  const spy = mock.method(Message, 'findOne', (...args) => {
+    if (!missed && args[0]?.clientMessageId === clientMessageId) { missed = true; return { lean: async () => null }; }
+    return realFindOne(...args);
+  });
+  try {
+    const again = await invite(a, b, { clientMessageId });
+    assert.ok(missed, 'phải đi qua đúng khe: lần tìm đầu không thấy tin');
+    assert.equal(again.status, 200);
+    assert.deepEqual(again.body, first.body);
+  } finally { spy.mock.restore(); }
 });
 
 test('gửi lại lời mời sau khi người nhận đã xóa hồ sơ vẫn trả 200 lời mời cũ; mã viết hoa vẫn là cùng mã', async () => {

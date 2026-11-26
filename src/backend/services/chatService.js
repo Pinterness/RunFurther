@@ -230,7 +230,13 @@ async function createInvite(senderId, body, { now = new Date() } = {}) {
 
   const pairKey = pairKeyOf(senderId, targetId);
   const existing = await Conversation.findOne({ pairKey }).select({ _id: 1 }).lean();
-  if (existing) throw conversationExists(existing._id);
+  if (existing) {
+    // Lần gửi lại có thể đã tìm tin cũ đúng lúc request đầu chưa commit, rồi tới đây mới thấy cuộc vừa tạo. Hỏi lại một
+    // lần để vẫn trả 200 lời mời đó, không 409. Chỉ tốn thêm truy vấn trên đường 409.
+    const retriedLate = await previousInvite(senderId, clientMessageId, targetId);
+    if (retriedLate) return retriedLate;
+    throw conversationExists(existing._id);
+  }
 
   await assertInviteQuota(senderId, now);
   await assertDailyMessageQuota(senderId, now);
