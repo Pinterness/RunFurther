@@ -42,7 +42,7 @@ const at = minutes => new Date(Date.UTC(2026, 10, 26, 3, minutes)).toISOString()
     const openGate = name => { gates[name]?.release(); delete gates[name]; };
     const through = async name => { if (gates[name]) await gates[name].promise; };
     const lastMessage = id => { const last = messages[id][messages[id].length - 1]; return { seq: last.seq, mine: last.mine, text: last.text.slice(0, 120) }; };
-    const posts = [], reads = [], polls = [];
+    const posts = [], reads = [], polls = [], reports = [];
     // Công tắc hành vi giả của POST tin: 'ok' (chậm 600ms), 'overlap' (polling trả tin trước phản hồi POST),
     // 'network' (đứt mạng một lần), 'unavailable' (403).
     let sendMode = 'ok', pollExpired = false, pollDelivered = false;
@@ -69,7 +69,7 @@ const at = minutes => new Date(Date.UTC(2026, 10, 26, 3, minutes)).toISOString()
         const found = conversations[decodeURIComponent(one[1])];
         return found ? reply({ conversation: { ...found, lastMessage: lastMessage(found.id) } }) : reply({ message: 'Không tìm thấy cuộc trò chuyện.', code: 'CHAT_NOT_FOUND' }, 404);
       }
-      const match = /^\/chat\/conversations\/(c\d)\/(messages|read|accept|decline|block)$/.exec(path);
+      const match = /^\/chat\/conversations\/(c\d)\/(messages|read|accept|decline|block|reports)$/.exec(path);
       if (match) {
         const [, id, action] = match;
         if (action === 'messages' && method === 'GET') {
@@ -106,6 +106,7 @@ const at = minutes => new Date(Date.UTC(2026, 10, 26, 3, minutes)).toISOString()
           messages[id].push(saved);
           return reply({ message: saved }, 201);
         }
+        if (action === 'reports') { reports.push({ id, ...request.postDataJSON() }); return reply({ report: { id: 'r1', status: 'OPEN', reason: 'HARASSMENT' } }, 201); }
         if (action === 'read') { reads.push({ id, ...request.postDataJSON() }); conversations[id].unread = false; return route.fulfill({ status: 204 }); }
         if (action === 'accept') { conversations[id].status = 'ACTIVE'; return reply({ conversation: { ...conversations[id], lastMessage: lastMessage(id) } }); }
         if (action === 'decline') { conversations[id].status = 'DECLINED'; conversations[id].unread = false; return reply({ conversation: { ...conversations[id], lastMessage: lastMessage(id) } }); }
@@ -150,6 +151,25 @@ const at = minutes => new Date(Date.UTC(2026, 10, 26, 3, minutes)).toISOString()
     await expect(log.locator('img')).toHaveCount(0);
     assert.equal(await page.evaluate(() => window.__chatXss), undefined, 'tin nhắn không được chạy như HTML');
     await expect.poll(() => reads.filter(r => r.id === 'c1').map(r => r.upToSeq)).toContain(2);
+
+    // Báo cáo (P15.2): chỉ tin của người kia có nút; phải chọn lý do mới gửi được; gửi đúng seq của tin được chọn;
+    // gửi xong báo đã nhận, đóng hộp thì focus về lại nút "Báo cáo" của tin đó.
+    const reportButtons = log.getByRole('button', { name: /^Báo cáo tin/ });
+    await expect(reportButtons).toHaveCount(1);
+    await reportButtons.click();
+    const reportBox = log.getByRole('group', { name: 'Báo cáo tin của Lê Phượng My' });
+    await expect(reportBox).toBeFocused();
+    const sendReport = reportBox.getByRole('button', { name: 'Gửi báo cáo' });
+    await expect(sendReport).toBeDisabled();
+    await reportBox.getByRole('radio', { name: 'Quấy rối, xúc phạm' }).check();
+    await reportBox.getByLabel('Ghi chú thêm (không bắt buộc)').fill('  Gửi đoạn mã lạ  ');
+    if (process.env.CHAT_UI_SHOTS) await page.screenshot({ path: process.env.CHAT_UI_SHOTS + '/report-form.png' });
+    await sendReport.click();
+    await expect(reportBox.getByRole('status')).toContainText('Đã gửi báo cáo.');
+    assert.deepEqual(reports, [{ id: 'c1', seq: 2, reason: 'HARASSMENT', note: 'Gửi đoạn mã lạ' }]);
+    await reportBox.getByRole('button', { name: 'Đóng' }).click();
+    await expect(reportBox).toHaveCount(0);
+    await expect(reportButtons).toBeFocused();
 
     // Polling: 5 giây một lần khi khung mở và tab hiện; tab ẩn thì không gọi; hiện lại thì gọi ngay.
     const pollsOf = () => polls.filter(p => p.id === 'c1').length;

@@ -3,6 +3,7 @@
 // đúng clientMessageId, đánh dấu đã đọc. Spec 4.3–4.5, plan Task 13.2; sửa theo phản biện 26-11.
 import { useEffect, useRef, useState } from 'react';
 import InviteCard from './InviteCard';
+import ReportForm from './ReportForm';
 import * as chat from '../../../lib/chatClient';
 
 const POLL_MS = 5000;
@@ -19,6 +20,8 @@ export default function ChatThread({ conversation, onChanged, onBack, onExpired,
   const [loaded, setLoaded] = useState(false), [loadError, setLoadError] = useState(''), [attempt, setAttempt] = useState(0);
   const [draft, setDraft] = useState(''), [sendError, setSendError] = useState(''), [busy, setBusy] = useState(false);
   const [confirmBlock, setConfirmBlock] = useState(false);
+  // seq của tin đang mở hộp báo cáo (P15.2); chỉ tin của người kia mới có nút báo cáo.
+  const [reporting, setReporting] = useState(null);
   // Bản mới nhất của danh sách tin cho polling và các hàm bất đồng bộ (closure của lần render cũ không thấy state mới).
   const messagesRef = useRef([]);
   const sendingRef = useRef(false), alive = useRef(true), markedRef = useRef(0);
@@ -172,6 +175,11 @@ export default function ChatThread({ conversation, onChanged, onBack, onExpired,
 
   function askBlock() { setConfirmBlock(true); requestAnimationFrame(() => confirmRef.current?.focus()); }
   function cancelBlock() { setConfirmBlock(false); requestAnimationFrame(() => headingRef.current?.focus()); }
+  // Đóng hộp báo cáo: focus quay về đúng nút "Báo cáo" của tin đó, để người dùng bàn phím không bị đẩy về đầu trang.
+  function closeReport(seq) {
+    setReporting(null);
+    requestAnimationFrame(() => logRef.current?.querySelector(`[data-report-seq="${seq}"]`)?.focus());
+  }
 
   function onKey(event) {
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) submit(event);
@@ -211,7 +219,10 @@ export default function ChatThread({ conversation, onChanged, onBack, onExpired,
             </div>
             {message.pending && <div className="chat-meta is-mine" aria-hidden="true">Đang gửi</div>}
             {message.failed && <div className="chat-meta is-mine is-failed">Chưa gửi được<button type="button" className="chat-link-button" onClick={() => retry(message)}>Gửi lại</button></div>}
-            {Number.isInteger(message.seq) && <div className={'chat-meta ' + side}>{chat.shortTime(message.createdAt)}</div>}
+            {Number.isInteger(message.seq) && <div className={'chat-meta ' + side}>{chat.shortTime(message.createdAt)}
+              {!message.mine && reporting !== message.seq && <button type="button" className="chat-link-button" data-report-seq={message.seq} aria-label={`Báo cáo tin lúc ${chat.shortTime(message.createdAt)}: ${message.text.slice(0, 40)}`} onClick={() => setReporting(message.seq)}>Báo cáo</button>}
+            </div>}
+            {!message.mine && reporting === message.seq && <ReportForm conversationId={id} message={message} name={name} onClose={() => closeReport(message.seq)} onExpired={onExpired} />}
           </div>;
         })}
       </div>}

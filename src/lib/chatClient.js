@@ -39,6 +39,14 @@ export const block = id => post(conv(id) + '/block');
 export const markRead = (id, upToSeq) => post(conv(id) + '/read', { upToSeq });
 export const unreadCount = () => api('/chat/unread');
 
+// Báo cáo vi phạm (P15): reason là SPAM | HARASSMENT | SCAM | OTHER. 201 báo cáo mới, 200 đã báo cáo tin này rồi.
+export const REPORT_REASONS = [['HARASSMENT', 'Quấy rối, xúc phạm'], ['SCAM', 'Lừa đảo, đòi chuyển tiền'], ['SPAM', 'Tin rác, quảng cáo'], ['OTHER', 'Lý do khác']];
+export const reportMessage = (id, seq, reason, note) => post(conv(id) + '/reports', { seq, reason, note });
+// Phần của Super Admin.
+export const adminReports = status => api('/chat/admin/reports?status=' + encodeURIComponent(status));
+export const resolveReport = (reportId, action) => post('/chat/admin/reports/' + encodeURIComponent(reportId) + '/resolve', { action });
+export const unlockMember = reportId => post('/chat/admin/members/' + encodeURIComponent(reportId) + '/unlock');
+
 // Mã riêng cho mỗi lần bấm "Gửi". Gửi lại một tin lỗi phải dùng lại đúng mã này, để server nhận ra và không tạo tin trùng.
 export const newClientMessageId = () => crypto.randomUUID();
 
