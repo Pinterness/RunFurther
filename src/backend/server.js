@@ -24,6 +24,8 @@ app.set('trust proxy', httpConfig.trustProxy);
 app.disable('x-powered-by');
 app.use(helmet());
 app.use(cors(corsOptions(httpConfig)));
+// HMAC verification must see the original bytes, before express.json consumes the stream.
+app.use('/api/payments/webhooks/sepay', require('./controllers/sepayController').webhookRouter);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 const rateLimit = require('./middlewares/rateLimit');
@@ -74,7 +76,10 @@ async function startServer() {
   const clean = async () => {
     if (cleaning) return;
     cleaning = true;
-    try { await expireBookings(); } catch (error) { console.error('Booking expiry failed:', error.message); }
+    try {
+      await expireBookings();
+      await require('./services/sepayService').resumePendingReceipts();
+    } catch (error) { console.error('Payment maintenance failed:', error.message); }
     finally { cleaning = false; }
   };
   await clean();

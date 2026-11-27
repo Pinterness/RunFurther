@@ -1,3 +1,4 @@
+const { words, searchConditions, relevance } = require('../services/eventSearch');
 const { availableEvent } = require('../services/eventPolicy');
 const Event = require("../models/Event");
 const EventCategory = require("../models/EventCategory");
@@ -33,23 +34,35 @@ async function listEvents(req, res, next) {
       filter['dateInfo.raceDate'] = { $gte: new Date() };
       filter.status = { $in: PUBLIC_EVENT_STATUSES.filter(status => status !== 'COMPLETED') };
     }
-    if (req.query.city) filter['location.city'] = { $regex: escapeRegex(String(req.query.city).slice(0, 100)), $options: 'i' };
-    if (req.query.search) filter.name = { $regex: escapeRegex(String(req.query.search).slice(0, 120)), $options: 'i' };
+    const conditions = [...searchConditions(req.query.search), ...searchConditions(req.query.city, ['location.city'])];
+    if (conditions.length) filter.$and = conditions;
+    const order = req.query.sort || (words(req.query.search).length ? 'relevance' : 'date');
+    assert(['relevance','date','newest'].includes(order), 400, 'Invalid sort.');
+    if (req.query.distanceMin !== undefined || req.query.distanceMax !== undefined) {
+      const range = {};
+      for (const [key, operator] of [['distanceMin','$gte'],['distanceMax','$lt']]) {
+        if (req.query[key] !== undefined && req.query[key] !== '') {
+          const value = Number(req.query[key]);
+          assert(Number.isFinite(value) && value >= 0, 400, 'Invalid distance range.');
+          range[operator] = value;
+        }
+      }
+      assert(range.$lt === undefined || range.$gte === undefined || range.$lt > range.$gte, 400, 'Invalid distance range.');
+      filter._id = { $in: await EventCategory.distinct('eventId', { distance: range }) };
+    }
     if (req.query.distance) {
       const distance = Number(req.query.distance);
       assert(Number.isFinite(distance) && distance >= 0, 400, 'Invalid distance.');
       filter._id = { $in: await EventCategory.distinct('eventId', { distance }) };
     }
 
-    const [events, total] = await Promise.all([
-      Event.find(filter)
-        .select("slug name status dateInfo location createdAt bannerUrl logoUrl")
-        .sort({ "dateInfo.raceDate": 1, _id: 1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .lean(),
-      Event.countDocuments(filter),
+    const sort = order === 'newest' ? {createdAt:-1,_id:1} : order === 'relevance' && words(req.query.search).length ? {searchScore:-1,'dateInfo.raceDate':1,_id:1} : {'dateInfo.raceDate':1,_id:1};
+    const [result] = await Event.aggregate([
+      {$match:filter},
+      ...(order === 'relevance' && words(req.query.search).length ? [{$addFields:{searchScore:relevance(req.query.search)}}] : []),
+      {$facet:{events:[{$sort:sort},{$skip:(page-1)*limit},{$limit:limit},{$project:{slug:1,name:1,status:1,dateInfo:1,location:1,createdAt:1,bannerUrl:1,logoUrl:1}}], count:[{$count:'total'}]}},
     ]);
+    const events=result.events, total=result.count[0]?.total || 0;
 
     const categories = await EventCategory.find({ eventId: { $in: events.map(event => event._id) } }).lean();
     for (const event of events) {

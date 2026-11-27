@@ -5,6 +5,7 @@ import { formatDateTime, formatVnd } from '../../lib/format';
 import { PAYMENT_STATUS_LABELS } from '../../lib/payments';
 import { useApiQuery } from '../../lib/useApiQuery';
 import Modal from './Modal';
+import SepayReceipts from './SepayReceipts';
 import './topup.css';
 
 const FILTERS = [
@@ -285,6 +286,7 @@ export default function TopupReview() {
         </p>
       )}
       <QueueList query={query} onDecide={setDecision} onCopy={copyCode} />
+      <SepayReceipts endpoint="/admin/platform/sepay" />
       {decision && (
         <DecisionDialog
           key={`${decision.item._id}-${decision.status}`}

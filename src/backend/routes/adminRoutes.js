@@ -39,6 +39,11 @@ router.get('/events/:eventId/payments', verifyUserToken, requireEventAdmin, list
 router.post('/events/:eventId/payments/:paymentId/review', verifyUserToken, requireEventAdmin, reviewPayment);
 router.get('/payments', verifyUserToken, requireSuperAdmin, listPayments);
 router.post('/payments/:paymentId/review', verifyUserToken, requireSuperAdmin, reviewPayment);
+const sepay = require('../controllers/sepayController');
+router.get('/platform/sepay/receipts', verifyUserToken, requireSuperAdmin, sepay.listReceipts);
+router.post('/platform/sepay/receipts/:receiptId/retry', verifyUserToken, requireSuperAdmin, sepay.retryReceipt);
+router.get('/events/:eventId/payments/sepay/receipts', verifyUserToken, requireEventAdmin, sepay.listReceipts);
+router.post('/events/:eventId/payments/sepay/receipts/:receiptId/retry', verifyUserToken, requireEventAdmin, sepay.retryReceipt);
 
 // Global-only operations.
 router.get('/platform/overview', verifyUserToken, requireSuperAdmin, getPlatformOverview);

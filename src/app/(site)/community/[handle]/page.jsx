@@ -57,7 +57,7 @@ export default function CommunityProfilePage({ params }) {
     <section className="runner-cover community-cover">
       <RunnerAvatar large name={profile.displayName} theme={profile.avatarTheme} />
       <div className="runner-identity">
-        <p className="section-index">RUNFURTHER RUNNER</p>
+        <p className="section-index">Người chạy RunFurther</p>
         <h1 className="community-name">{profile.displayName}</h1>
         <p className="community-handle">@{profile.handle}</p>
         <small>Tham gia từ {memberSinceLabel(profile.memberSince)}</small>
@@ -80,7 +80,7 @@ export default function CommunityProfilePage({ params }) {
   </>;
 
   return <div className="runner-shell community-shell">
-    <Link className="text-action community-back" href="/community">← Cộng đồng</Link>
+    <Link className="text-action community-back" href="/community">Về Cộng đồng</Link>
     {content}
   </div>;
 }

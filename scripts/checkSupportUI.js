@@ -116,12 +116,19 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     for (const width of [1440, 768, 390, 360]) {
       await page.setViewportSize({ width, height: 950 });
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'Support inbox overflow at ' + width);
+      for (const control of await inbox.locator('.support-inbox-filters button,.support-pagination button').all()) {
+        assert.ok((await control.boundingBox()).height >= 44, 'Support control below 44px at '+width);
+      }
+      for (const size of await inbox.locator('.support-ticket-meta,.support-ticket-preview,.support-inbox-message-author,.support-reply small').evaluateAll(nodes => nodes.map(node => parseFloat(getComputedStyle(node).fontSize)))) {
+        assert.ok(size >= 12, 'Support text below 12px at '+width);
+      }
       const pageCounter = await inbox.locator('.support-pagination span').boundingBox();
       assert.ok(pageCounter.height < 28, 'Pagination stays on one line, isolated from chat CSS at ' + width);
       const replyGap = await inbox.locator('.support-reply textarea').evaluate(node => node.nextElementSibling.getBoundingClientRect().top - node.getBoundingClientRect().bottom);
       assert.ok(replyGap >= 12, 'Reply actions have space below the textarea at ' + width);
     }
     fs.mkdirSync('artifacts', { recursive: true });
+    await page.evaluate(() => scrollTo({ top:0, behavior:'instant' }));
     await page.screenshot({ path: 'artifacts/support-inbox-mobile.png', fullPage: true });
     role = 'RUNNER';
     await page.goto(base + '/admin', { waitUntil: 'networkidle' });
