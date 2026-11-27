@@ -189,7 +189,7 @@ export default function ChatThread({ conversation, onChanged, onBack, onExpired,
 
   return <section className="chat-panel chat-thread" aria-labelledby="chat-thread-title">
     <header className="chat-thread-head">
-      <button type="button" className="chat-back" onClick={onBack}>← Danh sách</button>
+      <button type="button" className="chat-back" onClick={onBack}>Về danh sách</button>
       <h2 id="chat-thread-title" ref={headingRef} tabIndex={-1}>{name}</h2>
       {canWrite && !confirmBlock && <button type="button" className="chat-block" onClick={askBlock}>Chặn</button>}
     </header>

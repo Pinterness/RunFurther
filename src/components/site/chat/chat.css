@@ -7,7 +7,7 @@
 
 /* Danh sách cuộc trò chuyện */
 .chat-tabs { display: flex; border-bottom: 1px solid var(--border); }
-.chat-tab { flex: 1; min-height: 48px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 13px; font-weight: 600; line-height: 1.5; cursor: pointer; }
+.chat-tab { flex: 1; min-height: 48px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 14px; font-weight: 600; line-height: 1.5; cursor: pointer; }
 .chat-tab[aria-selected="true"] { color: var(--foreground); border-bottom-color: var(--accent); }
 .chat-tab:focus-visible { outline: 2px solid var(--forest); outline-offset: -2px; }
 .chat-list { list-style: none; margin: 0; padding: 0; }
@@ -67,7 +67,8 @@
 .chat-button-danger:disabled { opacity: .6; cursor: not-allowed; }
 .chat-item { display: contents; }
 .chat-thread-head h2:focus-visible, .chat-confirm:focus-visible { outline: 2px solid var(--forest); outline-offset: 2px; }
-.chat-shell .section-index { font-size: 10px; font-weight: 650; letter-spacing: .14em; margin-bottom: 16px; }
+/* Cỡ 12px và không giãn chữ lấy từ luật chung trong site.css, cùng kiểu nhãn "Tài khoản RunFurther" của trang tài khoản. */
+.chat-shell .section-index { font-weight: 500; margin-bottom: 16px; }
 .chat-confirm { padding: 12px; background: var(--error-surface, #fff0e9); border-radius: var(--radius-control); display: grid; gap: 8px; font-size: 13px; }
 
 @media (hover: none) { .chat-keys { display: none; } }
@@ -105,7 +106,7 @@
 .chat-report form { display: grid; gap: 8px; }
 .chat-report-reasons { border: 0; margin: 0; padding: 0; display: grid; gap: 4px; }
 .chat-report-reasons legend { font-weight: 600; margin-bottom: 4px; }
-.chat-report-reasons label { display: flex; align-items: center; gap: 8px; min-height: 32px; }
+.chat-report-reasons label { display: flex; align-items: center; gap: 8px; min-height: 44px; }
 .chat-report textarea { width: 100%; box-sizing: border-box; border-color: #829278; }
 
 /* Hàng chờ báo cáo cho Super Admin (/admin/messages) */

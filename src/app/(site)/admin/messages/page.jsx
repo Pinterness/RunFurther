@@ -33,7 +33,7 @@ export default function AdminMessagesPage() {
   }, []);
 
   return <div className="chat-shell">
-    <div className="runner-page-heading chat-heading"><div><p className="section-index">RUNFURTHER / SUPER ADMIN</p><h1>Kiểm duyệt tin nhắn</h1></div><Link className="text-action" href="/admin">Về trang kiểm duyệt</Link></div>
+    <div className="runner-page-heading chat-heading"><div><p className="section-index">Quản trị RunFurther</p><h1>Kiểm duyệt tin nhắn</h1></div><Link className="text-action" href="/admin">Về trang kiểm duyệt</Link></div>
     {state === 'loading' && <p className="chat-state" role="status">Đang kiểm tra quyền…</p>}
     {error && <p className="notice notice-error" role="alert">{error}{state === 'error' && <> <button type="button" onClick={check}>Thử lại</button></>}</p>}
     {state === 'allowed' && <ChatAdmin onExpired={expired} onForbidden={() => { setState('denied'); setError(DENIED); }} />}

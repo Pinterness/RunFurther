@@ -104,7 +104,7 @@ export default function MessagesPage() {
   else if (me && !me.consent) gate = <p className="notice">Bạn cần bật “Cho phép nhắn tin” trong <Link href="/account#community">tab Cộng đồng</Link> trước khi gửi tin.</p>;
 
   return <div className="chat-shell">
-    <div className="runner-page-heading chat-heading"><div><p className="section-index">TIN NHẮN RUNFURTHER</p><h1>Tin nhắn</h1></div><Link className="text-action" href="/community">Tìm người chạy trong Cộng đồng ↗</Link></div>
+    <div className="runner-page-heading chat-heading"><div><p className="section-index">Tin nhắn RunFurther</p><h1>Tin nhắn</h1></div><Link className="text-action" href="/community">Tìm người chạy trong Cộng đồng</Link></div>
     {gate}
     {notice && <p className="notice notice-error" role="alert">{notice}</p>}
     <div className={'chat-layout' + (selected ? ' has-open' : '')}>

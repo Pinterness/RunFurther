@@ -88,6 +88,9 @@ const person = (displayName, locked) => ({ displayName, avatarTheme: 'forest', .
     await expect(item('Kẻ Quấy Rối')).toContainText('Quấy rối, xúc phạm · Nhắn liên tục lúc nửa đêm');
     await expect(item('Kẻ Quấy Rối').getByText(XSS)).toBeVisible();
     await expect(panel.locator('img')).toHaveCount(0);
+    // Nhãn đầu trang theo quy tắc Unslop (U03, U08): viết câu thường, tối thiểu 12px.
+    const label = await page.locator('main .section-index').evaluate(el => ({ text: el.textContent, size: parseFloat(getComputedStyle(el).fontSize) }));
+    assert.ok(label.size >= 12 && label.text !== label.text.toLocaleUpperCase('vi'), `nhãn đầu trang ${JSON.stringify(label)}`);
     assert.equal(await page.evaluate(() => window.__adminXss), undefined, 'bản chụp tin không được chạy như HTML');
     await expect(item('Người Bán BIB')).toContainText('Lừa đảo, đòi chuyển tiền');
     assert.doesNotMatch(await panel.innerText(), /@/, 'hàng chờ không hiện email');

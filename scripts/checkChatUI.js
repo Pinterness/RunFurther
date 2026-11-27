@@ -130,6 +130,16 @@ const at = minutes => new Date(Date.UTC(2026, 10, 26, 3, minutes)).toISOString()
     // Cuộc mình mời và đang chờ: thấy "Đang chờ chấp nhận", ô nhập bị khóa.
     await page.getByRole('link', { name: /Vinh Quang/ }).click();
     await expect(page.getByText('Đang chờ chấp nhận', { exact: false }).first()).toBeVisible();
+
+    // Theo quy tắc Unslop của giao diện chung (U03, U08, U11): tab 14px, nhãn đầu trang viết câu thường từ 12px,
+    // không còn mũi tên ký tự. Đọc textContent để tính cả nút quay về danh sách, nút này chỉ hiện trên điện thoại.
+    const look = await page.evaluate(() => {
+      const label = document.querySelector('main .section-index');
+      return { tab: parseFloat(getComputedStyle(document.querySelector('.chat-tab')).fontSize), label: label.textContent, labelSize: parseFloat(getComputedStyle(label).fontSize), text: document.querySelector('main').textContent };
+    });
+    assert.ok(look.tab >= 14, `tab chỉ ${look.tab}px`);
+    assert.ok(look.labelSize >= 12 && look.label !== look.label.toLocaleUpperCase('vi'), `nhãn đầu trang ${JSON.stringify([look.label, look.labelSize])}`);
+    assert.doesNotMatch(look.text, /[↗←→]/, 'trang tin nhắn còn mũi tên ký tự');
     await expect(page.getByLabel('Nội dung tin nhắn')).toBeDisabled();
 
     // Lời mời: có Chấp nhận / Từ chối / Chặn; chặn phải xác nhận ngay trong trang.
@@ -164,6 +174,9 @@ const at = minutes => new Date(Date.UTC(2026, 10, 26, 3, minutes)).toISOString()
     await reportBox.getByRole('radio', { name: 'Quấy rối, xúc phạm' }).check();
     await reportBox.getByLabel('Ghi chú thêm (không bắt buộc)').fill('  Gửi đoạn mã lạ  ');
     if (process.env.CHAT_UI_SHOTS) await page.screenshot({ path: process.env.CHAT_UI_SHOTS + '/report-form.png' });
+    // Dòng lý do báo cáo cao ít nhất 44px để dễ bấm (UX_UI_AUDIT_UNSLOP.md U03).
+    const reasonHeight = await reportBox.locator('.chat-report-reasons label').first().evaluate(el => el.getBoundingClientRect().height);
+    assert.ok(reasonHeight >= 44, `dòng lý do báo cáo chỉ cao ${reasonHeight}px`);
     await sendReport.click();
     await expect(reportBox.getByRole('status')).toContainText('Đã gửi báo cáo.');
     assert.deepEqual(reports, [{ id: 'c1', seq: 2, reason: 'HARASSMENT', note: 'Gửi đoạn mã lạ' }]);
