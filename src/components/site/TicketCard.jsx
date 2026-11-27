@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import QRCode from 'qrcode';
 import Modal from './Modal';
-const labels = { CONFIRMED: 'Vé đã xác nhận', CHECKED_IN: 'Đã check-in', KIT_COLLECTED: 'Đã nhận race-kit', PENDING_TRANSFER: 'Đang chuyển nhượng', TRANSFERRED: 'Đã chuyển nhượng', CANCELLED: 'Đã hủy' };
+import { ticketStatuses as labels } from '../../lib/statusLabels';
 export default function TicketCard({ ticket }) {
   const [open, setOpen] = useState(false), [qr, setQr] = useState(''), [error, setError] = useState('');
   const valid = ['CONFIRMED', 'CHECKED_IN', 'KIT_COLLECTED'].includes(ticket.status);

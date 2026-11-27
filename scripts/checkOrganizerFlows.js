@@ -32,7 +32,10 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
         return reply({ accounts });
       }
       if (path === '/admin/events/event-1/staff/staff-1') { changedStaff = body; accounts[0] = { ...accounts[0], ...body }; return reply({ account: accounts[0] }); }
-      if (path === '/admin/events/event-1/registrations') return reply({ registrations: [], total: 0 });
+      if (path === '/admin/events/event-1/registrations') return reply({ registrations: [{
+        _id:'runner-1', bibNumber:'21K-001', runnerProfile:{fullName:'Nguyễn Minh Anh',email:'runner@example.test'},
+        categoryId:{name:'Trail 21 km'}, status:'CONFIRMED', logistics:{hasCheckedIn:false,raceKitIssued:false},
+      }], total: 1 });
       return reply({ message: 'Unexpected route ' + path }, 404);
     });
     await page.goto(base + '/organizer', { waitUntil: 'networkidle' });
@@ -65,7 +68,7 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     await page.getByRole('button', { name: 'Thông tin giải', exact: true }).click();
     await page.locator('select[name="status"]').selectOption('REGISTRATION_OPEN');
     await page.getByRole('button', { name: 'Lưu thông tin sự kiện' }).click();
-    await expect(page.locator('#main-content').getByRole('status')).toContainText('Đã lưu');
+    await expect(page.locator('#main-content > .organizer-page > .notice[role="status"]')).toHaveText('Đã lưu thông tin sự kiện.');
     assert.equal(changed.status, 'REGISTRATION_OPEN');
     await page.getByRole('button', { name: 'Nhân sự', exact: true }).click();
     await page.getByRole('button', { name: 'Thêm nhân sự', exact: true }).click();
@@ -85,6 +88,16 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
         await page.getByRole('button', { name: tab, exact: true }).click();
         await page.waitForTimeout(100);
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, tab + ' overflow at ' + width);
+        if (tab === 'Người chạy') {
+          const table = page.getByRole('region',{name:'Danh sách người chạy, cuộn ngang để xem thêm'});
+          await expect(table).toContainText('Vé đã xác nhận');
+          await table.focus();
+          await expect(table).toBeFocused();
+          if (width <= 390) {
+            await page.keyboard.press('ArrowRight');
+            await expect.poll(() => table.evaluate(node => node.scrollLeft)).toBeGreaterThan(0);
+          }
+        }
       }
     }
     await page.setViewportSize({ width: 1440, height: 1000 });

@@ -83,7 +83,7 @@ export default function SupportInbox() {
   const draft = ticket ? drafts[ticket._id] || '' : '';
 
   return <section className="support-inbox" aria-labelledby="support-inbox-heading">
-    <header className="support-inbox-heading"><div><p className="section-index">RUNFURTHER / CHĂM SÓC NGƯỜI CHẠY</p><h2 id="support-inbox-heading">Một lời nhắn. Một sự đồng hành.</h2><p>Tiếp nhận câu hỏi và phản hồi trực tiếp cho người dùng.</p></div><button type="button" className="quiet-button" disabled={busy || listLoading || detailLoading} onClick={() => { refreshList(value => value + 1); refreshDetail(value => value + 1); }}>Làm mới</button></header>
+    <header className="support-inbox-heading"><div><p className="section-index">Chăm sóc người chạy</p><h2 id="support-inbox-heading">Yêu cầu hỗ trợ</h2><p>Tiếp nhận câu hỏi và phản hồi trực tiếp cho người dùng.</p></div><button type="button" className="quiet-button" disabled={busy || listLoading || detailLoading} onClick={() => { refreshList(value => value + 1); refreshDetail(value => value + 1); }}>Làm mới</button></header>
     <div className="support-inbox-filters" aria-label="Lọc yêu cầu hỗ trợ">{Object.entries(statuses).map(([key, label]) => <button type="button" key={key} aria-pressed={status === key} disabled={busy} onClick={() => changeFilter(key)}>{label}</button>)}</div>
     <div className="support-inbox-grid">
       <aside className="support-inbox-ticket-list" aria-label="Danh sách yêu cầu" aria-busy={listLoading}>

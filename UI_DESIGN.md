@@ -227,3 +227,7 @@ Kiểm thử hồi quy mới: `npm run test:ui-polish`. Chạy trên production 
 - Nút chỉnh sửa hồ sơ, liên kết ví và liên kết phụ có vùng bấm ít nhất 44px. Liên kết ví có gạch chân để phân biệt với thống kê; số liệu dùng chữ số có chiều rộng đều.
 - Tên người chạy dài được xuống dòng trong thẻ; cột nội dung và BIB không ép trang tràn ngang. Hover liên kết phụ và màu avatar chỉ đổi màu/viền, không dịch chuyển vị trí.
 - Giữ hướng thiết kế Unslop đã duyệt: giấy sáng, xanh rừng, cam đất; ảnh giải/BIB và hành trình 3D là điểm nhấn. Không thêm hình minh họa hoặc thay thứ tự nội dung.
+
+## Hoàn thiện quản trị theo Unslop — 27/11/2026
+
+Giữ bảng màu và cấu trúc hiện có. Hộp thư hỗ trợ và tri thức trợ lý nâng chữ phụ lên tối thiểu 12px, nội dung phản hồi 14px, trường nhập mobile 16px. Nút lọc, phân trang và công tắc AI có vùng bấm 44px. Tab quản trị/giải chia hai cột trên mobile; nhãn theo tác vụ, bỏ mũi tên trang trí. Bảng người chạy nhận focus để cuộn ngang bằng bàn phím. Nhãn trạng thái tiếng Việt dùng chung, không thay giá trị API hay phân quyền.

@@ -649,3 +649,9 @@ Kiểm tra bản kết hợp trong checkout riêng không có `.env` thật, cà
 - `checkRunnerFlows.js` đạt: đăng nhập, đăng ký, lưu hồ sơ/avatar, QR vé, marketplace, tự điền checkout và reduced motion. `checkEventCalendar.js` đạt: tải/phân trang 22 giải, retry, điều khiển mobile, vòng lặp, một giải và trạng thái rỗng.
 
 Giới hạn: chưa kiểm chứng Safari/iOS hoặc bàn phím ảo trên thiết bị thật. Các mục nghiệp vụ U06 và rà soát đầy đủ giao diện quản trị vẫn là phần việc riêng.
+
+## Kiểm tra phần quản trị — 27/11/2026
+
+Nhãn trạng thái được tập trung tại `src/lib/statusLabels.js` và dùng cho vé, chỉnh sửa giải, kiểm duyệt và danh sách người chạy. Chỉ đổi cách hiển thị; không đổi API, thanh toán hay phân quyền.
+
+Production build đạt. Các bộ Playwright dùng API fixture đã đạt: hỗ trợ khách (retry, phản hồi, đóng/mở), tri thức trợ lý (nháp/xuất bản, xung đột phiên bản, lịch sử, công tắc AI), chủ giải (tạo giải/cự ly/nhân sự, bảng người chạy cuộn bằng bàn phím), quản trị nền tảng (duyệt quyền, kiểm duyệt và lịch sử). Cập nhật selector kiểm thử cũ để phân biệt thông báo lưu với trạng thái ngân hàng và bảng nạp ví với bảng SePay. Không kiểm thử trên dữ liệu thật; chưa xác nhận Safari/iOS thiết bị thật.

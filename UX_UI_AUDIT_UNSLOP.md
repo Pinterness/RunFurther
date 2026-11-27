@@ -119,3 +119,7 @@ Chín lượt tinh chỉnh: khoảng cách/vùng bấm → màu checkout → ico
 Tinh chỉnh U08/U11/U12 ở tài khoản/vé: nhãn theo tác vụ, bỏ mũi tên lặp, số liệu cùng độ rộng chữ số; liên kết phụ và chọn màu avatar không nhảy khi hover. Lịch giải dùng Lucide thay ký tự mũi tên. Bổ sung vùng bấm 44px cho chỉnh sửa hồ sơ/ví và xử lý xuống dòng tên/BIB dài. Không thay bảng màu, 3D hoặc thời gian tự chuyển giải.
 
 U06 vẫn tách riêng: cấu hình dịch vụ bổ sung theo giải là thay đổi nghiệp vụ. Các nhãn trang trí landing và những trang quản trị chưa được kiểm tra toàn diện vẫn nằm ngoài kết luận đợt này. Kết quả kiểm thử được ghi trong `TECHNOLOGY_AND_LOGIC.md`.
+
+### Bổ sung màn quản trị
+
+Đã xử lý chữ 9–11px, nút lọc nhỏ và radius không đồng nhất ở hộp thư/tri thức trợ lý; nâng vùng bấm công tắc AI, bỏ nhãn uppercase và tiêu đề chung chung. Tab quản trị mobile chia hai cột. Trạng thái giải/vé hiện tiếng Việt; bảng người chạy có focus để cuộn bằng bàn phím. Đây là phần tiếp tục U03/U08/U10/U11; U06 vẫn là nghiệp vụ riêng.

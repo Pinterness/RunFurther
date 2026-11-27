@@ -125,6 +125,23 @@ button:hover .avatar-orbit { transform:rotate(0deg); }
 .runner-tabs button { min-height:44px; font-size:14px; }
 .swatch { width:44px; height:44px; }
 .market-hero h1 { font-size:clamp(32px,3.5vw,44px); }
+/* Management screens share the account rhythm, with room for longer actions. */
+.organizer-page :is(.organizer-intro,.organizer-section-heading,.runner-page-heading)>div { min-width:0; }
+.organizer-page .organizer-event p,.organizer-hint,.organizer-intro p,.organizer-section-heading p { font-size:14px; }
+.organizer-page .organizer-staff>div:first-child { min-width:min(190px,100%); }
+.organizer-staff details { min-width:0; max-width:100%; }
+.organizer-staff summary,.volunteer-access summary { min-height:44px; padding:12px 0; font-size:14px; cursor:pointer; }
+.organizer-staff code,.organizer-page .notice { overflow-wrap:anywhere; }
+.organizer-page .organizer-table { font-size:14px; }
+.organizer-table-wrap:focus-visible { outline:2px solid var(--accent-strong); outline-offset:4px; }
+.organizer-table td:first-child { font-variant-numeric:tabular-nums; }
+.organizer-page .runner-toolbar .organizer-tabs { gap:8px 24px; }
+@media(max-width:520px) {
+  .organizer-page .runner-toolbar .organizer-tabs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:4px 16px; }
+  .organizer-page .runner-toolbar .organizer-tabs button { text-align:left; line-height:1.5; }
+  .organizer-page .organizer-row-actions { width:100%; }
+  .organizer-page .organizer-row-actions>button { white-space:normal; }
+}
 @media(max-width:800px) {
   .runner-onboarding { margin-top:24px; }
   .onboarding-story { padding:24px; }
