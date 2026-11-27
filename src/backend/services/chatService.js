@@ -15,6 +15,7 @@ const { isAtLeastAge } = require('../lib/age');
 const { MIN_AGE, inviteTarget, checkPair, assertSelfEligible, unavailable } = require('./chatGate');
 const { assertInviteQuota, assertDailyMessageQuota, messageQuotaError } = require('./chatLimits');
 const chatNotifier = require('./chatNotifier');
+const { isRealtimeOn } = require('./chatRealtimeSetting');
 const transaction = require('./transaction');
 const mongoose = require('mongoose');
 const { httpError } = require('../lib/errors');
@@ -143,16 +144,17 @@ function presentMessage(message, userId) {
  * @returns {Promise<{ consent: boolean, consentText: object, locked: boolean, eligible: boolean, realtime: boolean }>}
  */
 async function getMe(userId, { now = new Date() } = {}) {
-  const [member, runner] = await Promise.all([
+  const [member, runner, realtime] = await Promise.all([
     ChatMember.findOne({ userId }).select({ consentAt: 1, lockedAt: 1 }).lean(),
     RunnerProfile.findOne({ userId }).select({ dob: 1 }).lean(),
+    isRealtimeOn(),
   ]);
   return {
     consent: Boolean(member?.consentAt),
     consentText: CHAT_CONSENT,
     locked: Boolean(member?.lockedAt),
     eligible: isAtLeastAge(runner?.dob, MIN_AGE, now),
-    realtime: false, // P14 thay bằng công tắc thật
+    realtime,
   };
 }
 
@@ -185,6 +187,8 @@ async function giveConsent(userId, body, { now = new Date() } = {}) {
  */
 async function withdrawConsent(userId) {
   await ChatMember.updateOne({ userId }, { $set: { consentAt: null, consentVersion: null } });
+  // Đồng ý chat là điều kiện bắt tay socket, nên rút đồng ý thì ngắt luôn socket đang mở.
+  chatNotifier.disconnectUser(userId);
 }
 
 /**
@@ -296,7 +300,12 @@ async function acceptConversation(userId, rawId, { now = new Date() } = {}) {
     { $set: { status: 'ACTIVE' } },
     { new: true },
   ).lean();
-  if (accepted) return presentOne(accepted, userId);
+  if (accepted) {
+    // Báo người mời: socket đang nối thì trang của họ không polling, nên đây là cách họ thấy cuộc đã mở. Từ chối hay chặn
+    // thì không báo, vì người mời không được biết chuyện đó (spec 4.4).
+    chatNotifier.notify([accepted.requesterId], { conversationId: accepted._id, seq: accepted.lastSeq });
+    return presentOne(accepted, userId);
+  }
   // Một request khác vừa chấp nhận trước: đọc lại trạng thái mới.
   const latest = await findMine(userId, rawId);
   if (latest.status === 'ACTIVE') return presentOne(latest, userId);
@@ -488,7 +497,8 @@ function readConversationCursor({ before: rawBefore, beforeId } = {}) {
  *   - invites: lời mời người khác gửi tới mình, đang chờ trả lời.
  *   - chats: cuộc đã ACTIVE, cộng lời mời mình đã gửi (REQUEST hay DECLINED, giao diện ghi "Chưa được chấp nhận").
  * Lời mời mình đã từ chối không nằm ở hộp nào; bấm "Nhắn tin" với người đó sẽ được trỏ về cuộc này (T14).
- * @returns {Promise<{ conversations: object[], hasMore: boolean }>}
+ * `realtime` cho client đang mở /messages biết công tắc realtime đổi mà không phải tải lại trang.
+ * @returns {Promise<{ conversations: object[], hasMore: boolean, realtime: boolean }>}
  */
 async function listConversations(userId, query = {}) {
   const box = query.box ?? 'chats';
@@ -501,8 +511,8 @@ async function listConversations(userId, query = {}) {
   const filter = { participants: me, ...(cursor ? { $and: [boxFilter, cursor] } : boxFilter) };
   const rows = await Conversation.find(filter).sort({ lastMessageAt: -1, _id: -1 }).limit(CONVERSATION_PAGE + 1).lean();
   const shown = rows.slice(0, CONVERSATION_PAGE);
-  const people = await loadPeople(shown.map(row => otherOf(row, userId)));
-  return { conversations: shown.map(row => presentConversation(row, userId, people)), hasMore: rows.length > CONVERSATION_PAGE };
+  const [people, realtime] = await Promise.all([loadPeople(shown.map(row => otherOf(row, userId))), isRealtimeOn()]);
+  return { conversations: shown.map(row => presentConversation(row, userId, people)), hasMore: rows.length > CONVERSATION_PAGE, realtime };
 }
 
 /**

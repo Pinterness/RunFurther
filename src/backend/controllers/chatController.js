@@ -2,6 +2,7 @@
 const { handle } = require('../lib/asyncHandler');
 const chat = require('../services/chatService');
 const reports = require('../services/chatReports');
+const realtime = require('../services/chatRealtimeSetting');
 
 exports.me = handle(async (req, res) => {
   res.json(await chat.getMe(req.userId));
@@ -90,6 +91,15 @@ exports.send = handle(async (req, res) => {
 // Hai loại lỗi của chat mang thêm thông tin mà errorHandler chung không trả: 409 CHAT_CONVERSATION_EXISTS kèm
 // conversationId (để giao diện mở đúng cuộc đã có), và 429 kèm header Retry-After (số giây nên chờ). Lỗi khác đi tiếp
 // tới errorHandler chung.
+exports.realtimeSetting = handle(async (_req, res) => {
+  res.json({ setting: await realtime.presentRealtimeSetting() });
+});
+
+exports.updateRealtimeSetting = handle(async (req, res) => {
+  await realtime.setRealtime(req.body?.realtimeEnabled, req.userId);
+  res.json({ setting: await realtime.presentRealtimeSetting() });
+});
+
 exports.errors = (error, _req, res, next) => {
   if (error?.statusCode && error.retryAfter) res.set('Retry-After', String(error.retryAfter));
   if (error?.statusCode && error.conversationId) {

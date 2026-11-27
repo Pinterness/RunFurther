@@ -2,6 +2,8 @@
 // /messages (spec 4.3, plan Task 13.2): danh sách cuộc trò chuyện (Trò chuyện / Lời mời) và khung chat của cuộc đang mở.
 // Client component vì cần token. Danh sách tự làm mới 30 giây một lần khi tab đang hiện; khung chat tự hỏi tin mới
 // 5 giây một lần (ChatThread). Sửa theo phản biện 26-11: bỏ phản hồi danh sách cũ, mở liên kết ?c= qua API, giữ focus.
+// P14: khi công tắc realtime bật, trang nối Socket.IO; đang nối thì tắt cả hai nhịp polling, nhận tín hiệu thì làm mới
+// danh sách và lấy tin của khung đang mở. Mất socket thì polling tự chạy lại.
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -22,7 +24,12 @@ export default function MessagesPage() {
   const [openedByUser, setOpenedByUser] = useState(false);
   const [notice, setNotice] = useState('');
   const [me, setMe] = useState(null);
+  // Công tắc realtime theo server (GET /chat/me và mỗi lần tải danh sách), và số lần cần lấy bù của khung đang mở.
+  const [realtime, setRealtime] = useState(false);
+  const [syncKey, setSyncKey] = useState(0);
   const alive = useRef(true);
+  const selectedRef = useRef(null);
+  selectedRef.current = selected;
   // Số thứ tự request của từng hộp: phản hồi của lần tải cũ về muộn (ví dụ lượt làm mới 30 giây chạy trước lúc bấm
   // "Chấp nhận") thì bỏ qua, không ghi đè dữ liệu mới.
   const latest = useRef({ chats: 0, invites: 0 });
@@ -40,6 +47,7 @@ export default function MessagesPage() {
       const items = itemsRef.current[which];
       const data = await chat.listConversations(which, reset || !items.length ? undefined : items[items.length - 1]);
       if (!alive.current || ticket !== latest.current[which]) return;
+      if (typeof data.realtime === 'boolean') setRealtime(data.realtime);
       const merged = reset ? data.conversations : [...items, ...data.conversations.filter(item => !items.some(shown => shown.id === item.id))];
       itemsRef.current[which] = merged;
       setLists(current => ({ ...current, [which]: { items: merged, hasMore: data.hasMore, loading: false, error: '' } }));
@@ -52,11 +60,25 @@ export default function MessagesPage() {
     }
   }
   const refresh = () => { load('chats'); load('invites'); };
+  const live = chat.useChatSocket({
+    enabled: realtime,
+    onConnect: () => { refresh(); setSyncKey(key => key + 1); },
+    // Server chủ động ngắt: coi như realtime tắt tới lần tải danh sách kế tiếp (30 giây), lúc đó server cho biết công
+    // tắc đang bật hay tắt.
+    onServerClose: () => setRealtime(false),
+    onSignal: ({ conversationId }) => {
+      refresh();
+      chat.notifyChatChanged();
+      if (selectedRef.current?.id === conversationId) setSyncKey(key => key + 1);
+    },
+  });
+  const liveRef = useRef(false);
+  liveRef.current = live;
 
   useEffect(() => {
     if (!localStorage.getItem('rf_token')) { router.replace(loginHref('/messages')); return undefined; }
     alive.current = true;
-    chat.chatMe().then(data => { if (alive.current) setMe(data); }).catch(error => { if (error.status === 401) expired(); });
+    chat.chatMe().then(data => { if (alive.current) { setMe(data); setRealtime(data.realtime === true); } }).catch(error => { if (error.status === 401) expired(); });
     refresh();
     // Mở thẳng một cuộc từ liên kết /messages?c=<id> (ví dụ từ nút "Nhắn tin" ở P13.3), kể cả cuộc không nằm ở trang
     // đầu hay cuộc người nhận đã từ chối.
@@ -72,7 +94,7 @@ export default function MessagesPage() {
         else { setNotice('Không tìm thấy cuộc trò chuyện này.'); window.history.replaceState(null, '', '/messages'); }
       });
     }
-    const timer = setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, LIST_POLL_MS);
+    const timer = setInterval(() => { if (document.visibilityState === 'visible' && !liveRef.current) refresh(); }, LIST_POLL_MS);
     return () => { alive.current = false; clearInterval(timer); };
   }, []);
 
@@ -111,7 +133,7 @@ export default function MessagesPage() {
       <ConversationList box={box} onBox={setBox} lists={lists} selectedId={selected?.id} onOpen={open}
         onMore={(which, reset) => load(which, Boolean(reset))} />
       {selected
-        ? <ChatThread key={selected.id} conversation={selected} onChanged={changed} onBack={() => back()} onExpired={expired} focusOnOpen={openedByUser} />
+        ? <ChatThread key={selected.id} conversation={selected} live={live} syncKey={syncKey} onChanged={changed} onBack={() => back()} onExpired={expired} focusOnOpen={openedByUser} />
         : <section className="chat-panel chat-thread" aria-label="Khung trò chuyện"><div className="chat-empty-thread"><p>Chọn một cuộc trò chuyện để xem tin nhắn.</p></div></section>}
     </div>
   </div>;

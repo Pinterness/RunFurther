@@ -30,6 +30,9 @@ router.post('/conversations/:id/reports', chat.report);
 router.get('/admin/reports', requireSuperAdmin, chat.adminReports);
 router.post('/admin/reports/:id/resolve', requireSuperAdmin, chat.resolveReport);
 router.post('/admin/members/:reportId/unlock', requireSuperAdmin, chat.unlockMember);
+// Công tắc realtime (P14): chỉ Super Admin xem và đổi.
+router.get('/admin/realtime', requireSuperAdmin, chat.realtimeSetting);
+router.put('/admin/realtime', requireSuperAdmin, chat.updateRealtimeSetting);
 router.use(chat.errors);
 
 module.exports = router;
