@@ -187,6 +187,8 @@ async function giveConsent(userId, body, { now = new Date() } = {}) {
  */
 async function withdrawConsent(userId) {
   await ChatMember.updateOne({ userId }, { $set: { consentAt: null, consentVersion: null } });
+  // Đồng ý chat là điều kiện bắt tay socket, nên rút đồng ý thì ngắt luôn socket đang mở.
+  chatNotifier.disconnectUser(userId);
 }
 
 /**

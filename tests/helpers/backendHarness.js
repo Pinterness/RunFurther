@@ -17,10 +17,10 @@ const BANK_DIRECTORY_URL = 'https://api.vietqr.io/v2/banks';
  * @param {string} options.dbName Database name inside the in-memory replica set.
  * @param {boolean} [options.monitorCommands] Bật theo dõi lệnh MongoDB (sự kiện commandStarted của driver), để test
  *   kiểm được những lệnh nào đã được gửi đi, ví dụ chứng minh một chức năng chỉ đọc chứ không ghi.
- * @returns {{ start: Function, stop: Function, request: Function, createUser: Function }} Helpers.
+ * @returns {{ start: Function, stop: Function, request: Function, createUser: Function, baseUrl: Function, server: Function, addCleanup: Function }} Helpers.
  */
 function createBackendHarness({ app, dbName, monitorCommands = false }) {
-  const state = { replSet: null, server: null, baseUrl: '', nativeFetch: global.fetch, users: 0 };
+  const state = { replSet: null, server: null, baseUrl: '', nativeFetch: global.fetch, users: 0, cleanups: [] };
 
   // The bank directory is served from the bundled snapshot so tests never call VietQR.
   function stubBankDirectory(input, options) {
@@ -43,7 +43,9 @@ function createBackendHarness({ app, dbName, monitorCommands = false }) {
 
   async function stop() {
     global.fetch = state.nativeFetch;
-    if (state.server) {
+    // Việc dọn dẹp đăng ký thêm (ví dụ đóng lớp Socket.IO) chạy trước, khi server HTTP và MongoDB vẫn còn.
+    for (const cleanup of state.cleanups.splice(0).reverse()) await cleanup();
+    if (state.server?.listening) {
       await new Promise((resolve) => state.server.close(resolve));
     }
     await mongoose.disconnect();
@@ -100,8 +102,12 @@ function createBackendHarness({ app, dbName, monitorCommands = false }) {
 
   // Gốc URL của API (".../api"), cho test cần đọc header của phản hồi bằng fetch trực tiếp.
   const baseUrl = () => state.baseUrl;
+  // http.Server đang chạy, để test gắn thêm lớp realtime (Socket.IO) vào đúng server này.
+  const server = () => state.server;
+  // Đăng ký một việc dọn dẹp cho stop(); việc đăng ký sau chạy trước.
+  const addCleanup = cleanup => { state.cleanups.push(cleanup); };
 
-  return { start, stop, request, createUser, baseUrl };
+  return { start, stop, request, createUser, baseUrl, server, addCleanup };
 }
 
 module.exports = { createBackendHarness };

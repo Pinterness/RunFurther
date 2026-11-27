@@ -86,9 +86,18 @@ async function startServer() {
   const expiryTimer = setInterval(clean, 30000);
   expiryTimer.unref();
 
-  return app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server is running on port ${PORT}`);
   });
+  // Tin nhắn tức thì (P14): Socket.IO dùng chung cổng với API. Render gửi SIGTERM khi deploy: đóng socket trước để
+  // client biết ngay và quay về polling, chờ tối đa 5 giây rồi thoát.
+  const realtime = require('./realtime').attachRealtime(server);
+  process.once('SIGTERM', () => {
+    const exit = () => process.exit(0);
+    setTimeout(exit, 5000).unref();
+    realtime.close().then(exit, exit);
+  });
+  return server;
 }
 
 if (require.main === module) {
