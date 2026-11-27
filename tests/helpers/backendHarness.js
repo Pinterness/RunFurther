@@ -98,7 +98,10 @@ function createBackendHarness({ app, dbName, monitorCommands = false }) {
     };
   }
 
-  return { start, stop, request, createUser };
+  // Gốc URL của API (".../api"), cho test cần đọc header của phản hồi bằng fetch trực tiếp.
+  const baseUrl = () => state.baseUrl;
+
+  return { start, stop, request, createUser, baseUrl };
 }
 
 module.exports = { createBackendHarness };

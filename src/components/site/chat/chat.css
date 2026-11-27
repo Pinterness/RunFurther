@@ -1,0 +1,123 @@
+/* Trang /messages (P13). Chỉ dùng token chung trong globals.css, theo design system RunFurther (nhóm Chat). */
+.chat-shell { max-width: 1280px; margin: 0 auto; padding: 32px max(20px, env(safe-area-inset-left, 0px)) 48px max(20px, env(safe-area-inset-right, 0px)); box-sizing: border-box; }
+.chat-heading { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+.chat-heading h1 { font-size: 30px; line-height: 1.25; }
+.chat-layout { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: 20px; align-items: start; }
+.chat-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-panel); min-width: 0; }
+
+/* Danh sách cuộc trò chuyện */
+.chat-tabs { display: flex; border-bottom: 1px solid var(--border); }
+.chat-tab { flex: 1; min-height: 48px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 14px; font-weight: 600; line-height: 1.5; cursor: pointer; }
+.chat-tab[aria-selected="true"] { color: var(--foreground); border-bottom-color: var(--accent); }
+.chat-tab:focus-visible { outline: 2px solid var(--forest); outline-offset: -2px; }
+.chat-list { list-style: none; margin: 0; padding: 0; }
+.chat-row { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 12px 16px; border-top: 1px solid var(--border); color: inherit; text-decoration: none; transition: background-color var(--duration-fast); }
+.chat-list li:first-child .chat-row { border-top: 0; }
+/* Nền --background (không phải --surface-muted) để chữ phụ --muted vẫn đạt 4,69:1 khi hover hay đang chọn. */
+.chat-row:hover { background: var(--background); }
+.chat-row[aria-current="true"] { background: var(--background); box-shadow: inset 3px 0 0 var(--forest); }
+.chat-row:focus-visible { outline: 2px solid var(--forest); outline-offset: -2px; }
+.chat-row .runner-avatar { width: 40px; height: 40px; }
+.chat-row-main { flex: 1; min-width: 0; }
+.chat-row-name { display: block; font-weight: 600; }
+.chat-row-preview { display: block; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-row.is-unread .chat-row-name { font-weight: 700; }
+.chat-row.is-unread .chat-row-preview { color: var(--foreground); }
+.chat-row-side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.chat-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.chat-state { padding: 24px 16px; font-size: 13px; color: var(--muted); }
+.chat-state h2 { font-size: 16px; color: var(--foreground); margin-bottom: 6px; }
+.chat-more { display: block; width: 100%; min-height: 44px; border: 0; border-top: 1px solid var(--border); background: transparent; color: var(--forest); font-size: 13px; font-weight: 600; line-height: 1.5; cursor: pointer; }
+
+/* Khung chat */
+.chat-thread { display: flex; flex-direction: column; min-height: 520px; }
+.chat-thread-head { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.chat-thread-head h2 { font-size: 16px; line-height: 1.5; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-back { display: none; min-height: 44px; border: 0; background: transparent; color: var(--forest); font-size: 13px; font-weight: 600; line-height: 1.5; cursor: pointer; padding: 0 8px 0 0; }
+.chat-log { flex: 1; display: flex; flex-direction: column; gap: 8px; padding: 16px; max-height: 60vh; overflow-y: auto; }
+.chat-bubble { max-width: 75%; padding: 8px 12px; border-radius: var(--radius-panel); white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-bubble.is-other { align-self: flex-start; background: var(--surface); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+.chat-bubble.is-mine { align-self: flex-end; background: var(--forest); color: #fff; border-bottom-right-radius: 4px; }
+.chat-bubble.is-pending { opacity: .7; }
+.chat-meta { font-size: 12px; color: var(--muted); }
+.chat-meta.is-mine { align-self: flex-end; }
+.chat-meta.is-failed { color: var(--error-text, #953619); }
+.chat-link-button { padding: 0; margin-left: 8px; border: 0; background: none; color: var(--forest); font-size: 12px; font-weight: 600; line-height: 1.5; text-decoration: underline; cursor: pointer; }
+.chat-older { align-self: center; }
+.chat-compose { border-top: 1px solid var(--border); padding: 12px 16px; display: grid; gap: 8px; }
+/* Ô nhập dùng kiểu ô nhập chung của app (globals.css); viền đậm hơn #829278 để đạt 3:1 trên nền surface. */
+.chat-compose-row { display: flex; gap: 8px; align-items: flex-end; }
+.chat-compose textarea { flex: 1; min-width: 0; min-height: 44px; max-height: 160px; resize: vertical; border-color: #829278; font-size: 14px; line-height: 1.6; }
+.chat-compose textarea:focus-visible { outline: 2px solid var(--forest); outline-offset: 2px; border-color: var(--forest); }
+.chat-compose textarea:disabled { cursor: not-allowed; background: var(--surface-muted); }
+.chat-compose-hint { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); }
+.chat-locked { padding: 12px 16px; background: var(--surface-muted); border-radius: var(--radius-panel); font-size: 13px; }
+.chat-error { color: var(--error-text, #953619); font-size: 13px; }
+.chat-empty-thread { flex: 1; display: grid; place-items: center; padding: 48px 24px; text-align: center; color: var(--muted); }
+
+/* Thẻ lời mời */
+.chat-invite { margin: 16px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-panel); display: grid; gap: 12px; }
+.chat-invite-who { font-weight: 600; }
+.chat-invite-first { margin: 0; padding: 8px 12px; background: var(--background); border-radius: var(--radius-panel); white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-invite-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.chat-button-ghost { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 12px 20px; border-radius: var(--radius-control); border: 1px solid #829278; background: var(--surface); color: var(--foreground); font-size: 13px; font-weight: 600; line-height: 1.5; cursor: pointer; }
+.chat-block { margin-left: auto; padding: 0 4px; min-height: 44px; border: 0; background: none; color: var(--error-text, #953619); font-size: 13px; font-weight: 600; line-height: 1.5; text-decoration: underline; cursor: pointer; }
+.chat-confirm-thread { margin: 16px; }
+.chat-button-danger { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 12px 20px; border: 0; border-radius: var(--radius-control); background: var(--error-text, #953619); color: #fff; font-size: 13px; font-weight: 600; line-height: 1.5; cursor: pointer; }
+.chat-button-danger:disabled { opacity: .6; cursor: not-allowed; }
+.chat-item { display: contents; }
+.chat-thread-head h2:focus-visible, .chat-confirm:focus-visible { outline: 2px solid var(--forest); outline-offset: 2px; }
+/* Cỡ 12px và không giãn chữ lấy từ luật chung trong site.css, cùng kiểu nhãn "Tài khoản RunFurther" của trang tài khoản. */
+.chat-shell .section-index { font-weight: 500; margin-bottom: 16px; }
+.chat-confirm { padding: 12px; background: var(--error-surface, #fff0e9); border-radius: var(--radius-control); display: grid; gap: 8px; font-size: 13px; }
+
+@media (hover: none) { .chat-keys { display: none; } }
+@media (max-width: 760px) {
+  /* Chừa chỗ cho nút nổi "Hỗ trợ" ở góc dưới, để nó không che nút "Gửi". */
+  .chat-shell { padding-bottom: 96px; }
+  .chat-layout { grid-template-columns: minmax(0, 1fr); }
+  .chat-layout.has-open .chat-list-panel { display: none; }
+  .chat-layout:not(.has-open) .chat-thread { display: none; }
+  .chat-back { display: inline-flex; align-items: center; }
+  .chat-bubble { max-width: 88%; }
+}
+@media (prefers-reduced-motion: reduce) { .chat-row { transition: none; } }
+
+/* P13.3: hộp soạn lời mời trên hồ sơ, phần Tin nhắn trong tab Cộng đồng */
+.community-message { margin: 20px 0; }
+.community-message-hint { font-size: 13px; color: var(--muted); }
+.chat-invite-composer { display: grid; gap: 8px; max-width: 640px; padding: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-panel); }
+.chat-invite-composer h2 { font-size: 16px; line-height: 1.5; }
+.chat-invite-composer label { font-size: 13px; font-weight: 600; }
+.chat-invite-composer textarea { width: 100%; box-sizing: border-box; border-color: #829278; resize: vertical; }
+.chat-invite-help { font-size: 13px; color: var(--muted); }
+.chat-settings { margin-top: 32px; }
+.chat-settings-on { display: grid; gap: 12px; justify-items: start; }
+.chat-blocks-title { font-size: 16px; margin: 20px 0 8px; }
+.chat-blocks { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.chat-blocks li { display: flex; align-items: center; gap: 12px; }
+.chat-blocks-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+
+/* P15.2: hộp báo cáo tin trong khung chat */
+.chat-report { align-self: stretch; display: grid; gap: 8px; padding: 12px; background: var(--error-surface, #fff0e9); border-radius: var(--radius-panel); font-size: 13px; }
+.chat-report:focus-visible { outline: 2px solid var(--forest); outline-offset: 2px; }
+.chat-report-title { font-weight: 600; }
+.chat-report-quote { margin: 0; padding: 8px 12px; background: var(--surface); border-radius: var(--radius-control); white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-report form { display: grid; gap: 8px; }
+.chat-report-reasons { border: 0; margin: 0; padding: 0; display: grid; gap: 4px; }
+.chat-report-reasons legend { font-weight: 600; margin-bottom: 4px; }
+.chat-report-reasons label { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.chat-report textarea { width: 100%; box-sizing: border-box; border-color: #829278; }
+
+/* Hàng chờ báo cáo cho Super Admin (/admin/messages) */
+.chat-admin { max-width: 760px; }
+.chat-admin-head { padding: 16px 20px 8px; }
+.chat-admin-head h2 { font-size: 20px; line-height: 1.3; }
+.chat-admin-head p { color: var(--muted); font-size: 13px; margin-top: 4px; }
+.chat-admin-body { padding: 16px 20px 20px; display: grid; gap: 12px; }
+.chat-admin-body:focus-visible { outline: 2px solid var(--forest); outline-offset: -2px; }
+.chat-admin-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.chat-admin-item { display: grid; gap: 8px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-panel); font-size: 13px; }
+.chat-admin-people { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.chat-admin-reason { font-weight: 600; }
+.chat-admin-item .chat-report-quote { background: var(--background, #f6f4ef); }

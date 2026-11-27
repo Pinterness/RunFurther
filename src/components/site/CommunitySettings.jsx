@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Modal from './Modal';
+import ChatSettings from './chat/ChatSettings';
 import { api } from '../../lib/clientApi';
 import { bestTimeEntries, loginHref } from '../../lib/communityClient';
 import './community.css';
@@ -130,9 +131,10 @@ export default function CommunitySettings({ onOpenRunnerProfile }) {
     {dangerZone}
   </>;
 
-  return <section className="community-settings" aria-labelledby="community-settings-title">
+  // Phần Tin nhắn (P13.3) nằm ngay dưới hồ sơ cộng đồng, cùng tab.
+  return <><section className="community-settings" aria-labelledby="community-settings-title">
     <div className="section-heading"><h2 id="community-settings-title">Hồ sơ cộng đồng</h2><p>Hồ sơ giúp những người chạy khác tìm thấy bạn, và chỉ thành viên đã đăng nhập mới xem được. Họ tên, avatar, tên hồ sơ, lời giới thiệu và tháng tham gia luôn hiện; câu lạc bộ và thành tích chỉ hiện khi bạn bật.</p></div>
     {error && <p role="alert" className="notice notice-error">{error}</p>}{notice && <p role="status" tabIndex={-1} ref={noticeRef} className="notice">{notice}</p>}
     {body}
-  </section>;
+  </section><ChatSettings /></>;
 }
