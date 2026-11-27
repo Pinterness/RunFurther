@@ -275,6 +275,11 @@ async function checkUnslopText(page, path) {
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       assert.ok(overflow <= 0, `header ở ${width}px cuộn ngang ${overflow}px`);
     }
+    // Ở bề rộng tên bị ẩn (801–900px và màn điện thoại), nút tài khoản vẫn có tên đầy đủ cho trình đọc màn hình.
+    for (const width of [850, 400, 1280]) {
+      await page.setViewportSize({ width, height: 800 });
+      await expect(page.getByRole('button', { name: /Nguyễn Hoàng Bảo Ngọc Trâm Anh/ })).toBeVisible();
+    }
 
     assert.deepEqual(errors, []);
     console.log('PASS: khách chuyển tới /login, chưa đủ tuổi thấy giải thích, ô đồng ý không tick sẵn và khóa nút bật, PUT gửi profile-v1, focus về dòng thông báo, chỉ gửi handle khi đổi, đổi handle, xem trước thành tích đủ thời gian tốt nhất, hồ sơ đang ẩn khi chủ chưa đủ tuổi, hết phiên trong tab chuyển tới đăng nhập, tắt hồ sơ có hộp xác nhận, lỗi xóa hiện trong hộp và DELETE 204, danh sách trống, phân trang, tìm theo tên và "Thử lại" đúng từ khóa, 401 về muộn không kéo người đã rời trang, tiêu đề trang, HTML trong họ tên hiện là chữ, khối thành tích, 404, 400px không cuộn ngang và tab 2 × 2, header 801–1160px không cuộn ngang với tên dài (API giả).');
