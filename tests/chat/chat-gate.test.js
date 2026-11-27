@@ -25,7 +25,7 @@ const setDob = (user, dob) => RunnerProfile.updateOne({ userId: user.id }, { $se
 before(harness.start);
 after(harness.stop);
 
-test('GET /chat/me của người mới: chưa đồng ý, chưa khóa, có văn bản đồng ý chat-v1, realtime tắt', async () => {
+test('GET /chat/me của người mới: chưa đồng ý, chưa khóa, có văn bản đồng ý chat-v1, realtime bật vì chưa ai tắt công tắc', async () => {
   const adult = await member({ consent: false, profile: false });
   const { status, body } = await request('/chat/me', { as: adult });
   assert.equal(status, 200);
@@ -33,7 +33,7 @@ test('GET /chat/me của người mới: chưa đồng ý, chưa khóa, có văn
   assert.equal(body.consent, false);
   assert.equal(body.locked, false);
   assert.equal(body.eligible, true);
-  assert.equal(body.realtime, false);
+  assert.equal(body.realtime, true);
   assert.equal(body.consentText.version, 'chat-v1');
   assert.match(body.consentText.text, /12 tháng/);
 

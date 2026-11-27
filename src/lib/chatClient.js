@@ -46,6 +46,8 @@ export const reportMessage = (id, seq, reason, note) => post(conv(id) + '/report
 export const adminReports = status => api('/chat/admin/reports?status=' + encodeURIComponent(status));
 export const resolveReport = (reportId, action) => post('/chat/admin/reports/' + encodeURIComponent(reportId) + '/resolve', { action });
 export const unlockMember = reportId => post('/chat/admin/members/' + encodeURIComponent(reportId) + '/unlock');
+export const realtimeSetting = () => api('/chat/admin/realtime');
+export const updateRealtimeSetting = realtimeEnabled => api('/chat/admin/realtime', { method: 'PUT', body: JSON.stringify({ realtimeEnabled }) });
 
 // Mã riêng cho mỗi lần bấm "Gửi". Gửi lại một tin lỗi phải dùng lại đúng mã này, để server nhận ra và không tạo tin trùng.
 export const newClientMessageId = () => crypto.randomUUID();

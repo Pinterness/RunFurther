@@ -121,3 +121,16 @@
 .chat-admin-people { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .chat-admin-reason { font-weight: 600; }
 .chat-admin-item .chat-report-quote { background: var(--background, #f6f4ef); }
+/* Công tắc realtime trong /admin/messages (P14), cùng kiểu với công tắc AI của trợ lý. */
+.chat-realtime { margin-bottom: 24px; }
+.chat-realtime-row { display: flex; align-items: center; gap: 12px; }
+.chat-realtime-state { font-weight: 600; }
+.chat-switch { position: relative; flex-shrink: 0; width: 64px; height: 44px; border-radius: 999px; border: 1px solid var(--border); background: #e9ece5; cursor: pointer; transition: background .2s; }
+.chat-switch span { position: absolute; top: 7px; left: 7px; width: 28px; height: 28px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .2s; }
+.chat-switch.is-on { background: var(--forest); border-color: var(--forest); }
+.chat-switch.is-on span { transform: translateX(20px); }
+.chat-switch:focus-visible { outline: 2px solid var(--forest); outline-offset: 3px; }
+.chat-switch:disabled { opacity: .6; cursor: wait; }
+.chat-realtime-history-title { font-size: 14px; font-weight: 600; }
+.chat-realtime-history { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: 13px; }
+@media (prefers-reduced-motion: reduce) { .chat-switch, .chat-switch span { transition: none; } }

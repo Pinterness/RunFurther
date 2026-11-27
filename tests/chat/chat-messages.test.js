@@ -496,7 +496,7 @@ test('danh sách cuộc trò chuyện: chia hộp chats/invites, mới nhất tr
   // gửi thấy "Chưa được chấp nhận" cho cả hai; phản biện 26-11: trả DECLINED thì mở DevTools là biết mình bị từ chối).
   assert.deepEqual((await list(declinedByMe)).body.conversations.map(c => [c.id, c.status]), [[idDeclined, 'REQUEST']]);
 
-  const allowed = new Set(['conversations', 'hasMore', 'id', 'status', 'isRequester', 'other', 'lastMessage', 'lastMessageAt', 'unread', 'displayName', 'avatarTheme', 'handle', 'seq', 'mine', 'text']);
+  const allowed = new Set(['conversations', 'hasMore', 'realtime', 'id', 'status', 'isRequester', 'other', 'lastMessage', 'lastMessageAt', 'unread', 'displayName', 'avatarTheme', 'handle', 'seq', 'mine', 'text']);
   for (const body of [chats.body, invites.body]) {
     assert.ok([...keysDeep(body)].every(k => allowed.has(k)), [...keysDeep(body)].join());
     for (const other of [sentByMe, toMe, declinedByMe, active, me]) assert.ok(!JSON.stringify(body).includes(other.id));
