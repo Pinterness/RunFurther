@@ -111,3 +111,11 @@ Nhánh: `fix/unslop-ui-polish`. Hướng thiết kế giữ nguyên năm điểm
 Chín lượt tinh chỉnh: khoảng cách/vùng bấm → màu checkout → icon hành động → nhãn tác vụ → cỡ chữ → bố cục mobile → focus/radius/selection → giữ ảnh và 3D sẵn có → giảm chuyển động phụ. Không sinh ảnh mới, không đổi số tiền hay phân quyền. Kiểm thử và giới hạn được ghi tại `TECHNOLOGY_AND_LOGIC.md`.
 
 Ảnh sau sửa, cùng dữ liệu mô phỏng: [hero mobile](docs/ux/unslop-2026-11-19/after-hero-mobile.png), [lịch giải mobile](docs/ux/unslop-2026-11-19/after-calendar-mobile.png), [checkout desktop](docs/ux/unslop-2026-11-19/after-checkout-desktop.png). Carousel được tạm dừng khi chụp để không ghi lại giữa chuyển cảnh; mặc định sản phẩm vẫn tự chuyển 2 giây.
+
+## Tiếp tục — 27/11/2026
+
+Đã đối chiếu GitHub và đưa `origin/main` tại `d42871e` (bản sửa câu hỏi trợ lý và Mongoose) vào nhánh `fix/unslop-ui-polish`. PR #12 tiếp tục chứa toàn bộ phần giao diện để review.
+
+Tinh chỉnh U08/U11/U12 ở tài khoản/vé: nhãn theo tác vụ, bỏ mũi tên lặp, số liệu cùng độ rộng chữ số; liên kết phụ và chọn màu avatar không nhảy khi hover. Lịch giải dùng Lucide thay ký tự mũi tên. Bổ sung vùng bấm 44px cho chỉnh sửa hồ sơ/ví và xử lý xuống dòng tên/BIB dài. Không thay bảng màu, 3D hoặc thời gian tự chuyển giải.
+
+U06 vẫn tách riêng: cấu hình dịch vụ bổ sung theo giải là thay đổi nghiệp vụ. Các nhãn trang trí landing và những trang quản trị chưa được kiểm tra toàn diện vẫn nằm ngoài kết luận đợt này. Kết quả kiểm thử được ghi trong `TECHNOLOGY_AND_LOGIC.md`.

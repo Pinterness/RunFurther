@@ -219,3 +219,11 @@ Kiểm tra 1440, 1024, 768, 390, 360px; không tràn ngang; đăng nhập/đăng
 - Card vé/marketplace hover đổi viền và bóng nhẹ; không nâng cả thẻ. Hero và carousel vẫn giữ chuyển động đặc trưng; reduced motion giữ đầy đủ HTML.
 
 Kiểm thử hồi quy mới: `npm run test:ui-polish`. Chạy trên production preview dùng `scripts/uiPolishSsr.cjs` để mô phỏng SSR; `WEB_TEST_URL` trỏ preview local. Ảnh nằm ở `artifacts/ui-polish/`. Chi tiết chuẩn bị preview xem phần cập nhật trong `TECHNOLOGY_AND_LOGIC.md`.
+
+### Tiếp tục tinh chỉnh — 27/11/2026
+
+- Lịch giải dùng mũi tên Lucide 18px, stroke 1.5; giữ nhãn cho trình đọc màn hình, chuyển giải bằng bàn phím và chu kỳ 2 giây.
+- Bỏ mũi tên trang trí trên đăng nhập, đăng ký, tài khoản và nút xem vé. Nhãn tài khoản dùng câu thường, tiêu đề “Vé tham gia giải”, “Thông tin người chạy”, “Ảnh đại diện” để nêu rõ tác vụ.
+- Nút chỉnh sửa hồ sơ, liên kết ví và liên kết phụ có vùng bấm ít nhất 44px. Liên kết ví có gạch chân để phân biệt với thống kê; số liệu dùng chữ số có chiều rộng đều.
+- Tên người chạy dài được xuống dòng trong thẻ; cột nội dung và BIB không ép trang tràn ngang. Hover liên kết phụ và màu avatar chỉ đổi màu/viền, không dịch chuyển vị trí.
+- Giữ hướng thiết kế Unslop đã duyệt: giấy sáng, xanh rừng, cam đất; ảnh giải/BIB và hành trình 3D là điểm nhấn. Không thêm hình minh họa hoặc thay thứ tự nội dung.

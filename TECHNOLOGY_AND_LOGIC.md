@@ -632,3 +632,20 @@ npm run test:ui-polish
 Ảnh được lưu vào `artifacts/ui-polish/` và không commit dữ liệu test vào ứng dụng. Các bộ hồi quy liên quan: `test:event-calendar`, `test:support-chat`, `test:trail-scene`, `test:runner-ui`, `test:layout`; tất cả dùng API fixture. Không thay kiểm thử thanh toán thật. Chưa xác nhận trên iOS/Safari và bàn phím ảo thiết bị thật.
 
 **Phần cần làm tiếp:** U06 — dịch vụ ảnh/Pasta Party đang có giá cố định. Đề xuất cấu hình dịch vụ theo từng chủ giải, lưu giá tại thời điểm tạo đơn và chỉ bán mục đang bật; không thay nghiệp vụ này trong nhánh sửa giao diện.
+
+## Tiếp tục nhánh giao diện sau khi kiểm tra GitHub — 27/11/2026
+
+Đã fetch GitHub và đồng bộ `origin/main` tại `d42871e` vào `fix/unslop-ui-polish` bằng merge commit `e45b13e`, không có xung đột. Bản main này gồm các sửa lỗi truy vấn giải của trợ lý (#13–#16) và Mongoose 8.24.11 (#17). PR giao diện #12 được cập nhật trên cùng nhánh.
+
+Đợt này tiếp tục phần trình bày tài khoản/vé, đăng nhập/đăng ký và icon lịch giải; không đổi hợp đồng API, giá, phân quyền hay environment. Chi tiết thiết kế trong `UI_DESIGN.md`. Ảnh [tài khoản mobile](docs/ux/unslop-2026-11-27/account-mobile.png) dùng dữ liệu fixture.
+
+Kiểm tra bản kết hợp trong checkout riêng không có `.env` thật, cài đúng lockfile bằng npm 11.21.0:
+
+- Backend: 111/111 đạt, dùng MongoDB tạm.
+- Trợ lý: 220/220 đạt, bao gồm các kiểm thử câu hỏi giải mới từ main.
+- Camera/nhân vật/cinematic: 13/13 đạt.
+- Production build thành công; `npm audit --omit=dev --audit-level=high` báo 0 lỗ hổng tại thời điểm chạy.
+- UI polish đạt ở 1440/1024/768/390/360px, không page error hoặc tràn ngang. Bổ sung kiểm tra tài khoản, vùng bấm, mở vé/Escape/trả focus, chuyển sang form hồ sơ. Các request browser/SSR được mô phỏng, không ghi dữ liệu thật.
+- `checkRunnerFlows.js` đạt: đăng nhập, đăng ký, lưu hồ sơ/avatar, QR vé, marketplace, tự điền checkout và reduced motion. `checkEventCalendar.js` đạt: tải/phân trang 22 giải, retry, điều khiển mobile, vòng lặp, một giải và trạng thái rỗng.
+
+Giới hạn: chưa kiểm chứng Safari/iOS hoặc bàn phím ảo trên thiết bị thật. Các mục nghiệp vụ U06 và rà soát đầy đủ giao diện quản trị vẫn là phần việc riêng.

@@ -106,6 +106,23 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
       if ([1440,390].includes(width)) await screenshot('events');
       role='runner';
       await page.evaluate(user=>{localStorage.setItem('rf_token','ui-polish-fixture');localStorage.setItem('rf_user',JSON.stringify(user));},userFor(role));
+      await page.goto(base+'/account',{ waitUntil:'networkidle' });
+      await expect(page.locator('.runner-ticket')).toHaveCount(1);
+      await overflow();
+      for (const selector of ['.cover-edit','.runner-metrics a','.side-link']) {
+        for (const box of await page.locator(selector).all()) {
+          assert.ok((await box.boundingBox()).height >= 44, 'Account touch target too short: '+selector);
+        }
+      }
+      if ([1440,390].includes(width)) await screenshot('account');
+      await page.getByRole('button',{name:'Xem vé',exact:true}).click();
+      await expect(page.getByRole('dialog')).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('button',{name:'Xem vé',exact:true})).toBeFocused();
+      await page.getByRole('button',{name:'Chỉnh sửa hồ sơ',exact:true}).click();
+      await expect(page.locator('#profile-name')).toHaveValue('Nguyễn Minh Anh');
+      await overflow();
+      if ([1440,390].includes(width)) await screenshot('profile');
       await page.goto(base+'/events/dalat-forest/register',{ waitUntil:'networkidle' });
       await expect(page.locator('#checkout-name')).toHaveValue('Nguyễn Minh Anh');
       await expect(page.getByLabel('Email nhận vé *',{exact:true})).toHaveValue('runner@example.com');

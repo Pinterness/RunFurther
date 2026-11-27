@@ -114,7 +114,7 @@ export default function SiteHeader() {
             <button onClick={logout}>Đăng xuất</button>
           </div>}
         </div> : <>
-          <Link className="header-login" href="/login">Đăng nhập<span className="link-arrow" aria-hidden="true">↗</span></Link>
+          <Link className="header-login" href="/login">Đăng nhập</Link>
           <Link className="header-register" href="/register">Tham gia ngay</Link>
         </>}
         <button ref={menuButtonRef} className={`menu-toggle ${menuOpen ? 'is-open' : ''}`} aria-label={menuOpen ? 'Đóng menu' : 'Mở menu'} aria-expanded={menuOpen} aria-controls="site-navigation" onClick={() => { setMenuOpen(!menuOpen); setAccountOpen(false); }}><span /><span /></button>
