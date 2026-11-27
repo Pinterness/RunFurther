@@ -359,7 +359,7 @@ async function checkRealtime(browser) {
   };
   const messages = { c1: [{ seq: 1, mine: false, text: 'Tin đầu', createdAt: at(40) }], c2: [{ seq: 1, mine: false, text: 'Tin cuộc hai', createdAt: at(30) }] };
   const lastMessage = id => { const last = messages[id][messages[id].length - 1]; return { seq: last.seq, mine: last.mine, text: last.text }; };
-  let realtime = true, refuse = false, lists = 0;
+  let realtime = true, refuse = false, lists = 0, failNextPoll = false;
   const polls = [], auths = [], sockets = [];
   const pollsOf = id => polls.filter(p => p === id).length;
   const openSockets = () => sockets.filter(s => s.open).length;
@@ -386,6 +386,7 @@ async function checkRealtime(browser) {
       const after = url.searchParams.get('afterSeq');
       if (after === null) return reply({ messages: messages[match[1]], hasMore: false });
       polls.push(match[1]);
+      if (failNextPoll) { failNextPoll = false; return reply({ message: 'Máy chủ đang khởi động lại.' }, 503); }
       return reply({ messages: messages[match[1]].filter(m => m.seq > Number(after)), hasMore: false });
     }
     return reply({ message: 'Không có dữ liệu giả cho ' + path }, 404);
@@ -439,15 +440,36 @@ async function checkRealtime(browser) {
   assert.equal(pollsOf('c1'), beforeOther.c1);
   assert.equal(pollsOf('c2'), beforeOther.c2);
 
+  // Lấy bù sau tín hiệu bị lỗi (Render đang khởi động lại): socket vẫn nối nên không có polling, trang phải tự thử lại.
+  failNextPoll = true;
+  messages.c1.push({ seq: 3, mine: false, text: 'Tin sau lỗi 503', createdAt: at(42) });
+  signal({ conversationId: 'c1', seq: 3 });
+  await expect.poll(() => failNextPoll).toBe(false);
+  await tick(6000);
+  await expect(log.locator('.chat-bubble', { hasText: /Tin sau lỗi 503$/ })).toBeVisible();
+
+  // Server chủ động ngắt (admin tắt công tắc rồi bật lại): trang về polling, không bỏ cuộc; lần làm mới danh sách kế
+  // tiếp báo realtime vẫn bật thì nối lại.
+  const beforeKick = auths.length;
+  sockets.filter(s => s.open).at(-1).ws.send('41');
+  await expect.poll(openSockets).toBe(0);
+  const kickedPolls = polls.length;
+  await tick(10000);
+  assert.ok(polls.length >= kickedPolls + 1, 'bị server ngắt thì polling chạy lại');
+  await tick(31000);
+  await expect.poll(() => auths.length).toBe(beforeKick + 1);
+  await expect.poll(openSockets).toBe(1);
+
   // Tab ẩn thì đóng socket và không polling; hiện lại thì nối lại và lấy bù tin lỡ trong lúc ẩn.
+  const beforeHide = auths.length;
   await setVisible(false);
   await expect.poll(openSockets).toBe(0);
   const hiddenPolls = polls.length;
   await tick(20000);
   assert.equal(polls.length, hiddenPolls, 'tab ẩn thì không polling');
-  messages.c1.push({ seq: 3, mine: false, text: 'Tin lúc tab ẩn', createdAt: at(43) });
+  messages.c1.push({ seq: 4, mine: false, text: 'Tin lúc tab ẩn', createdAt: at(43) });
   await setVisible(true);
-  await expect.poll(() => auths.length).toBe(2);
+  await expect.poll(() => auths.length).toBe(beforeHide + 1);
   await expect(log.locator('.chat-bubble', { hasText: /Tin lúc tab ẩn$/ })).toBeVisible();
   await page.clock.runFor(1000);
   const liveAgain = polls.length;

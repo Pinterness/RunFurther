@@ -110,6 +110,22 @@ test('tín hiệu tới khi tin đã lưu: lấy afterSeq ngay là có tin; gử
   assert.equal(got.length, 1);
 });
 
+test('người mời nhận tín hiệu khi lời mời được chấp nhận; bị từ chối hay bị chặn thì không biết', async () => {
+  // Socket đang nối thì trang tắt polling, nên tín hiệu là cách duy nhất để người mời thấy cuộc đã mở mà không tải lại.
+  const invite = async (a, b) => (await request('/chat/invites', { method: 'POST', as: a, body: { handle: b.handle, text: 'chào', clientMessageId: uuid() } })).body.conversation.id;
+  const a = await member(), b = await member(), c = await member(), d = await member();
+  const sockA = await connect(a.token);
+  const got = record(sockA);
+  const accepted = await invite(a, b);
+  assert.equal((await request(`/chat/conversations/${accepted}/accept`, { method: 'POST', as: b })).status, 200);
+  const declined = await invite(a, c);
+  assert.equal((await request(`/chat/conversations/${declined}/decline`, { method: 'POST', as: c })).status, 200);
+  const blocked = await invite(a, d);
+  assert.equal((await request(`/chat/conversations/${blocked}/block`, { method: 'POST', as: d })).status, 204);
+  await settle();
+  assert.deepEqual(got, [{ conversationId: accepted, seq: 1 }]);
+});
+
 test('người gửi mở tab thứ hai cũng nhận tín hiệu', async () => {
   const { a, id } = await pair();
   const tab2 = await connect(a.token);

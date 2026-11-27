@@ -300,7 +300,12 @@ async function acceptConversation(userId, rawId, { now = new Date() } = {}) {
     { $set: { status: 'ACTIVE' } },
     { new: true },
   ).lean();
-  if (accepted) return presentOne(accepted, userId);
+  if (accepted) {
+    // Báo người mời: socket đang nối thì trang của họ không polling, nên đây là cách họ thấy cuộc đã mở. Từ chối hay chặn
+    // thì không báo, vì người mời không được biết chuyện đó (spec 4.4).
+    chatNotifier.notify([accepted.requesterId], { conversationId: accepted._id, seq: accepted.lastSeq });
+    return presentOne(accepted, userId);
+  }
   // Một request khác vừa chấp nhận trước: đọc lại trạng thái mới.
   const latest = await findMine(userId, rawId);
   if (latest.status === 'ACTIVE') return presentOne(latest, userId);

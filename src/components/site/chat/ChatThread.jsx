@@ -26,7 +26,7 @@ export default function ChatThread({ conversation, onChanged, onBack, onExpired,
   const messagesRef = useRef([]);
   const sendingRef = useRef(false), alive = useRef(true), markedRef = useRef(0);
   // Lấy bù theo tín hiệu socket: chỉ một request mỗi lúc; tín hiệu tới giữa chừng thì lấy thêm một lượt sau đó.
-  const catchingRef = useRef(false), againRef = useRef(false);
+  const catchingRef = useRef(false), againRef = useRef(false), retryRef = useRef(null);
   const logRef = useRef(null), headingRef = useRef(null), inputRef = useRef(null), confirmRef = useRef(null), keepScroll = useRef(null);
 
   // Người nhận trả lời bằng thẻ lời mời, kể cả khi đã từ chối trước đó (đổi ý thì vẫn chấp nhận được, spec T14).
@@ -42,7 +42,7 @@ export default function ChatThread({ conversation, onChanged, onBack, onExpired,
     return false;
   }
 
-  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; clearTimeout(retryRef.current); }; }, []);
   // Mở cuộc từ danh sách: đưa focus tới tên cuộc, để bàn phím và trình đọc màn hình bắt đầu từ khung chat.
   useEffect(() => { if (focusOnOpen) headingRef.current?.focus(); }, [id]);
 
@@ -91,21 +91,25 @@ export default function ChatThread({ conversation, onChanged, onBack, onExpired,
 
   // Lấy bù afterSeq khi trang báo (syncKey tăng): có tín hiệu tin mới của cuộc này, hoặc socket vừa nối/nối lại. Chạy
   // cả lúc tải đầu vừa xong, vì tin tới giữa lần tải đầu và lúc socket nối sẽ không có tín hiệu nào.
-  useEffect(() => {
-    if (!loaded || !syncKey) return;
-    async function catchUp() {
-      if (catchingRef.current) { againRef.current = true; return; }
-      catchingRef.current = true;
-      try {
-        do {
-          againRef.current = false;
-          const data = await chat.fetchMessages(id, { afterSeq: chat.lastSeq(messagesRef.current) });
-          if (alive.current && data.messages.length) apply(chat.mergeMessages(messagesRef.current, data.messages));
-        } while (againRef.current && alive.current);
-      } catch (error) { expired(error); } finally { catchingRef.current = false; }
-    }
-    catchUp();
-  }, [syncKey, loaded]);
+  // Lỗi khác 401 và 404 (ví dụ 503 lúc Render khởi động lại) thì thử lại sau 5 giây: socket vẫn nối nên không có
+  // polling nào lấy giúp tin này.
+  async function catchUp() {
+    clearTimeout(retryRef.current); retryRef.current = null;
+    if (catchingRef.current) { againRef.current = true; return; }
+    catchingRef.current = true;
+    let retry = false;
+    try {
+      do {
+        againRef.current = false;
+        const data = await chat.fetchMessages(id, { afterSeq: chat.lastSeq(messagesRef.current) });
+        if (alive.current && data.messages.length) apply(chat.mergeMessages(messagesRef.current, data.messages));
+      } while (againRef.current && alive.current);
+    } catch (error) {
+      retry = !expired(error) && error.status !== 404;
+    } finally { catchingRef.current = false; }
+    if (retry && alive.current) retryRef.current = setTimeout(catchUp, POLL_MS);
+  }
+  useEffect(() => { if (loaded && syncKey) catchUp(); }, [syncKey, loaded]);
 
   // Đánh dấu đã đọc tới seq lớn nhất đang hiện, khi khung đang mở và tab đang hiện; tin tới lúc tab ẩn thì đánh dấu khi
   // người dùng quay lại tab.

@@ -63,6 +63,9 @@ export default function MessagesPage() {
   const live = chat.useChatSocket({
     enabled: realtime,
     onConnect: () => { refresh(); setSyncKey(key => key + 1); },
+    // Server chủ động ngắt: coi như realtime tắt tới lần tải danh sách kế tiếp (30 giây), lúc đó server cho biết công
+    // tắc đang bật hay tắt.
+    onServerClose: () => setRealtime(false),
     onSignal: ({ conversationId }) => {
       refresh();
       chat.notifyChatChanged();
