@@ -237,9 +237,12 @@ const card = (handle, displayName, bio = '') => ({ handle, displayName, avatarTh
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       assert.ok(overflow <= 0, `${path} cuộn ngang ${overflow}px`);
     }
-    // Bốn tab của /account xếp 2 × 2, không có tab nào bị kéo dài một mình cả hàng.
-    const tabWidth = (await page.getByRole('button', { name: 'Cộng đồng', exact: true }).boundingBox()).width;
-    assert.ok(tabWidth < 220, `tab Cộng đồng rộng ${tabWidth}px`);
+    // Bốn tab của /account xếp 2 × 2: hai tab đầu cùng một hàng, hai tab sau cùng hàng dưới.
+    // Đo vị trí thật vì luật lưới chung của .runner-tabs (3 cột) có thể đè lên và đẩy "Cộng đồng" xuống một mình.
+    const tabs = await page.locator('.account-tabs button').evaluateAll(buttons => buttons.map(b => { const r = b.getBoundingClientRect(); return { top: Math.round(r.top), width: Math.round(r.width) }; }));
+    assert.equal(tabs.length, 4);
+    assert.ok(tabs[0].top === tabs[1].top && tabs[2].top === tabs[3].top && tabs[2].top > tabs[0].top, `tab không xếp 2 × 2: ${JSON.stringify(tabs)}`);
+    assert.ok(tabs[3].width < 220, `tab Cộng đồng rộng ${tabs[3].width}px`);
 
     // Header có thêm mục "Cộng đồng": với tên người dùng dài, các bề rộng quanh 800px vẫn không cuộn ngang.
     await page.evaluate(() => localStorage.setItem('rf_user', JSON.stringify({ fullName: 'Nguyễn Hoàng Bảo Ngọc Trâm Anh', systemRole: 'RUNNER' })));
