@@ -162,3 +162,11 @@
     padding: 22px;
   }
 }
+/* Bank memos and references may be long unbroken strings. Keep actions usable on phones. */
+.sepay-receipts .organizer-staff > div { min-width: 0; overflow-wrap: anywhere; }
+.sepay-receipts .organizer-staff > button { flex-shrink: 0; }
+.sepay-receipts { margin-top: 1.25rem; }
+@media (max-width: 600px) {
+  .sepay-receipts .organizer-staff { flex-direction: column; align-items: stretch; }
+  .sepay-receipts .organizer-staff > button { align-self: flex-start; }
+}

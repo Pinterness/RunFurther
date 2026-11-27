@@ -10,7 +10,7 @@ const LEDGER_PAGE_SIZE = 100;
 const IDEMPOTENCY_KEY_PATTERN = /^[\w-]{8,100}$/;
 const TOPUP_MESSAGES = {
   PENDING:
-    'Đã tạo lệnh nạp. Chuyển khoản đúng số tiền và nội dung bên dưới; số dư chỉ được cộng sau khi quản trị viên xác nhận đã nhận tiền.',
+    'Đã tạo lệnh nạp. Chuyển khoản đúng số tiền và nội dung bên dưới; số dư chỉ được cộng sau khi xác nhận tiền đã nhận.',
   APPROVED: 'Lệnh nạp này đã được xác nhận, số dư đã được cộng.',
   REJECTED: 'Lệnh nạp này đã bị từ chối. Xem ghi chú hoặc tạo lệnh mới.',
 };

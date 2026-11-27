@@ -1,5 +1,11 @@
 # Quy tắc thiết kế giao diện RunFurther
 
+## Thanh toán SePay — 18/11/2026
+
+- Chỉ hiển thị hướng dẫn tự động xác nhận khi API báo có connection phù hợp. Thanh toán thủ công tiếp tục dùng thông báo trung tính về xác nhận tiền, không hứa đã nhận tiền chỉ vì người mua bấm nút.
+- Bảng giao dịch ngân hàng cần kiểm tra nằm trong đúng màn hình nạp ví của Super Admin hoặc đối soát tiền vé của chủ giải. Hiện số tiền, mã đơn, lý do, mã tham chiếu và giờ giao dịch; không hiện khóa HMAC hay payload kỹ thuật.
+- Nút Làm mới/Kiểm tra lại/Xem thêm có trạng thái đang xử lý; có trạng thái trống và lỗi đọc được bằng screen reader. Kiểm tra lại không phải nút bỏ qua điều kiện xác nhận.
+
 ## Hướng thiết kế
 Thể thao, tự nhiên, rõ ràng. Ảnh đường chạy và typography là điểm nhấn chính.
 Không dùng icon trang trí ở mọi dòng, emoji thay nhãn, thẻ kính, gradient neon hay nhiều màu nhấn cùng lúc.
@@ -196,3 +202,36 @@ Kiểm tra 1440, 1024, 768, 390, 360px; không tràn ngang; đăng nhập/đăng
 - /admin → Nạp ví: khối "Tài khoản nhận nạp ví" (BankFields có xem trước QR, lịch sử thay đổi) đặt trên hàng đợi "Đối soát nạp ví" (lọc trạng thái, tìm mã, cờ Quá hạn, hộp thoại xác nhận có ô số tiền thực nhận không điền sẵn).
 - Style nằm trong `src/components/site/topup.css`, chỉ dùng token của `globals.css`.
 - Kiểm thử: `npm run test:wallet-ui` (Chrome, web đang chạy, API fixtures); xem ảnh `artifacts/wallet-topup-*.png`, `artifacts/admin-topup-*.png`.
+
+## Rà soát Unslop — 19/11/2026
+
+Đã rà soát giao diện theo [Unslop của Damir Sokolovsky](https://github.com/heydamir/unslop) (CC BY 4.0). Kết quả và bằng chứng ban đầu nằm trong [UX_UI_AUDIT_UNSLOP.md](UX_UI_AUDIT_UNSLOP.md). Đợt sửa đầu áp dụng trên nhánh `fix/unslop-ui-polish`; giữ bảng màu, hành trình 3D và lịch giải tự chuyển 2 giây.
+
+### Quy tắc sau đợt sửa đầu
+
+- Lịch giải và các bảng trong cảnh 3D dùng `dialog.showModal()`: nền bị inert, Tab ở trong hộp thoại, Escape chỉ đóng lớp trên. Khi đóng, focus về nút mở ngay sau khi bỏ inert; không để callback trễ lấy lại focus từ thao tác kế tiếp.
+- Hỗ trợ là panel không khóa nền. Launcher/chat ẩn khi có `dialog:modal`, giữ nguyên cuộc trò chuyện; Escape của chat bỏ qua khi modal đang mở. Mobile ẩn launcher lúc focus input/select/textarea để không che nhập liệu; panel chat đang mở vẫn cho nhập bình thường.
+- Điều khiển hành trình, nút đóng, mũi tên lịch giải, chấm chọn giải và thao tác chính có vùng bấm tối thiểu 44px. Chữ điều khiển hành trình 13–14px, metadata tối thiểu 12px. Bỏ đường tắt chọn cự ly lặp ở hàng dưới; dành chỗ riêng cho nút Hỗ trợ.
+- Radius theo vai trò: control 8px, card/panel 12px, overlay 16px. Các token trong `globals.css` là nguồn chung; ngoại lệ như avatar, chấm trạng thái và thẻ minh họa có thể giữ hình riêng.
+- Trang tài khoản, tổ chức và marketplace đặt tiêu đề theo tác vụ. Mobile thu gọn phần giới thiệu đăng ký, ẩn hình trang trí marketplace, đưa biểu mẫu/danh sách lên sớm hơn.
+- Thẻ giải có ngày chạy từ `dateInfo.raceDate`, định dạng ngày Việt Nam theo múi giờ `Asia/Ho_Chi_Minh`; thiếu/ngày không hợp lệ hiện “Ngày chạy chưa công bố”. Không dựng ngày giả.
+- Checkout dùng chữ chính cho giá, nền trung tính cho RunPoints, sentence case cho nhãn; cự ly/cỡ áo có `aria-pressed`, label gắn với input. Bố cục xuống một cột ở 800px, trường nhập một cột ở 480px. Không thay giá, hạn giữ chỗ, tuổi, quốc tịch hay logic thanh toán.
+- Card vé/marketplace hover đổi viền và bóng nhẹ; không nâng cả thẻ. Hero và carousel vẫn giữ chuyển động đặc trưng; reduced motion giữ đầy đủ HTML.
+
+Kiểm thử hồi quy mới: `npm run test:ui-polish`. Chạy trên production preview dùng `scripts/uiPolishSsr.cjs` để mô phỏng SSR; `WEB_TEST_URL` trỏ preview local. Ảnh nằm ở `artifacts/ui-polish/`. Chi tiết chuẩn bị preview xem phần cập nhật trong `TECHNOLOGY_AND_LOGIC.md`.
+
+### Tiếp tục tinh chỉnh — 27/11/2026
+
+- Lịch giải dùng mũi tên Lucide 18px, stroke 1.5; giữ nhãn cho trình đọc màn hình, chuyển giải bằng bàn phím và chu kỳ 2 giây.
+- Bỏ mũi tên trang trí trên đăng nhập, đăng ký, tài khoản và nút xem vé. Nhãn tài khoản dùng câu thường, tiêu đề “Vé tham gia giải”, “Thông tin người chạy”, “Ảnh đại diện” để nêu rõ tác vụ.
+- Nút chỉnh sửa hồ sơ, liên kết ví và liên kết phụ có vùng bấm ít nhất 44px. Liên kết ví có gạch chân để phân biệt với thống kê; số liệu dùng chữ số có chiều rộng đều.
+- Tên người chạy dài được xuống dòng trong thẻ; cột nội dung và BIB không ép trang tràn ngang. Hover liên kết phụ và màu avatar chỉ đổi màu/viền, không dịch chuyển vị trí.
+- Giữ hướng thiết kế Unslop đã duyệt: giấy sáng, xanh rừng, cam đất; ảnh giải/BIB và hành trình 3D là điểm nhấn. Không thêm hình minh họa hoặc thay thứ tự nội dung.
+
+## Hoàn thiện quản trị theo Unslop — 27/11/2026
+
+Giữ bảng màu và cấu trúc hiện có. Hộp thư hỗ trợ và tri thức trợ lý nâng chữ phụ lên tối thiểu 12px, nội dung phản hồi 14px, trường nhập mobile 16px. Nút lọc, phân trang và công tắc AI có vùng bấm 44px. Tab quản trị/giải chia hai cột trên mobile; nhãn theo tác vụ, bỏ mũi tên trang trí. Bảng người chạy nhận focus để cuộn ngang bằng bàn phím. Nhãn trạng thái tiếng Việt dùng chung, không thay giá trị API hay phân quyền.
+
+## Bộ lọc giải chạy
+
+Nhãn rõ cho từ khóa/thành phố/sắp xếp. Chọn khoảng cự ly bằng radio có vùng bấm 44px, trạng thái chọn rõ và focus bàn phím. Mobile xếp một cột, input 16px. Hiển thị số kết quả và liên kết xóa bộ lọc; chỉ cập nhật sau khi người dùng xác nhận tìm kiếm để tránh danh sách đổi liên tục lúc gõ.

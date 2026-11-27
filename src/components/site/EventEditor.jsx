@@ -2,7 +2,8 @@
 import { useState } from 'react';
 import EventImageUpload from './EventImageUpload';
 import BankFields from './BankFields';
-export const eventStatuses = { DRAFT: 'Bản nháp', PUBLISHED: 'Đã công bố', REGISTRATION_OPEN: 'Mở đăng ký', REGISTRATION_CLOSED: 'Đóng đăng ký', COMPLETED: 'Đã kết thúc', CANCELLED: 'Đã hủy' };
+import { eventStatuses } from '../../lib/statusLabels';
+export { eventStatuses };
 export function slugify(value) { return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[đĐ]/g, 'd').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); }
 function localDate(value) { if (!value) return ''; const date = new Date(value); return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0,16); }
 export default function EventEditor({ event, organizations = [], onSave, busy }) {

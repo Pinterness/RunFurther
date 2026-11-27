@@ -4,6 +4,7 @@ const Booking = require('../models/Booking');
 const EventCategory = require('../models/EventCategory');
 const Registration = require('../models/Registration');
 const RunPoints = require('../models/RunPoints');
+const PaymentRequest = require('../models/PaymentRequest');
 const { processPayment } = require('./walletService');
 const transaction = require('./transaction');
 const { assert } = require('../lib/errors');
@@ -19,7 +20,7 @@ async function expireBookings() {
     });
   }
 }
-async function completeBooking(bookingId, userId, method, session, bankReference) {
+async function completeBooking(bookingId, userId, method, session, bankReference, verifiedPaidAt) {
   const booking = await Booking.findOne({ _id: bookingId, userId }).session(session);
   assert(booking, 404, 'Booking not found.');
   if (booking.status === 'PAID') {
@@ -27,9 +28,20 @@ async function completeBooking(bookingId, userId, method, session, bankReference
     assert(registration, 409, 'Paid booking needs reconciliation.');
     return { booking, registration, bibNumber: registration.bibNumber, pointsAwarded: 0 };
   }
-  assert(booking.status === 'HOLD' && booking.expiresAt > new Date(), 409, 'Booking is no longer available.');
+  const delayedTransfer = method === 'VIETQR' && bankReference && verifiedPaidAt instanceof Date &&
+    verifiedPaidAt <= booking.expiresAt && verifiedPaidAt.getTime() >= Math.floor(booking.createdAt.getTime() / 1000) * 1000;
+  assert((booking.status === 'HOLD' && (booking.expiresAt > new Date() || delayedTransfer)) ||
+    (booking.status === 'EXPIRED' && delayedTransfer), 409, 'Booking is no longer available.');
   assert(method === 'WALLET' || (method === 'VIETQR' && bankReference), 400, 'Verified payment is required.');
-  await lockOperationalEvent(booking.eventId, session);
+  const event = await lockOperationalEvent(booking.eventId, session);
+  assert(!['CANCELLED', 'COMPLETED'].includes(event.status), 409, 'Giải đã hủy hoặc kết thúc.', 'EVENT_NOT_PAYABLE');
+  if (booking.status === 'EXPIRED') {
+    // The expiry job already released this hold. Reacquire only an unsold slot, atomically.
+    const available = await EventCategory.findOneAndUpdate({ _id: booking.categoryId, eventId: booking.eventId,
+      $expr: { $lt: [{ $add: ['$quotaSold', '$quotaHold'] }, '$quotaTotal'] },
+    }, { $inc: { quotaHold: 1 } }, { session });
+    assert(available, 409, 'Không còn chỗ cho giao dịch đến chậm.', 'NO_CAPACITY_FOR_DELAYED_PAYMENT');
+  }
   let transactionId = bankReference || booking.orderCode;
   if (method === 'WALLET' && booking.finalAmount > 0) {
     const result = await processPayment(userId, booking.finalAmount, 'REGISTRATION', booking._id, 'BOOKING-' + booking._id, session);
@@ -61,6 +73,11 @@ async function completeBooking(bookingId, userId, method, session, bankReference
   booking.status = 'PAID';
   booking.paymentMethod = method;
   await booking.save({ session });
+  if (method === 'WALLET') {
+    await PaymentRequest.updateOne({ bookingId: booking._id, kind: 'BOOKING', status: 'PENDING' }, {
+      $set: { status: 'REJECTED', reviewedAt: new Date(), reviewNote: 'Đơn đã thanh toán bằng ví; yêu cầu chuyển khoản không còn hiệu lực.' },
+    }, { session });
+  }
   return { booking, registration, bibNumber, pointsAwarded };
 }
 module.exports = { expireBookings, completeBooking };

@@ -40,6 +40,9 @@ function createState() {
     bankTransferEnabled: true,
     accountSaves: 0,
     payments: [],
+    receipts: [],
+    receiptRetries: [],
+    failReceipts: false,
   };
 }
 
@@ -231,9 +234,19 @@ function apiAnswer(state, request) {
       return [200, accountSetting(state)];
     },
     "GET /admin/payments": () => [200, adminQueue(state, url)],
+    "GET /admin/platform/sepay/receipts": () => state.failReceipts
+      ? [503, { message: "Không tải được giao dịch ngân hàng" }]
+      : [200, { receipts: url.searchParams.has('before') ? state.receipts.slice(1) : state.receipts.slice(0, 1),
+          nextCursor: !url.searchParams.has('before') && state.receipts.length > 1 ? state.receipts[0]._id : null }],
   };
   if (review && method === "POST") {
     return reviewTopup(state, review[1], request.postDataJSON());
+  }
+  const retry = path.match(/^\/admin\/platform\/sepay\/receipts\/([^/]+)\/retry$/);
+  if (retry && method === 'POST') {
+    state.receiptRetries.push(retry[1]);
+    state.receipts = state.receipts.filter(item => item._id !== retry[1]);
+    return [200, { receipt: { _id: retry[1], status: 'APPLIED' } }];
   }
   const handler = routes[`${method} ${path}`];
   return handler
@@ -457,7 +470,7 @@ async function adminAccountScenario(page, state) {
 
 async function adminQueueScenario(page, state) {
   await openTopupTab(page, state);
-  const queue = page.locator(".organizer-panel");
+  const queue = page.locator(".topup-review");
   const item = (code) => queue.locator(".topup-review-item", { hasText: code });
   await expect(item("NAPTEST2345")).toContainText(PAYER.email);
   await expect(item("NAPEXPRD234")).toContainText("Quá hạn");
@@ -499,7 +512,30 @@ async function adminQueueScenario(page, state) {
   await checkViewports(page, "admin-topup-queue");
 }
 
-const SCENARIOS = [walletScenario, adminAccountScenario, adminQueueScenario];
+async function sepayScenario(page, state) {
+  state.receipts = [
+    { _id: 'receipt-one', transferCode: 'NAPK7M2Q9XA', amount: 50000, reason: 'AMOUNT_MISMATCH', referenceCode: 'FT-SEPAY-1', paidAt: isoFromNow(-60000), content: 'NAPK7M2Q9XA chuyen tien' },
+    { _id: 'receipt-two', transferCode: 'NAP23456789', amount: 60000, reason: 'WALLET_INACTIVE', referenceCode: 'FT-SEPAY-2', paidAt: isoFromNow(-50000), content: 'NAP23456789 chuyen tien' },
+  ];
+  const panel = page.getByRole('region', { name: 'Giao dịch SePay cần đối soát' });
+  await panel.getByRole('button', { name: 'Làm mới' }).click();
+  await expect(panel).toContainText('Số tiền không khớp');
+  await panel.getByRole('button', { name: 'Xem thêm' }).click();
+  await expect(panel).toContainText('Ví đang khóa');
+  await checkViewports(page, 'sepay-review');
+  await panel.locator('article', { hasText: 'NAPK7M2Q9XA' }).getByRole('button', { name: 'Kiểm tra lại' }).click();
+  await expect(panel).not.toContainText('NAPK7M2Q9XA');
+  assert.deepEqual(state.receiptRetries, ['receipt-one']);
+  state.failReceipts = true;
+  await panel.getByRole('button', { name: 'Làm mới' }).click();
+  await expect(panel.getByRole('alert')).toContainText('Không tải được');
+  state.failReceipts = false; state.receipts = [];
+  await panel.getByRole('button', { name: 'Làm mới' }).click();
+  await expect(panel).toContainText('Chưa có giao dịch SePay cần kiểm tra.');
+  await expect(panel.getByRole('alert')).toHaveCount(0);
+}
+
+const SCENARIOS = [walletScenario, adminAccountScenario, adminQueueScenario, sepayScenario];
 
 (async () => {
   const browser = await chromium.launch({ channel: "chrome", headless: true });

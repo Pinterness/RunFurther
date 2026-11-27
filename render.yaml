@@ -32,3 +32,7 @@ services:
         value: "0"
       - key: WALLET_TOPUP_RATE_LIMIT
         value: "10"
+      # Optional. Set the JSON allowlist in the dashboard after deployment; see SEPAY_SETUP.md.
+      # No shared default secret, no automatically enabled production payments.
+      - key: SEPAY_CONNECTIONS
+        sync: false

@@ -1,5 +1,7 @@
 # Đưa RunFurther lên Vercel + Render
 
+> **SePay (18/11/2026):** xem [SEPAY_SETUP.md](SEPAY_SETUP.md). Webhook chỉ bật sau khi cấu hình biến server `SEPAY_CONNECTIONS` trên Render; không thêm khóa vào Vercel. Tạo cấu hình riêng bằng `npm run sepay:env`. Test mode phải dùng backend/database/khóa riêng với Live.
+
 Cấu hình được chuẩn bị ngày 08/10/2026. Frontend Next.js chạy trên Vercel; Express chạy trên Render; dữ liệu giữ tại MongoDB Atlas đang dùng. Chưa tạo dịch vụ hoặc publish website trong các tài khoản cloud của bạn.
 
 ## 1. Chọn cách sử dụng gói miễn phí

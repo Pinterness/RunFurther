@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { getEvent } from '../../../../lib/events';
 import VolunteerModal from '../../../../components/events/VolunteerModal';
 import EventPhoto from '../../../../components/site/EventPhoto';
+import { CalendarDays, MapPin } from 'lucide-react';
 
 export default async function EventPage({ params }) {
   const { eventSlug } = await params;
@@ -15,7 +16,7 @@ export default async function EventPage({ params }) {
           {event.logoUrl && <EventPhoto className="event-brand-logo" src={event.logoUrl} alt={'Logo ' + event.name} />}
           <span className="tag">RUNFURTHER / GIẢI CHẠY</span>
           <h1>{event.name}</h1>
-          <p>⌖ {event.location?.city}　　▣ {new Date(event.dateInfo.raceDate).toLocaleDateString('vi-VN')}</p>
+          <p className="event-cover-meta"><span><MapPin size={18} strokeWidth={1.5} aria-hidden="true" />{event.location?.city}</span><span><CalendarDays size={18} strokeWidth={1.5} aria-hidden="true" />{new Date(event.dateInfo.raceDate).toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}</span></p>
         </div>
       </section>
 

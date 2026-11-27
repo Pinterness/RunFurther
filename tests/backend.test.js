@@ -805,3 +805,28 @@ test('Legacy ownership recovery is dry-run by default and never overwrites an es
   await assert.rejects(execFile(process.execPath, [...args, '--apply'], options));
   assert.equal(await EventAccount.countDocuments({ eventId: f.event._id, accountType: 'EVENT_ADMIN' }), 1);
 });
+
+test('event search folds Vietnamese, ranks before pagination and supports distance ranges', async () => {
+  const ids=[];
+  try {
+    for (const [slug,name,city,state,distance] of [
+      ['search-can-tho','Cần Thơ Heritage','Cần Thơ','ACTIVE',21.1],
+      ['search-river','Đường chạy sông Hậu','Cần Thơ','ACTIVE',42.195],
+      ['search-hidden','Cần Thơ bí mật','Cần Thơ','HIDDEN',21],
+      ['search-other','Giải miền núi','Đà Lạt','ACTIVE',50],
+    ]) {
+      const event=await Event.create({slug,name,status:'REGISTRATION_OPEN',moderation:{state},location:{city:city+' Khu kiểm thử tìm kiếm',venue:'Công viên'},dateInfo:{raceDate:'2030-05-01',registrationStart:'2029-01-01',registrationEnd:'2030-04-01'}});
+      ids.push(event._id);
+      await Category.create({eventId:event._id,name:'Cự ly thử',code:'TEST',distance,price:100000,quotaTotal:100});
+    }
+    const query=async values=>{const r=await fetch(base+'/events?'+new URLSearchParams({city:"khu kiem thu tim kiem",...values}));assert.equal(r.status,200);return r.json();};
+    const a=await query({search:'can tho',limit:1});
+    assert.equal(a.pagination.total,2); assert.equal(a.events[0].slug,'search-can-tho');
+    const b=await query({search:'CẦN THƠ',limit:1,page:2});
+    assert.equal(b.events[0].slug,'search-river');
+    const c=await query({city:'can tho khu kiem thu tim kiem',distanceMin:21,distanceMax:42});
+    assert.deepEqual(c.events.map(e=>e.slug),['search-can-tho']);
+    const d=await query({search:'can tho heritage'}); assert.equal(d.pagination.total,1);
+    const escaped=await query({search:'.*'}); assert.equal(escaped.pagination.total,0);
+  } finally {await Category.deleteMany({eventId:{$in:ids}});await Event.deleteMany({_id:{$in:ids}});}
+});
