@@ -112,6 +112,10 @@ input::placeholder, textarea::placeholder { color: #69715f; }
   .header-register { display: none; }
   .footer-bottom { margin: 0 48px; }
 }
+/* Menu có 5 mục (thêm "Cộng đồng"): ở 801–900px, chữ 12px cộng tên người dùng dài sẽ tràn ngang, nên chỉ hiện avatar. */
+@media (min-width: 801px) and (max-width: 900px) {
+  .account-name { display: none; }
+}
 @media (max-width: 800px) {
   .page, .page-container { padding: 32px 24px 48px; }
   .login-page .login-story-title { margin-top: 4px; }

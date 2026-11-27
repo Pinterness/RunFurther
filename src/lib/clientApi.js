@@ -4,6 +4,8 @@ export async function api(path, options = {}) {
   const response = await fetch((API_BASE_URL) + path, {
     ...options, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}), ...options.headers },
   });
+  // 204 (ví dụ xóa hồ sơ cộng đồng) thành công nhưng không có nội dung để đọc.
+  if (response.status === 204) return null;
   const data = await readApiJson(response);
   if (!response.ok) {
     if (response.status === 401) { localStorage.removeItem('rf_token'); localStorage.removeItem('rf_user'); window.dispatchEvent(new Event('rf-auth')); }

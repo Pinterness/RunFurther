@@ -59,6 +59,9 @@ jobs:
       - name: Support assistant tests
         run: npm run test:support
 
+      - name: Chat tests
+        run: npm run test:chat
+
       # src/lib/apiUrl.js refuses a production build without an API URL. CI never deploys this
       # build, so it uses the reserved .example host from DEPLOYMENT.md, not the real API.
       - name: Build web

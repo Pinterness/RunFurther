@@ -14,7 +14,7 @@ const { readAiConfig } = require('./supportAiConfig');
 const { sensitiveQuestion } = require('./supportFilters');
 const { isAiSwitchOn } = require('./aiSettingService');
 const { readDailyLimit, reserveAiCall, createAccountAllowance } = require('./aiUsageService');
-const { ageOn } = require('../../lib/runnerValidation.cjs');
+const { isAtLeastAge } = require('../lib/age');
 
 const ADULT_AGE = 18;
 
@@ -24,11 +24,8 @@ async function defaultFindDob(userId) {
   return profile?.dob ?? null;
 }
 
-// dob trống, sai, ở tương lai hay không phải Date đều coi như chưa đủ tuổi. Tuổi tính theo lịch Việt Nam (ageOn).
-function isAdult(dob, now) {
-  if (!(dob instanceof Date) || !Number.isFinite(dob.getTime())) return false;
-  return ageOn(dob.toISOString().slice(0, 10), now) >= ADULT_AGE;
-}
+// dob trống, sai, ở tương lai hay không phải Date đều coi như chưa đủ tuổi. Tuổi tính theo lịch Việt Nam.
+const isAdult = (dob, now) => isAtLeastAge(dob, ADULT_AGE, now);
 
 const attempt = async (fn, fallback) => { try { return await fn(); } catch { return fallback; } };
 

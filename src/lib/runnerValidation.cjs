@@ -56,4 +56,4 @@ function birthdayError(value, options = {}) {
   return '';
 }
 
-module.exports = { MIN_BIRTHDAY, MIN_RUNNER_AGE, AGE_CONFIRMATION_THRESHOLD, calendarDate, birthdayBounds, birthdayError, ageOn, needsBirthdayConfirmation };
+module.exports = { MIN_BIRTHDAY, MIN_RUNNER_AGE, AGE_CONFIRMATION_THRESHOLD, calendarDate, yearsBefore, birthdayBounds, birthdayError, ageOn, needsBirthdayConfirmation };
