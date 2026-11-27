@@ -231,3 +231,7 @@ Kiểm thử hồi quy mới: `npm run test:ui-polish`. Chạy trên production 
 ## Hoàn thiện quản trị theo Unslop — 27/11/2026
 
 Giữ bảng màu và cấu trúc hiện có. Hộp thư hỗ trợ và tri thức trợ lý nâng chữ phụ lên tối thiểu 12px, nội dung phản hồi 14px, trường nhập mobile 16px. Nút lọc, phân trang và công tắc AI có vùng bấm 44px. Tab quản trị/giải chia hai cột trên mobile; nhãn theo tác vụ, bỏ mũi tên trang trí. Bảng người chạy nhận focus để cuộn ngang bằng bàn phím. Nhãn trạng thái tiếng Việt dùng chung, không thay giá trị API hay phân quyền.
+
+## Bộ lọc giải chạy
+
+Nhãn rõ cho từ khóa/thành phố/sắp xếp. Chọn khoảng cự ly bằng radio có vùng bấm 44px, trạng thái chọn rõ và focus bàn phím. Mobile xếp một cột, input 16px. Hiển thị số kết quả và liên kết xóa bộ lọc; chỉ cập nhật sau khi người dùng xác nhận tìm kiếm để tránh danh sách đổi liên tục lúc gõ.

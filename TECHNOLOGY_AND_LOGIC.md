@@ -655,3 +655,13 @@ Giới hạn: chưa kiểm chứng Safari/iOS hoặc bàn phím ảo trên thi�
 Nhãn trạng thái được tập trung tại `src/lib/statusLabels.js` và dùng cho vé, chỉnh sửa giải, kiểm duyệt và danh sách người chạy. Chỉ đổi cách hiển thị; không đổi API, thanh toán hay phân quyền.
 
 Production build đạt. Các bộ Playwright dùng API fixture đã đạt: hỗ trợ khách (retry, phản hồi, đóng/mở), tri thức trợ lý (nháp/xuất bản, xung đột phiên bản, lịch sử, công tắc AI), chủ giải (tạo giải/cự ly/nhân sự, bảng người chạy cuộn bằng bàn phím), quản trị nền tảng (duyệt quyền, kiểm duyệt và lịch sử). Cập nhật selector kiểm thử cũ để phân biệt thông báo lưu với trạng thái ngân hàng và bảng nạp ví với bảng SePay. Không kiểm thử trên dữ liệu thật; chưa xác nhận Safari/iOS thiết bị thật.
+
+## Tìm kiếm giải không dấu và xếp hạng
+
+Nhánh `fix/event-search-filters`: tìm kiếm mọi từ khóa trên tên giải, thành phố và địa điểm, không phân biệt hoa/thường hay dấu tiếng Việt (kể cả đ/Đ). Regex được escape để ký tự người dùng không trở thành biểu thức thực thi. Điểm phù hợp ưu tiên tên chính xác, cụm từ trong tên, thành phố, địa điểm rồi các từ thành phần. MongoDB xếp hạng trước phân trang, dùng ngày chạy và `_id` để phá hòa ổn định. Không tải toàn bộ giải về browser để sắp xếp.
+
+Bộ lọc cự ly dùng khoảng nửa kín [min,max), nên 21,1 và 42,195 km được chọn đúng nhóm. API vẫn hỗ trợ `distance` chính xác cho client cũ. Form chỉ gửi khi xác nhận hoặc Enter; không thay danh sách theo từng phím gõ. URL giữ từ khóa/bộ lọc/thứ tự cho phân trang và chia sẻ.
+
+Tìm kiếm regex không dấu chạy trực tiếp trên dữ liệu hiện có, không yêu cầu migration. Đây vẫn là phép quét tập giải công khai phù hợp bộ lọc; nếu dữ liệu tăng lớn cần đo latency và chuyển sang chỉ mục tìm kiếm chuyên dụng. Không coi sắp xếp là thay thế debounce hay chỉ mục.
+
+Kiểm chứng: 112 test backend, 220 test trợ lý và 13 test cảnh chạy đạt; production build thành công. `scripts/checkEventSearchUI.js` đạt ở 1440/768/390/360px: gõ không điều hướng, gửi giữ URL/bộ lọc, radio cự ly, xóa bộ lọc và không tràn ngang. Dùng API fixture/MongoDB tạm, không thay dữ liệu thật.
