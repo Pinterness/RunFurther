@@ -47,7 +47,7 @@ export default function SupportAiSwitch({ dateLabel }) {
   // đè trạng thái mới, khi đó lần bấm tiếp theo sẽ gửi giá trị ngược.
   const notice = setting ? serverNotice(setting) : '';
   return <section className="knowledge-ai" aria-labelledby="knowledge-ai-heading" aria-busy={loading || saving}>
-    <header className="knowledge-heading"><div><p className="section-index">RUNFURTHER / TRỢ LÝ AI</p><h2 id="knowledge-ai-heading">Trợ lý AI</h2><p>Khi bật, câu hỏi chung của tài khoản đã đăng nhập và đủ 18 tuổi được Google Gemini viết lại, chỉ dựa trên bài tri thức bot tìm được. Câu về vé, ví, đơn không bao giờ được gửi đi. Tắt thì từ câu hỏi tiếp theo bot trả lời bằng bài soạn sẵn.</p></div>
+    <header className="knowledge-heading"><div><p className="section-index">Cấu hình trợ lý</p><h2 id="knowledge-ai-heading">Trợ lý AI</h2><p>Khi bật, câu hỏi chung của tài khoản đã đăng nhập và đủ 18 tuổi được Google Gemini viết lại, chỉ dựa trên bài tri thức bot tìm được. Câu về vé, ví, đơn không bao giờ được gửi đi. Tắt thì từ câu hỏi tiếp theo bot trả lời bằng bài soạn sẵn.</p></div>
       <div className="knowledge-heading-actions"><button type="button" className="quiet-button" disabled={loading || saving} onClick={() => refresh(value => value + 1)}>Làm mới</button></div></header>
     {loading && !setting ? <p className="knowledge-empty" role="status">Đang tải cài đặt AI...</p> : loadError ? <div className="knowledge-error" role="alert"><p>{loadError}</p><button type="button" className="text-action" onClick={() => refresh(value => value + 1)}>Tải lại cài đặt AI</button></div> : setting && <div className="knowledge-ai-panel">
       <div className="knowledge-ai-row">

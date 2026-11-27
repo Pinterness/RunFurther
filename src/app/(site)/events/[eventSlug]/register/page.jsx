@@ -3,6 +3,8 @@ import { API_BASE_URL, readApiJson } from '../../../../../lib/apiUrl';
 
 import { useState, useEffect, use } from 'react';
 import Link from 'next/link';
+import { Clock3, CircleCheck } from 'lucide-react';
+import '../../../../../components/site/checkout.css';
 import { api } from '../../../../../lib/clientApi';
 import EventPhoto from '../../../../../components/site/EventPhoto';
 import TransferDetails from '../../../../../components/site/TransferDetails';
@@ -251,34 +253,34 @@ export default function RegistrationPage({ params }) {
   if (loading || profileLoading) return <div className="runner-shell" role="status">Đang tải thông tin đăng ký...</div>;
   if (profileState === 'guest') return <div className="runner-shell runner-guest"><h1>Đăng nhập để đăng ký giải.</h1><p>Hồ sơ người chạy của bạn sẽ được tự điền khi mua vé.</p><Link className="button-primary" href={'/login?next=' + encodeURIComponent('/events/' + eventSlug + '/register')}>Đăng nhập</Link><Link className="text-action" href={'/register?next=' + encodeURIComponent('/events/' + eventSlug + '/register')}>Tạo tài khoản</Link></div>;
   return (
-    <div className="page-container" style={{ maxWidth: 1100, margin: '0 auto', padding: '24px 16px' }}>
+    <div className="page-container checkout-page" style={{ maxWidth: 1100, margin: '0 auto', padding: '24px 16px' }}>
       {event && <div className="checkout-event-photo"><EventPhoto src={event.bannerUrl} alt={'Ảnh bìa ' + event.name} />{event.logoUrl && <EventPhoto className="checkout-logo" src={event.logoUrl} alt={'Logo ' + event.name} />}</div>}
       <header className="checkout-header" style={{ textAlign: 'center', marginBottom: 32 }}>
         <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--foreground)' }}>
-          Đăng Ký Giải Chạy
+          Đăng ký giải chạy
         </h1>
         <p style={{ color: 'var(--muted)', fontSize: 16, marginTop: 4 }}>
           {event?.name || 'Thông tin giải chưa tải được'}
         </p>
 
         {/* Stepper */}
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 24 }}>
+        <div className="checkout-steps" aria-label="Tiến trình đăng ký">
           <span style={{ fontWeight: step >= 1 ? 700 : 400, color: step >= 1 ? 'var(--accent-strong)' : 'var(--muted)' }}>
-            1. Thông Tin VĐV
+            1. Thông tin người chạy
           </span>
-          <span>→</span>
+          <span aria-hidden="true">/</span>
           <span style={{ fontWeight: step >= 2 ? 700 : 400, color: step >= 2 ? 'var(--accent-strong)' : 'var(--muted)' }}>
-            2. Thanh Toán & Giữ Chỗ (10p)
+            2. Thanh toán
           </span>
-          <span>→</span>
-          <span style={{ fontWeight: step === 3 ? 700 : 400, color: step === 3 ? '#10b981' : 'var(--muted)' }}>
-            3. Xác Nhận & Cấp BIB
+          <span aria-hidden="true">/</span>
+          <span style={{ fontWeight: step === 3 ? 700 : 400, color: step === 3 ? 'var(--forest)' : 'var(--muted)' }}>
+            3. Nhận vé & BIB
           </span>
         </div>
       </header>
 
       {errorMessage && (
-        <div style={{ padding: 14, background: '#fee2e2', color: '#b91c1c', borderRadius: 'var(--radius-panel)', marginBottom: 20, textAlign: 'center' }}>
+        <div style={{ padding: 14, background: 'var(--error-surface)', color: 'var(--error-text)', borderRadius: 'var(--radius-panel)', marginBottom: 20, textAlign: 'center' }}>
           {errorMessage}
         </div>
       )}
@@ -286,11 +288,11 @@ export default function RegistrationPage({ params }) {
       {/* STEP 1: RUNNER FORM & OPTIONS */}
       {step === 1 && <p className="notice">{profileState === 'loaded' ? 'Đã điền thông tin từ hồ sơ của bạn. Bạn có thể chỉnh cho lượt đăng ký này.' : 'Chưa tải được hồ sơ. Bạn có thể nhập thông tin cho lượt đăng ký này.'} <Link href="/account">Xem hồ sơ ↗</Link></p>}
       {step === 1 && (
-        <form className="account-layout" onSubmit={handleCreateHold} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 24 }}>
+        <form className="checkout-layout" onSubmit={handleCreateHold}>
           <div>
             {/* Category Selection */}
             <article style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-panel)', padding: 24, marginBottom: 20 }}>
-              <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16 }}>1. Chọn Cự Ly Chạy</h2>
+              <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16 }}>1. Chọn cự ly</h2>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12 }}>
                 {categories.map((cat) => {
                   const isSelected = selectedCat?.code === cat.code;
@@ -298,11 +300,13 @@ export default function RegistrationPage({ params }) {
                     <button
                       type="button"
                       key={cat.code}
+                      aria-pressed={isSelected}
+                      className="checkout-choice"
                       onClick={() => setSelectedCat(cat)}
                       style={{
                         padding: '16px 12px',
                         borderRadius: 'var(--radius-control)',
-                        border: isSelected ? '2px solid var(--accent-strong)' : '1px solid var(--border)',
+                        border: isSelected ? '2px solid var(--forest)' : '2px solid var(--border)',
                         background: isSelected ? 'var(--surface-muted)' : 'var(--surface)',
                         cursor: 'pointer',
                         textAlign: 'center',
@@ -314,7 +318,7 @@ export default function RegistrationPage({ params }) {
                       <span style={{ fontSize: 13, color: 'var(--muted)', display: 'block', margin: '4px 0' }}>
                         {cat.name}
                       </span>
-                      <b style={{ color: '#059669', fontSize: 14 }}>
+                      <b style={{ color: 'var(--foreground)', fontSize: 14 }}>
                         {formatCurrency(cat.price ?? 0)}
                       </b>
                     </button>
@@ -325,52 +329,52 @@ export default function RegistrationPage({ params }) {
 
             {/* Runner Profile Form */}
             <article style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-panel)', padding: 24, marginBottom: 20 }}>
-              <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16 }}>2. Thông Tin Cá Nhân</h2>
+              <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16 }}>2. Thông tin cá nhân</h2>
               <BirthdayField id="runner-birthday" value={birthday} confirmedBirthday={confirmedBirthday} onChange={value => { setBirthday(value); setConfirmedBirthday(''); }} onConfirm={setConfirmedBirthday} minAge={selectedCat?.rules?.minAge} raceDate={event?.dateInfo?.raceDate} />
               <div className="field"><label htmlFor="runner-nationality">Quốc tịch</label><NationalitySelect id="runner-nationality" value={nationality} onChange={event => setNationality(event.target.value)} /></div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div className="checkout-fields">
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
-                    HỌ VÀ TÊN *
+                  <label htmlFor="checkout-name" style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
+                    Họ và tên *
                   </label>
                   <input
                     type="text"
                     required
-                    value={fullName}
+                    id="checkout-name" value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     style={{ width: '100%', padding: '10px 12px', borderRadius: 'var(--radius-control)', border: '1px solid var(--border)' }}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
-                    EMAIL NHẬN VÉ *
+                  <label htmlFor="checkout-email" style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
+                    Email nhận vé *
                   </label>
                   <input
                     type="email"
                     required
-                    value={email}
+                    id="checkout-email" value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     style={{ width: '100%', padding: '10px 12px', borderRadius: 'var(--radius-control)', border: '1px solid var(--border)' }}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
-                    SỐ ĐIỆN THOẠI *
+                  <label htmlFor="checkout-phone" style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
+                    Số điện thoại *
                   </label>
                   <input
                     type="text"
                     required
-                    value={phone}
+                    id="checkout-phone" value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     style={{ width: '100%', padding: '10px 12px', borderRadius: 'var(--radius-control)', border: '1px solid var(--border)' }}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
-                    GIỚI TÍNH
+                  <label htmlFor="checkout-gender" style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
+                    Giới tính
                   </label>
                   <select
-                    value={gender}
+                    id="checkout-gender" value={gender}
                     onChange={(e) => setGender(e.target.value)}
                     style={{ width: '100%' }}
                   >
@@ -384,21 +388,23 @@ export default function RegistrationPage({ params }) {
 
             {/* Additional Info */}
             <article style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-panel)', padding: 24 }}>
-              <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16 }}>3. Kích Cỡ Áo & Liên Hệ Khẩn Cấp</h2>
+              <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16 }}>3. Áo & liên hệ khẩn cấp</h2>
               <div style={{ marginBottom: 16 }}>
                 <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 8 }}>
-                  CHỌN KÍCH CỠ ÁO T-SHIRT
+                  Kích cỡ áo
                 </label>
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                   {['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL'].map((sz) => (
                     <button
                       type="button"
                       key={sz}
+                      aria-pressed={shirtSize === sz}
+                      className="checkout-choice"
                       onClick={() => setShirtSize(sz)}
                       style={{
                         padding: '8px 16px',
                         borderRadius: 'var(--radius-control)',
-                        border: shirtSize === sz ? '2px solid var(--accent-strong)' : '1px solid var(--border)',
+                        border: shirtSize === sz ? '2px solid var(--forest)' : '2px solid var(--border)',
                         background: shirtSize === sz ? 'var(--surface-muted)' : 'var(--surface)',
                         fontWeight: shirtSize === sz ? 700 : 400,
                         cursor: 'pointer',
@@ -409,25 +415,25 @@ export default function RegistrationPage({ params }) {
                   ))}
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div className="checkout-fields">
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
-                    NGƯỜI LIÊN HỆ KHẨN CẤP
+                  <label htmlFor="checkout-contact" style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
+                    Người liên hệ khẩn cấp
                   </label>
                   <input
                     type="text"
-                    value={emergencyContact}
+                    id="checkout-contact" value={emergencyContact}
                     onChange={(e) => setEmergencyContact(e.target.value)}
                     style={{ width: '100%', padding: '10px 12px', borderRadius: 'var(--radius-control)', border: '1px solid var(--border)' }}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
-                    SĐT KHẨN CẤP
+                  <label htmlFor="checkout-contact-phone" style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
+                    Số điện thoại khẩn cấp
                   </label>
                   <input
                     type="text"
-                    value={emergencyPhone}
+                    id="checkout-contact-phone" value={emergencyPhone}
                     onChange={(e) => setEmergencyPhone(e.target.value)}
                     style={{ width: '100%', padding: '10px 12px', borderRadius: 'var(--radius-control)', border: '1px solid var(--border)' }}
                   />
@@ -438,7 +444,7 @@ export default function RegistrationPage({ params }) {
 
           {/* Order Summary Sidebar */}
           <aside style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-panel)', padding: 24, height: 'fit-content' }}>
-            <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16 }}>Tóm Tắt Đơn Hàng</h2>
+            <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16 }}>Tóm tắt đơn hàng</h2>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
               <div>
                 <strong>Vé {selectedCat?.code || '5K'}</strong>
@@ -478,8 +484,8 @@ export default function RegistrationPage({ params }) {
             </div>
 
             {/* Loyalty Points */}
-            <div style={{ background: '#fef3c7', padding: 12, borderRadius: 'var(--radius-panel)', marginBottom: 16 }}>
-              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', fontWeight: 600, color: '#92400e' }}>
+            <div style={{ background: 'var(--surface-muted)', padding: 12, borderRadius: 'var(--radius-panel)', marginBottom: 16 }}>
+              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', fontWeight: 600, color: 'var(--foreground)' }}>
                 <div>
                   <input
                     type="checkbox"
@@ -497,7 +503,7 @@ export default function RegistrationPage({ params }) {
 
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 16, fontWeight: 700, marginBottom: 20 }}>
               <span>Tổng thanh toán:</span>
-              <span style={{ color: '#059669', fontSize: 20 }}>{formatCurrency(finalAmount)}</span>
+              <span style={{ color: 'var(--foreground)', fontSize: 20 }}>{formatCurrency(finalAmount)}</span>
             </div>
 
             <button className="button-primary"
@@ -514,10 +520,10 @@ export default function RegistrationPage({ params }) {
                 cursor: submitting ? 'not-allowed' : 'pointer',
               }}
             >
-              {submitting ? 'Đang tạo giữ chỗ...' : 'Giữ Chỗ & Thanh Toán (10p)'}
+              {submitting ? 'Đang tạo giữ chỗ...' : 'Giữ chỗ & thanh toán'}
             </button>
             <p style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', marginTop: 12 }}>
-              ⏱ Suất chạy sẽ được giữ trong 10 phút sau khi xác nhận.
+              Suất chạy được giữ trong 10 phút sau khi bạn bấm giữ chỗ.
             </p>
           </aside>
         </form>
@@ -528,8 +534,8 @@ export default function RegistrationPage({ params }) {
         <div style={{ maxWidth: 800, margin: '0 auto', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-panel)', padding: 'clamp(16px, 3vw, 32px)' }}>
           {/* 10-minute timer alert */}
           <div style={{
-            background: secondsLeft < 180 ? '#fee2e2' : 'var(--surface-muted)',
-            color: secondsLeft < 180 ? '#b91c1c' : 'var(--forest)',
+            background: secondsLeft < 180 ? 'var(--error-surface)' : 'var(--surface-muted)',
+            color: secondsLeft < 180 ? 'var(--error-text)' : 'var(--forest)',
             padding: '16px 20px',
             borderRadius: 'var(--radius-panel)',
             display: 'flex',
@@ -541,8 +547,8 @@ export default function RegistrationPage({ params }) {
               <strong style={{ fontSize: 16, display: 'block' }}>Đang giữ chỗ cự ly cho bạn</strong>
               <span style={{ fontSize: 13 }}>Vui lòng hoàn tất thanh toán trước khi hết hạn giữ vé.</span>
             </div>
-            <div style={{ fontSize: 28, fontWeight: 800, fontFamily: 'monospace' }}>
-              ⏱ {formatTimer(secondsLeft)}
+            <div className="checkout-timer">
+              <Clock3 size={20} aria-hidden="true" /> {formatTimer(secondsLeft)}
             </div>
           </div>
 
@@ -581,7 +587,7 @@ export default function RegistrationPage({ params }) {
                     cursor: submitting ? 'not-allowed' : 'pointer',
                   }}
                 >
-                  Thanh Toán Bằng Số Dư Ví Nội Bộ
+                  Thanh toán bằng số dư ví
                 </button>
               </div>
         </div>
@@ -590,8 +596,8 @@ export default function RegistrationPage({ params }) {
       {/* STEP 3: SUCCESS & GENERATED BIB SCREEN */}
       {step === 3 && confirmData && (
         <div style={{ maxWidth: 650, margin: '0 auto', background: 'var(--surface)', border: '1px solid #10b981', borderRadius: 'var(--radius-panel)', padding: 36, textAlign: 'center' }}>
-          <div style={{ fontSize: 56, marginBottom: 12 }}>🎉</div>
-          <h2 style={{ fontSize: 24, fontWeight: 800, color: '#065f46' }}>Đăng Ký & Thanh Toán Thành Công!</h2>
+          <CircleCheck className="checkout-success-icon" size={48} strokeWidth={1.5} aria-hidden="true" />
+          <h2 style={{ fontSize: 24, fontWeight: 800, color: 'var(--forest)' }}>Đăng ký thành công</h2>
           <p style={{ color: 'var(--muted)', fontSize: 15, marginTop: 4 }}>
             Chào mừng bạn đến với <b>{event?.name || 'giải chạy'}</b>!
           </p>
@@ -606,7 +612,7 @@ export default function RegistrationPage({ params }) {
             maxWidth: 420,
             boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
           }}>
-            <div style={{ fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', opacity: 0.8 }}>SỐ BIB CHÍNH THỨC</div>
+            <div style={{ fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', opacity: 0.8 }}>Số BIB chính thức</div>
             <div style={{ fontSize: 44, fontWeight: 900, letterSpacing: 3, margin: '8px 0' }}>
               {confirmData.bibNumber}
             </div>
@@ -619,8 +625,8 @@ export default function RegistrationPage({ params }) {
             </div>
           </div>
 
-          <div style={{ background: '#ecfdf5', color: '#065f46', padding: 14, borderRadius: 'var(--radius-panel)', fontSize: 14, marginBottom: 24 }}>
-            🎁 Bạn đã được cộng thêm <b>+{confirmData.pointsAwarded || 10} điểm RunPoints</b> vào tài khoản tích lũy!
+          <div style={{ background: 'var(--surface-muted)', color: 'var(--forest)', padding: 14, borderRadius: 'var(--radius-panel)', fontSize: 14, marginBottom: 24 }}>
+            Bạn đã được cộng thêm <b>+{confirmData.pointsAwarded || 10} điểm RunPoints</b> vào tài khoản tích lũy!
           </div>
 
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
@@ -634,7 +640,7 @@ export default function RegistrationPage({ params }) {
                 textDecoration: 'none',
               }}
             >
-              Vào Trang Quản Lý Vé Của Tôi
+              Xem vé của tôi
             </Link>
             <Link className="button"
               href={`/events/${eventSlug}`}
@@ -647,7 +653,7 @@ export default function RegistrationPage({ params }) {
                 textDecoration: 'none',
               }}
             >
-              Quay Lại Sự Kiện
+              Quay lại giải
             </Link>
           </div>
         </div>

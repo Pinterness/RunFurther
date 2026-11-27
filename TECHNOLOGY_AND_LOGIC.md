@@ -600,3 +600,58 @@ Nguồn model: [Quaternius](https://quaternius.com/packs/ultimatemodularcharacte
 - Đối soát vẫn thủ công; chưa có webhook SePay/Casso, hoàn tiền tự động hay ảnh biên lai.
 - Rate limit và giới hạn 3 lệnh là bảo vệ trong một tiến trình; nhiều instance cần kho dùng chung.
 - Hàng đợi admin hiển thị 100 lệnh mới nhất theo bộ lọc; lệnh cũ hơn tìm bằng mã.
+
+## UX/UI — đợt sửa Unslop 19/11/2026
+
+Nhánh `fix/unslop-ui-polish`, tiếp nối báo cáo trong `UX_UI_AUDIT_UNSLOP.md`. Áp dụng hướng của [Unslop / Damir Sokolovsky](https://github.com/heydamir/unslop), CC BY 4.0, giữ nhận diện và trải nghiệm 3D.
+
+**Công nghệ và cách xử lý**
+
+- React giữ trạng thái panel; `HTMLDialogElement.showModal()` đưa bảng nội dung lên top layer và khóa tương tác với nền. Chế độ tĩnh dùng `div`, nên nội dung vẫn đọc được khi không có WebGL/reduced motion.
+- Điều hướng Tab/Shift+Tab bao quanh danh sách control đang hiển thị và không inert; Escape do native `cancel` xử lý. Cleanup đóng dialog, trả scroll lock và focus sau khi React cập nhật DOM; bỏ requestAnimationFrame khôi phục focus gây tranh chấp khi nhấn Escape liên tiếp.
+- CSS `:has(dialog:modal)` ẩn widget hỗ trợ khi có modal. Escape của chat chỉ có hiệu lực khi không còn modal. Hội thoại giữ nguyên khi bảng khác mở; không phát sinh request thanh toán hay thay đổi trạng thái tài khoản.
+- Responsive: control tối thiểu 44px, nhãn hành trình 13–14px, metadata 12px; CSS Grid xếp checkout 2 → 1 cột tại 800px và nhóm trường nhập 2 → 1 cột tại 480px. Chat tận dụng chiều cao màn hình dưới 720px để thông báo dữ liệu vẫn đọc được.
+- Thẻ giải đọc `dateInfo.raceDate`; `Intl.DateTimeFormat` thông qua `toLocaleDateString` dùng locale `vi-VN`, múi giờ `Asia/Ho_Chi_Minh`. Ngày thiếu/sai có nhãn riêng, không dùng ngày hiện tại làm dữ liệu dự phòng.
+- Token màu/bo góc dùng chung; giá tiền có tương phản cao trên nền giấy. Lucide dùng cho thao tác hero, ngày/địa điểm và trạng thái checkout. Giá, RunPoints, giữ chỗ, SePay, role và quy tắc ngày sinh/quốc tịch giữ nguyên.
+
+**Kiểm tra trong môi trường riêng**
+
+`scripts/uiPolishFixtures.cjs` chỉ chứa dữ liệu mô phỏng. `scripts/uiPolishSsr.cjs` dùng riêng cho preview test, chặn ghi API và fetch ngoài; không preload script này ở dev/production đang phục vụ người dùng. `scripts/checkUiPolish.js` còn chặn request ngoài trong browser và kiểm tra modal/chat, Tab/Escape/focus, kích thước điều khiển, ngày giải, nhãn form, responsive và reduced motion ở 1440/1024/768/390/360px.
+
+Chuẩn bị một checkout sạch không có `.env` thật, cài dependency theo `CONTRIBUTING.md`, rồi chạy (PowerShell):
+
+```powershell
+$env:NEXT_PUBLIC_API_URL='https://runfurther-deployment-check.example/api'
+npm run build:web
+node --require ./scripts/uiPolishSsr.cjs node_modules/next/dist/bin/next start --port 3103
+# Ở terminal khác, cùng checkout:
+$env:WEB_TEST_URL='http://localhost:3103'
+npm run test:ui-polish
+```
+
+Ảnh được lưu vào `artifacts/ui-polish/` và không commit dữ liệu test vào ứng dụng. Các bộ hồi quy liên quan: `test:event-calendar`, `test:support-chat`, `test:trail-scene`, `test:runner-ui`, `test:layout`; tất cả dùng API fixture. Không thay kiểm thử thanh toán thật. Chưa xác nhận trên iOS/Safari và bàn phím ảo thiết bị thật.
+
+**Phần cần làm tiếp:** U06 — dịch vụ ảnh/Pasta Party đang có giá cố định. Đề xuất cấu hình dịch vụ theo từng chủ giải, lưu giá tại thời điểm tạo đơn và chỉ bán mục đang bật; không thay nghiệp vụ này trong nhánh sửa giao diện.
+
+## Tiếp tục nhánh giao diện sau khi kiểm tra GitHub — 27/11/2026
+
+Đã fetch GitHub và đồng bộ `origin/main` tại `d42871e` vào `fix/unslop-ui-polish` bằng merge commit `e45b13e`, không có xung đột. Bản main này gồm các sửa lỗi truy vấn giải của trợ lý (#13–#16) và Mongoose 8.24.11 (#17). PR giao diện #12 được cập nhật trên cùng nhánh.
+
+Đợt này tiếp tục phần trình bày tài khoản/vé, đăng nhập/đăng ký và icon lịch giải; không đổi hợp đồng API, giá, phân quyền hay environment. Chi tiết thiết kế trong `UI_DESIGN.md`. Ảnh [tài khoản mobile](docs/ux/unslop-2026-11-27/account-mobile.png) dùng dữ liệu fixture.
+
+Kiểm tra bản kết hợp trong checkout riêng không có `.env` thật, cài đúng lockfile bằng npm 11.21.0:
+
+- Backend: 111/111 đạt, dùng MongoDB tạm.
+- Trợ lý: 220/220 đạt, bao gồm các kiểm thử câu hỏi giải mới từ main.
+- Camera/nhân vật/cinematic: 13/13 đạt.
+- Production build thành công; `npm audit --omit=dev --audit-level=high` báo 0 lỗ hổng tại thời điểm chạy.
+- UI polish đạt ở 1440/1024/768/390/360px, không page error hoặc tràn ngang. Bổ sung kiểm tra tài khoản, vùng bấm, mở vé/Escape/trả focus, chuyển sang form hồ sơ. Các request browser/SSR được mô phỏng, không ghi dữ liệu thật.
+- `checkRunnerFlows.js` đạt: đăng nhập, đăng ký, lưu hồ sơ/avatar, QR vé, marketplace, tự điền checkout và reduced motion. `checkEventCalendar.js` đạt: tải/phân trang 22 giải, retry, điều khiển mobile, vòng lặp, một giải và trạng thái rỗng.
+
+Giới hạn: chưa kiểm chứng Safari/iOS hoặc bàn phím ảo trên thiết bị thật. Các mục nghiệp vụ U06 và rà soát đầy đủ giao diện quản trị vẫn là phần việc riêng.
+
+## Kiểm tra phần quản trị — 27/11/2026
+
+Nhãn trạng thái được tập trung tại `src/lib/statusLabels.js` và dùng cho vé, chỉnh sửa giải, kiểm duyệt và danh sách người chạy. Chỉ đổi cách hiển thị; không đổi API, thanh toán hay phân quyền.
+
+Production build đạt. Các bộ Playwright dùng API fixture đã đạt: hỗ trợ khách (retry, phản hồi, đóng/mở), tri thức trợ lý (nháp/xuất bản, xung đột phiên bản, lịch sử, công tắc AI), chủ giải (tạo giải/cự ly/nhân sự, bảng người chạy cuộn bằng bàn phím), quản trị nền tảng (duyệt quyền, kiểm duyệt và lịch sử). Cập nhật selector kiểm thử cũ để phân biệt thông báo lưu với trạng thái ngân hàng và bảng nạp ví với bảng SePay. Không kiểm thử trên dữ liệu thật; chưa xác nhận Safari/iOS thiết bị thật.

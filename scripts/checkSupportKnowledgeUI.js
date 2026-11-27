@@ -364,7 +364,12 @@ const base = process.env.WEB_TEST_URL || 'http://localhost:3000';
     for (const width of [1440, 768, 390, 360]) {
       await page.setViewportSize({ width, height: 950 });
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'Knowledge tab overflow at ' + width);
+      assert.ok((await aiSwitch.boundingBox()).height >= 44, 'AI switch below 44px at '+width);
+      for (const size of await page.locator('.knowledge-row-meta,.knowledge-row-author,.knowledge-field small,.knowledge-queue-meta').evaluateAll(nodes => nodes.map(node => parseFloat(getComputedStyle(node).fontSize)))) {
+        assert.ok(size >= 12, 'Knowledge text below 12px at '+width);
+      }
     }
+    await page.evaluate(() => scrollTo({ top:0, behavior:'instant' }));
     await page.screenshot({ path: 'artifacts/support-knowledge-mobile.png', fullPage: true });
     role = 'RUNNER';
     await page.goto(base + '/admin', { waitUntil: 'networkidle' });

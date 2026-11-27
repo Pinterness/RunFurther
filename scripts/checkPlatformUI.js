@@ -1,7 +1,7 @@
 const { chromium, expect } = require('@playwright/test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const WEB_URL = process.env.WEB_URL ?? 'http://localhost:3000';
+const WEB_URL = process.env.WEB_TEST_URL ?? process.env.WEB_URL ?? 'http://localhost:3000';
 (async () => {
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
   try {
@@ -75,6 +75,8 @@ const WEB_URL = process.env.WEB_URL ?? 'http://localhost:3000';
     await page.getByRole('button', { name: 'Xác nhận quyết định' }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.locator('.organizer-event')).toContainText('Cần bổ sung');
+    await expect(page.locator('.organizer-event')).toContainText('Mở đăng ký');
+    await expect(page.locator('.organizer-event')).not.toContainText('REGISTRATION_OPEN');
     await expect(page.getByRole('button', { name: /Xóa/ })).toHaveCount(0);
     await expect(page.locator('a[href^="/organizer/events/"]')).toHaveCount(0);
     await page.getByRole('button', { name: 'Lịch sử', exact: true }).click();
@@ -86,8 +88,8 @@ const WEB_URL = process.env.WEB_URL ?? 'http://localhost:3000';
     }
     await page.screenshot({ path: 'artifacts/platform-mobile.png', fullPage: true });
     await page.getByRole('button', { name: 'Nạp ví', exact: true }).click();
-    await expect(page.locator('.organizer-panel')).toContainText('TOPUP-TEST');
-    await expect(page.locator('.organizer-panel')).toContainText('NAPTEST2345');
+    await expect(page.locator('.topup-review')).toContainText('TOPUP-TEST');
+    await expect(page.locator('.topup-review')).toContainText('NAPTEST2345');
     await expect(page.locator('.topup-account')).toContainText('Tài khoản nhận nạp ví');
     await page.goto(WEB_URL);
     await page.setViewportSize({ width: 1440, height: 950 });
