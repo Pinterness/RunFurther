@@ -70,7 +70,7 @@ export default function CommunityPage() {
   </ul>;
 
   return <div className="runner-shell community-shell">
-    <div className="runner-page-heading"><div><p className="section-index">CỘNG ĐỒNG RUNFURTHER</p><h1>Những người chạy cùng bạn.</h1></div><Link className="text-action" href="/account#community">Hồ sơ cộng đồng của bạn ↗</Link></div>
+    <div className="runner-page-heading"><div><p className="section-index">Cộng đồng RunFurther</p><h1>Những người chạy cùng bạn.</h1></div><Link className="text-action" href="/account#community">Hồ sơ cộng đồng của bạn</Link></div>
     <p className="community-lead">Chỉ thành viên đã đăng nhập mới xem được trang này. Mỗi người tự bật hồ sơ của mình, tự chọn có hiện câu lạc bộ và thành tích hay không, và tắt lúc nào cũng được.</p>
     <form className="community-search" role="search" onSubmit={event => { event.preventDefault(); load(1, draft.trim()); }}>
       <label htmlFor="community-q">Tìm theo tên</label>

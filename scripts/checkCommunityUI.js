@@ -8,6 +8,14 @@ const XSS = '<img src=x onerror="window.__communityXss=1">';
 const CONSENT = { version: 'profile-v1', text: 'Văn bản đồng ý mẫu: tắt là xóa hẳn hồ sơ cộng đồng.' };
 const card = (handle, displayName, bio = '') => ({ handle, displayName, avatarTheme: 'ocean', bio, memberSince: '2026-01', canMessage: false });
 
+// Nội dung trang không còn mũi tên ký tự ↗ ← →, và nhãn nhỏ đầu trang (.section-index) không viết hoa toàn bộ trong mã.
+async function checkUnslopText(page, path) {
+  const text = await page.locator('main').innerText();
+  assert.doesNotMatch(text, /[↗←→]/, `${path} còn mũi tên ký tự`);
+  const labels = await page.locator('main .section-index').allTextContents();
+  for (const label of labels) assert.notEqual(label, label.toLocaleUpperCase('vi'), `${path}: nhãn "${label}" viết hoa toàn bộ`);
+}
+
 (async () => {
   const browser = await chromium.launch({ ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : { channel: 'chrome' }), headless: true });
   try {
@@ -199,6 +207,14 @@ const card = (handle, displayName, bio = '') => ({ handle, displayName, avatarTh
     await expect(searchBox).toHaveValue('');
     assert.deepEqual(searches, ['nguyen', 'nguyen', 'khong co ai']);
 
+    // Theo quy tắc Unslop của giao diện chung (UX_UI_AUDIT_UNSLOP.md U08, U11, U12): thẻ không dịch lên khi rê chuột,
+    // bo góc theo token --radius-panel, nhãn đầu trang viết câu thường, không dùng mũi tên ký tự.
+    await page.locator('.community-card').first().hover();
+    await page.waitForTimeout(300);
+    const cardStyle = await page.locator('.community-card').first().evaluate(el => { const s = getComputedStyle(el); return { transform: s.transform, radius: s.borderRadius }; });
+    assert.deepEqual(cardStyle, { transform: 'none', radius: '12px' });
+    await checkUnslopText(page, '/community');
+
     // Phản hồi 401 về muộn sau khi người dùng đã sang trang khác: không bị kéo về trang đăng nhập.
     slowExpired = true;
     await page.goto(base + '/community');
@@ -224,6 +240,10 @@ const card = (handle, displayName, bio = '') => ({ handle, displayName, avatarTh
     await expect(results).toContainText('Tốt nhất 21K');
     assert.equal(await page.locator('img[src="x"]').count(), 0);
     assert.equal(await page.evaluate(() => window.__communityXss), undefined);
+    // Nhãn các mục hồ sơ (Giới thiệu, Câu lạc bộ…) tối thiểu 12px và không viết hoa toàn bộ.
+    const dtStyle = await page.locator('.community-details dt').first().evaluate(el => { const s = getComputedStyle(el); return { size: parseFloat(s.fontSize), transform: s.textTransform }; });
+    assert.ok(dtStyle.size >= 12 && dtStyle.transform === 'none', `nhãn mục hồ sơ ${JSON.stringify(dtStyle)}`);
+    await checkUnslopText(page, '/community/nguoi-xss');
 
     // Hồ sơ không xem được.
     await page.goto(base + '/community/khong-ton-tai');
