@@ -339,7 +339,145 @@ const at = minutes => new Date(Date.UTC(2026, 10, 26, 3, minutes)).toISOString()
 
     assert.deepEqual(errors, [], 'không có lỗi JavaScript trên trang');
     console.log('checkChatUI: đạt', { posts: posts.length, reads: reads.length, polls: polls.length });
+    await checkRealtime(browser);
   } finally {
     await browser.close();
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });
+
+// Realtime (P14, Task 14.3): page.routeWebSocket đóng vai server Socket.IO (giao thức Engine.IO 4: gói mở "0{...}",
+// CONNECT "40", sự kiện "42[...]"), API vẫn là dữ liệu giả. Kiểm: socket nối thì polling dừng; tín hiệu của khung đang
+// mở thì lấy afterSeq ngay; tab ẩn thì đóng socket, hiện lại thì nối lại và lấy bù; đứt mà nối lại 5 lần không được
+// thì quay về polling và thôi thử; realtime: false thì không mở socket.
+async function checkRealtime(browser) {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const conversations = {
+    c1: { id: 'c1', status: 'ACTIVE', isRequester: true, other: person('Lê Phượng My', 'le-phuong-my'), lastMessageAt: at(40), unread: false },
+    c2: { id: 'c2', status: 'ACTIVE', isRequester: false, other: person('Vinh Quang', 'vinh-quang'), lastMessageAt: at(30), unread: false },
+  };
+  const messages = { c1: [{ seq: 1, mine: false, text: 'Tin đầu', createdAt: at(40) }], c2: [{ seq: 1, mine: false, text: 'Tin cuộc hai', createdAt: at(30) }] };
+  const lastMessage = id => { const last = messages[id][messages[id].length - 1]; return { seq: last.seq, mine: last.mine, text: last.text }; };
+  let realtime = true, refuse = false, lists = 0;
+  const polls = [], auths = [], sockets = [];
+  const pollsOf = id => polls.filter(p => p === id).length;
+  const openSockets = () => sockets.filter(s => s.open).length;
+
+  await page.route('**/api/**', async route => {
+    const request = route.request(), url = new URL(request.url()), path = url.pathname.replace(/^\/api/, ''), method = request.method();
+    const reply = (data, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) });
+    if (method === 'OPTIONS') return reply({});
+    if (path === '/auth/me') return reply({ user: { _id: 'me', fullName: 'Người Chạy Thử', email: 'runner@test.local' } });
+    if (path === '/notifications') return reply({ notifications: [] });
+    if (path === '/chat/me') return reply({ consent: true, consentText: { version: 'chat-v1', text: 'Văn bản mẫu' }, locked: false, eligible: true, realtime });
+    if (path === '/chat/unread') return reply({ count: 0 });
+    if (path === '/chat/conversations' && method === 'GET') {
+      lists += 1;
+      const box = url.searchParams.get('box') || 'chats';
+      const list = box === 'invites' ? [] : Object.values(conversations).map(c => ({ ...c, lastMessage: lastMessage(c.id) }));
+      return reply({ conversations: list, hasMore: false, realtime });
+    }
+    const one = /^\/chat\/conversations\/(c\d)$/.exec(path);
+    if (one) return reply({ conversation: { ...conversations[one[1]], lastMessage: lastMessage(one[1]) } });
+    const match = /^\/chat\/conversations\/(c\d)\/(messages|read)$/.exec(path);
+    if (match && match[2] === 'read') return route.fulfill({ status: 204 });
+    if (match && method === 'GET') {
+      const after = url.searchParams.get('afterSeq');
+      if (after === null) return reply({ messages: messages[match[1]], hasMore: false });
+      polls.push(match[1]);
+      return reply({ messages: messages[match[1]].filter(m => m.seq > Number(after)), hasMore: false });
+    }
+    return reply({ message: 'Không có dữ liệu giả cho ' + path }, 404);
+  });
+
+  // Server Socket.IO giả. refuse = true: nhận kết nối rồi im lặng, không gửi gói mở, giống Render đang ngủ giữ kết nối
+  // lại; client chờ hết timeout 20 giây của Socket.IO rồi tính là một lần nối thất bại.
+  await page.routeWebSocket(/\/socket\.io\//, ws => {
+    const entry = { ws, open: true };
+    sockets.push(entry);
+    ws.onClose(() => { entry.open = false; });
+    if (refuse) { entry.open = false; return; }
+    ws.send('0' + JSON.stringify({ sid: 'engine-' + sockets.length, upgrades: [], pingInterval: 3600000, pingTimeout: 3600000, maxPayload: 1000000 }));
+    ws.onMessage(message => {
+      if (String(message).startsWith('40')) { auths.push(JSON.parse(String(message).slice(2) || '{}')); ws.send('40' + JSON.stringify({ sid: 'socket-' + sockets.length })); }
+    });
+  });
+  const signal = payload => sockets.filter(s => s.open).at(-1).ws.send('42' + JSON.stringify(['chat:message', payload]));
+  // Tua đồng hồ giả từng giây và chờ thật một chút giữa các bước: polling chỉ hẹn lượt sau khi phản hồi (đi theo thời
+  // gian thật) đã về, nên tua một lần dài sẽ bỏ sót các lượt sau.
+  const tick = async ms => { for (let done = 0; done < ms; done += 1000) { await page.clock.runFor(1000); await new Promise(resolve => setTimeout(resolve, 30)); } };
+  const setVisible = visible => page.evaluate(state => { Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state }); document.dispatchEvent(new Event('visibilitychange')); }, visible ? 'visible' : 'hidden');
+
+  await page.goto(base + '/login');
+  await page.evaluate(() => localStorage.setItem('rf_token', 'chat-fixture-only'));
+  await page.clock.install({ time: new Date('2026-11-26T03:55:00Z') });
+  await page.goto(base + '/messages?c=c1');
+  const log = page.getByRole('log');
+  await expect(log.locator('.chat-bubble', { hasText: /Tin đầu$/ })).toBeVisible();
+
+  // Nối socket bằng đúng token, rồi polling 5 giây của khung và 30 giây của danh sách dừng.
+  await expect.poll(() => auths.length).toBe(1);
+  assert.deepEqual(auths[0], { token: 'chat-fixture-only' });
+  await expect.poll(openSockets).toBe(1);
+  await page.clock.runFor(1000);
+  const quietPolls = polls.length, quietLists = lists;
+  await tick(65000);
+  assert.equal(polls.length, quietPolls, 'socket đang nối thì khung chat không polling');
+  assert.equal(lists, quietLists, 'socket đang nối thì danh sách không tự làm mới 30 giây');
+
+  // Tín hiệu của khung đang mở: lấy afterSeq ngay và hiện tin; danh sách làm mới.
+  messages.c1.push({ seq: 2, mine: false, text: 'Tin tức thì', createdAt: at(41) });
+  signal({ conversationId: 'c1', seq: 2 });
+  await expect(log.locator('.chat-bubble', { hasText: /Tin tức thì$/ })).toBeVisible();
+  await expect.poll(() => lists).toBeGreaterThan(quietLists);
+  // Tín hiệu của cuộc khác: chỉ làm mới danh sách, không lấy tin của khung đang mở hay của cuộc kia.
+  const beforeOther = { c1: pollsOf('c1'), c2: pollsOf('c2'), lists };
+  messages.c2.push({ seq: 2, mine: false, text: 'Tin mới ở cuộc hai', createdAt: at(42) });
+  signal({ conversationId: 'c2', seq: 2 });
+  await expect.poll(() => lists).toBeGreaterThan(beforeOther.lists);
+  assert.equal(pollsOf('c1'), beforeOther.c1);
+  assert.equal(pollsOf('c2'), beforeOther.c2);
+
+  // Tab ẩn thì đóng socket và không polling; hiện lại thì nối lại và lấy bù tin lỡ trong lúc ẩn.
+  await setVisible(false);
+  await expect.poll(openSockets).toBe(0);
+  const hiddenPolls = polls.length;
+  await tick(20000);
+  assert.equal(polls.length, hiddenPolls, 'tab ẩn thì không polling');
+  messages.c1.push({ seq: 3, mine: false, text: 'Tin lúc tab ẩn', createdAt: at(43) });
+  await setVisible(true);
+  await expect.poll(() => auths.length).toBe(2);
+  await expect(log.locator('.chat-bubble', { hasText: /Tin lúc tab ẩn$/ })).toBeVisible();
+  await page.clock.runFor(1000);
+  const liveAgain = polls.length;
+  await tick(20000);
+  assert.equal(polls.length, liveAgain, 'nối lại xong thì polling dừng lần nữa');
+
+  // Mất kết nối và nối lại không được: thử tối đa 5 lần (mỗi lần chờ 20 giây, cộng thời gian lùi tối đa 7,5 giây),
+  // trong lúc đó polling 5 giây đã chạy lại; hết 5 lần thì thôi thử nối.
+  refuse = true;
+  const beforeDrop = sockets.length;
+  sockets.filter(s => s.open).at(-1).ws.close();
+  for (let i = 0; i < 30; i++) await page.clock.runFor(5000);
+  assert.equal(sockets.length - beforeDrop, 5, 'nối lại đúng 5 lần');
+  const fallback = polls.length;
+  await tick(20000);
+  assert.ok(polls.length >= fallback + 3, 'mất socket thì polling 5 giây chạy lại: ' + (polls.length - fallback));
+  await page.clock.runFor(60000);
+  assert.equal(sockets.length - beforeDrop, 5, 'đã bỏ cuộc thì không thử nối nữa');
+
+  // Công tắc tắt (realtime: false): không mở socket, chat chạy bằng polling.
+  realtime = false; refuse = false;
+  const beforeOff = sockets.length;
+  await page.goto(base + '/messages?c=c1');
+  await expect(log.locator('.chat-bubble', { hasText: /Tin đầu$/ })).toBeVisible();
+  const offPolls = polls.length;
+  await tick(16000);
+  assert.equal(sockets.length, beforeOff, 'realtime tắt thì không mở socket');
+  assert.ok(polls.length >= offPolls + 3, 'realtime tắt thì vẫn polling');
+
+  assert.deepEqual(errors, [], 'không có lỗi JavaScript trên trang realtime');
+  console.log('checkChatUI realtime: đạt', { sockets: sockets.length, polls: polls.length, lists });
+  await page.close();
+}

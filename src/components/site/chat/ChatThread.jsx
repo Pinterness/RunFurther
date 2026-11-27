@@ -13,7 +13,7 @@ const visible = () => typeof document === 'undefined' || document.visibilityStat
 // Chữ chỉ dành cho trình đọc màn hình.
 const SR_ONLY = { position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' };
 
-export default function ChatThread({ conversation, onChanged, onBack, onExpired, focusOnOpen }) {
+export default function ChatThread({ conversation, onChanged, onBack, onExpired, focusOnOpen, live = false, syncKey = 0 }) {
   const id = conversation.id;
   const [messages, setMessages] = useState([]);
   const [hasOlder, setHasOlder] = useState(false);
@@ -25,6 +25,8 @@ export default function ChatThread({ conversation, onChanged, onBack, onExpired,
   // Bản mới nhất của danh sách tin cho polling và các hàm bất đồng bộ (closure của lần render cũ không thấy state mới).
   const messagesRef = useRef([]);
   const sendingRef = useRef(false), alive = useRef(true), markedRef = useRef(0);
+  // Lấy bù theo tín hiệu socket: chỉ một request mỗi lúc; tín hiệu tới giữa chừng thì lấy thêm một lượt sau đó.
+  const catchingRef = useRef(false), againRef = useRef(false);
   const logRef = useRef(null), headingRef = useRef(null), inputRef = useRef(null), confirmRef = useRef(null), keepScroll = useRef(null);
 
   // Người nhận trả lời bằng thẻ lời mời, kể cả khi đã từ chối trước đó (đổi ý thì vẫn chấp nhận được, spec T14).
@@ -59,8 +61,9 @@ export default function ChatThread({ conversation, onChanged, onBack, onExpired,
   // Polling lấy bù tin mới, chỉ sau khi lần tải đầu xong (trước đó lastSeq = 0 sẽ kéo về tin cũ nhất).
   // Luôn chỉ có một chuỗi: inFlight chặn lần gọi thứ hai khi tab hiện lại đúng lúc một lần hỏi đang chờ.
   // 404 (cuộc không còn) thì dừng hẳn; 429 hay lỗi máy chủ thì giãn nhịp 5 → 10 → 20 → 40 → 60 giây.
+  // Socket đang nối (live) thì không polling: tín hiệu chat:message thay cho việc hỏi lại (P14).
   useEffect(() => {
-    if (!loaded) return undefined;
+    if (!loaded || live) return undefined;
     let timer = null, stopped = false, inFlight = false, delay = POLL_MS;
     const schedule = () => { if (!stopped && visible() && !timer && !inFlight) timer = setTimeout(poll, delay); };
     async function poll() {
@@ -84,7 +87,25 @@ export default function ChatThread({ conversation, onChanged, onBack, onExpired,
     schedule();
     document.addEventListener('visibilitychange', onVisibility);
     return () => { stopped = true; if (timer) clearTimeout(timer); document.removeEventListener('visibilitychange', onVisibility); };
-  }, [id, loaded]);
+  }, [id, loaded, live]);
+
+  // Lấy bù afterSeq khi trang báo (syncKey tăng): có tín hiệu tin mới của cuộc này, hoặc socket vừa nối/nối lại. Chạy
+  // cả lúc tải đầu vừa xong, vì tin tới giữa lần tải đầu và lúc socket nối sẽ không có tín hiệu nào.
+  useEffect(() => {
+    if (!loaded || !syncKey) return;
+    async function catchUp() {
+      if (catchingRef.current) { againRef.current = true; return; }
+      catchingRef.current = true;
+      try {
+        do {
+          againRef.current = false;
+          const data = await chat.fetchMessages(id, { afterSeq: chat.lastSeq(messagesRef.current) });
+          if (alive.current && data.messages.length) apply(chat.mergeMessages(messagesRef.current, data.messages));
+        } while (againRef.current && alive.current);
+      } catch (error) { expired(error); } finally { catchingRef.current = false; }
+    }
+    catchUp();
+  }, [syncKey, loaded]);
 
   // Đánh dấu đã đọc tới seq lớn nhất đang hiện, khi khung đang mở và tab đang hiện; tin tới lúc tab ẩn thì đánh dấu khi
   // người dùng quay lại tab.

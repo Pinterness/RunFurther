@@ -1,5 +1,59 @@
 // Hàm gọi API tin nhắn (/api/chat) và các hàm nhỏ dùng chung cho trang /messages (spec 4.3, 4.5; plan Task 13.2).
+import { useEffect, useRef, useState } from 'react';
 import { api } from './clientApi';
+import { API_BASE_URL } from './apiUrl';
+
+// Socket.IO nối thẳng tới máy chủ API (Render), vì Vercel không chạy được WebSocket server.
+const API_ORIGIN = API_BASE_URL.replace(/\/api$/, '');
+const tabVisible = () => document.visibilityState === 'visible';
+
+/**
+ * Nối Socket.IO để nhận tín hiệu "có tin mới" (P14, ADR realtime 3.9). Chỉ nối khi `enabled` (công tắc realtime bật)
+ * và tab đang hiện; tab ẩn thì đóng, hiện lại thì nối lại. Thư viện socket.io-client chỉ được tải khi cần nối.
+ * Bỏ cuộc, tức thôi thử nối cho tới khi `enabled` đổi, khi: nối lại 5 lần không được (mỗi lần thử là một request đánh
+ * thức Render), server từ chối lúc bắt tay (token sai, chưa đủ điều kiện nhắn tin), hoặc server chủ động ngắt (admin tắt
+ * công tắc, bị khóa, token hết hạn). Lúc đó trang tự quay về polling.
+ * @param {{ enabled: boolean, onSignal: (payload: { conversationId: string, seq: number }) => void, onConnect: () => void }} options
+ * @returns {boolean} Socket đang nối hay không; đang nối thì trang tắt polling.
+ */
+export function useChatSocket({ enabled, onSignal, onConnect }) {
+  const [live, setLive] = useState(false);
+  const handlers = useRef({ onSignal, onConnect });
+  handlers.current = { onSignal, onConnect };
+
+  useEffect(() => {
+    if (!enabled) return undefined;
+    let socket = null, opening = false, gaveUp = false, disposed = false;
+    function close() {
+      if (socket) { socket.removeAllListeners(); socket.io.removeAllListeners(); socket.close(); socket = null; }
+      setLive(false);
+    }
+    function giveUp() { gaveUp = true; close(); }
+    async function open() {
+      if (socket || opening || gaveUp || disposed || !tabVisible()) return;
+      const token = localStorage.getItem('rf_token');
+      if (!token) return;
+      opening = true;
+      let io;
+      try { ({ io } = await import('socket.io-client')); } catch { gaveUp = true; return; } finally { opening = false; }
+      if (socket || gaveUp || disposed || !tabVisible()) return;
+      const current = io(API_ORIGIN, { transports: ['websocket'], auth: { token }, reconnectionAttempts: 5 });
+      socket = current;
+      current.on('connect', () => { setLive(true); handlers.current.onConnect(); });
+      current.on('chat:message', payload => handlers.current.onSignal(payload));
+      current.on('disconnect', reason => { setLive(false); if (reason === 'io server disconnect') giveUp(); });
+      // active = false nghĩa là server từ chối ở bước bắt tay, client sẽ không tự thử lại.
+      current.on('connect_error', () => { setLive(false); if (!current.active) giveUp(); });
+      current.io.on('reconnect_failed', giveUp);
+    }
+    const onVisibility = () => (tabVisible() ? open() : close());
+    open();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => { disposed = true; document.removeEventListener('visibilitychange', onVisibility); close(); };
+  }, [enabled]);
+
+  return live;
+}
 
 const post = (path, body) => api(path, { method: 'POST', body: JSON.stringify(body ?? {}) });
 const conv = id => '/chat/conversations/' + encodeURIComponent(id);
