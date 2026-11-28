@@ -25,31 +25,34 @@ export default function ChatRealtimeSwitch({ onExpired, onForbidden }) {
   useEffect(() => { alive.current = true; load(); return () => { alive.current = false; }; }, []);
 
   async function toggle() {
+    // Đang lưu thì bỏ qua lần bấm: nút dùng aria-disabled chứ không disabled, để focus không rơi khỏi công tắc.
+    if (saving) return;
     setSaving(true); setError('');
     try { const data = await chat.updateRealtimeSetting(!setting.realtimeEnabled); if (alive.current) setSetting(data.setting); }
     catch (failure) { if (alive.current) fail(failure); }
     finally { if (alive.current) setSaving(false); }
   }
 
-  const live = setting && setting.realtimeEnabled && !setting.forcedOff;
-  return <section className="chat-panel chat-admin chat-realtime" aria-labelledby="chat-realtime-title" aria-busy={!setting || saving}>
+  let state = '';
+  if (setting) state = saving ? 'Đang lưu…' : setting.forcedOff ? 'Đang tắt vì máy chủ chặn' : setting.realtimeEnabled ? 'Đang bật' : 'Đang tắt';
+  return <section className="chat-panel chat-admin chat-realtime" aria-labelledby="chat-realtime-title">
     <div className="chat-admin-head">
       <h2 id="chat-realtime-title">Tin nhắn tức thì</h2>
-      <p>Khi bật, tin hiện bên kia ngay qua WebSocket. Khi tắt, trang tin nhắn tự hỏi lại máy chủ mỗi 5 giây, nên tin vẫn tới, chỉ chậm hơn. Tắt khi realtime gặp sự cố.</p>
+      <p>Khi bật, tin nhắn hiện ngay trên máy người nhận. Khi tắt, trang tin nhắn tự kiểm tra tin mới 5 giây một lần: tin vẫn tới, chỉ chậm hơn vài giây. Chỉ nên tắt khi tin nhắn tức thì gặp sự cố.</p>
     </div>
     <div className="chat-admin-body">
       {error && <p className="notice notice-error" role="alert">{error}{!setting && <> <button type="button" onClick={load}>Thử lại</button></>}</p>}
       {!setting && !error && <p className="chat-state" role="status">Đang tải công tắc…</p>}
       {setting && <>
         <div className="chat-realtime-row">
-          <button type="button" role="switch" aria-checked={setting.realtimeEnabled} aria-label="Bật tin nhắn tức thì" className={'chat-switch' + (setting.realtimeEnabled ? ' is-on' : '')} disabled={saving} onClick={toggle}><span aria-hidden="true" /></button>
-          <p className="chat-realtime-state" role="status">{saving ? 'Đang lưu…' : live ? 'Đang bật' : 'Đang tắt'}</p>
+          <button type="button" role="switch" aria-checked={setting.realtimeEnabled} aria-labelledby="chat-realtime-title" aria-describedby="chat-realtime-state" aria-disabled={saving} className={'chat-switch' + (setting.realtimeEnabled ? ' is-on' : '')} onClick={toggle}><span aria-hidden="true" /></button>
+          <p id="chat-realtime-state" className="chat-realtime-state" role="status">{state}</p>
         </div>
-        {setting.forcedOff && <p className="notice" role="status">Máy chủ đang đặt CHAT_REALTIME=off, nên realtime tắt dù công tắc ở đây đang bật. Người giữ tài khoản Render xóa biến này để mở lại.</p>}
+        {setting.forcedOff && <p className="notice">Tin nhắn tức thì đang bị khóa ở máy chủ (biến CHAT_REALTIME=off trên Render), nên công tắc này chưa có tác dụng. Nhờ người quản lý Render xóa biến đó để mở lại.</p>}
         <h3 className="chat-realtime-history-title">Lịch sử bật tắt</h3>
         {setting.history.length
           ? <ol className="chat-realtime-history">{setting.history.map((entry, index) => <li key={index}><strong>{entry.realtimeEnabled ? 'Bật' : 'Tắt'}</strong> <span className="chat-meta">{entry.changedBy?.fullName || 'Không rõ'} · <time dateTime={entry.changedAt}>{when(entry.changedAt)}</time></span></li>)}</ol>
-          : <p className="chat-meta">Chưa có lần bật tắt nào. Chưa bật tắt lần nào thì realtime coi như bật.</p>}
+          : <p className="chat-meta">Chưa ai bật hay tắt. Mặc định tin nhắn tức thì đang bật.</p>}
       </>}
     </div>
   </section>;

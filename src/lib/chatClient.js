@@ -13,18 +13,20 @@ const tabVisible = () => document.visibilityState === 'visible';
  * Bỏ cuộc, tức thôi thử nối cho tới khi `enabled` đổi, khi nối lại 5 lần không được (mỗi lần thử là một request đánh
  * thức Render) hoặc server từ chối lúc bắt tay (token sai, chưa đủ điều kiện nhắn tin). Server chủ động ngắt (admin tắt
  * công tắc, bị khóa, token hết hạn) thì đóng và gọi onServerClose, để trang hỏi lại công tắc thay vì bỏ cuộc: admin tắt
- * rồi bật lại thì trang tự nối lại. Mọi trường hợp trên, trang tự quay về polling.
- * @param {{ enabled: boolean, onSignal: (payload: { conversationId: string, seq: number }) => void, onConnect: () => void, onServerClose: () => void }} options
+ * rồi bật lại thì trang tự nối lại. Mọi trường hợp trên, trang tự quay về polling. Bỏ cuộc vì mất mạng thì thử lại
+ * một lần khi trình duyệt báo có mạng trở lại (sự kiện online). Token bị xóa (đăng xuất ở cửa sổ khác) thì đóng ngay
+ * và gọi onLoggedOut.
+ * @param {{ enabled: boolean, onSignal: (payload: { conversationId: string, seq: number }) => void, onConnect: () => void, onServerClose: () => void, onLoggedOut: () => void }} options
  * @returns {boolean} Socket đang nối hay không; đang nối thì trang tắt polling.
  */
-export function useChatSocket({ enabled, onSignal, onConnect, onServerClose }) {
+export function useChatSocket({ enabled, onSignal, onConnect, onServerClose, onLoggedOut }) {
   const [live, setLive] = useState(false);
-  const handlers = useRef({ onSignal, onConnect, onServerClose });
-  handlers.current = { onSignal, onConnect, onServerClose };
+  const handlers = useRef({ onSignal, onConnect, onServerClose, onLoggedOut });
+  handlers.current = { onSignal, onConnect, onServerClose, onLoggedOut };
 
   useEffect(() => {
     if (!enabled) return undefined;
-    let socket = null, opening = false, gaveUp = false, disposed = false;
+    let socket = null, opening = false, gaveUp = false, disposed = false, lostNetwork = false;
     function close() {
       if (socket) { socket.removeAllListeners(); socket.io.removeAllListeners(); socket.close(); socket = null; }
       setLive(false);
@@ -48,12 +50,24 @@ export function useChatSocket({ enabled, onSignal, onConnect, onServerClose }) {
       });
       // active = false nghĩa là server từ chối ở bước bắt tay, client sẽ không tự thử lại.
       current.on('connect_error', () => { setLive(false); if (!current.active) giveUp(); });
-      current.io.on('reconnect_failed', giveUp);
+      current.io.on('reconnect_failed', () => { lostNetwork = true; giveUp(); });
     }
     const onVisibility = () => (tabVisible() ? open() : close());
+    const onOnline = () => { if (lostNetwork) { lostNetwork = false; gaveUp = false; open(); } };
+    const onAuth = () => { if (!localStorage.getItem('rf_token')) { giveUp(); handlers.current.onLoggedOut(); } };
     open();
     document.addEventListener('visibilitychange', onVisibility);
-    return () => { disposed = true; document.removeEventListener('visibilitychange', onVisibility); close(); };
+    window.addEventListener('online', onOnline);
+    window.addEventListener('storage', onAuth);
+    window.addEventListener('rf-auth', onAuth);
+    return () => {
+      disposed = true;
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('storage', onAuth);
+      window.removeEventListener('rf-auth', onAuth);
+      close();
+    };
   }, [enabled]);
 
   return live;

@@ -360,6 +360,7 @@ async function checkRealtime(browser) {
   const messages = { c1: [{ seq: 1, mine: false, text: 'Tin đầu', createdAt: at(40) }], c2: [{ seq: 1, mine: false, text: 'Tin cuộc hai', createdAt: at(30) }] };
   const lastMessage = id => { const last = messages[id][messages[id].length - 1]; return { seq: last.seq, mine: last.mine, text: last.text }; };
   let realtime = true, refuse = false, lists = 0, failNextPoll = false;
+  const listBoxes = [];
   const polls = [], auths = [], sockets = [];
   const pollsOf = id => polls.filter(p => p === id).length;
   const openSockets = () => sockets.filter(s => s.open).length;
@@ -375,6 +376,7 @@ async function checkRealtime(browser) {
     if (path === '/chat/conversations' && method === 'GET') {
       lists += 1;
       const box = url.searchParams.get('box') || 'chats';
+      listBoxes.push(box);
       const list = box === 'invites' ? [] : Object.values(conversations).map(c => ({ ...c, lastMessage: lastMessage(c.id) }));
       return reply({ conversations: list, hasMore: false, realtime });
     }
@@ -427,18 +429,34 @@ async function checkRealtime(browser) {
   assert.equal(polls.length, quietPolls, 'socket đang nối thì khung chat không polling');
   assert.equal(lists, quietLists, 'socket đang nối thì danh sách không tự làm mới 30 giây');
 
-  // Tín hiệu của khung đang mở: lấy afterSeq ngay và hiện tin; danh sách làm mới.
+  // Tín hiệu của khung đang mở: lấy afterSeq ngay và hiện tin; danh sách chỉ làm mới hộp Trò chuyện, một lần.
+  const beforeOpen = { c1: pollsOf('c1'), boxes: listBoxes.length };
   messages.c1.push({ seq: 2, mine: false, text: 'Tin tức thì', createdAt: at(41) });
   signal({ conversationId: 'c1', seq: 2 });
   await expect(log.locator('.chat-bubble', { hasText: /Tin tức thì$/ })).toBeVisible();
-  await expect.poll(() => lists).toBeGreaterThan(quietLists);
-  // Tín hiệu của cuộc khác: chỉ làm mới danh sách, không lấy tin của khung đang mở hay của cuộc kia.
-  const beforeOther = { c1: pollsOf('c1'), c2: pollsOf('c2'), lists };
-  messages.c2.push({ seq: 2, mine: false, text: 'Tin mới ở cuộc hai', createdAt: at(42) });
-  signal({ conversationId: 'c2', seq: 2 });
-  await expect.poll(() => lists).toBeGreaterThan(beforeOther.lists);
+  await tick(3000);
+  assert.equal(pollsOf('c1') - beforeOpen.c1, 1, 'một tín hiệu một lần lấy tin');
+  assert.deepEqual(listBoxes.slice(beforeOpen.boxes), ['chats'], 'một tín hiệu một lần tải hộp Trò chuyện');
+  // Tín hiệu cho tin đã có (ví dụ tin mình vừa gửi, server báo cả người gửi): không lấy lại.
+  const beforeDupe = pollsOf('c1');
+  signal({ conversationId: 'c1', seq: 2 });
+  await tick(3000);
+  assert.equal(pollsOf('c1'), beforeDupe, 'đã có seq này thì không gọi afterSeq');
+  // Năm tín hiệu dồn của cuộc khác: không lấy tin của khung đang mở hay của cuộc kia, gom thành một lần tải danh sách.
+  const beforeOther = { c1: pollsOf('c1'), c2: pollsOf('c2'), boxes: listBoxes.length };
+  for (let seq = 2; seq <= 6; seq++) {
+    messages.c2.push({ seq, mine: false, text: 'Tin dồn ' + seq, createdAt: at(42) });
+    signal({ conversationId: 'c2', seq });
+  }
+  await tick(3000);
+  assert.deepEqual(listBoxes.slice(beforeOther.boxes), ['chats'], 'năm tín hiệu gom thành một lần tải danh sách');
   assert.equal(pollsOf('c1'), beforeOther.c1);
   assert.equal(pollsOf('c2'), beforeOther.c2);
+  // Lời mời mới (seq 1): tải cả hộp Lời mời.
+  const beforeInvite = listBoxes.length;
+  signal({ conversationId: 'c9', seq: 1 });
+  await tick(3000);
+  assert.deepEqual(listBoxes.slice(beforeInvite).sort(), ['chats', 'invites']);
 
   // Lấy bù sau tín hiệu bị lỗi (Render đang khởi động lại): socket vẫn nối nên không có polling, trang phải tự thử lại.
   failNextPoll = true;
@@ -488,6 +506,10 @@ async function checkRealtime(browser) {
   assert.ok(polls.length >= fallback + 3, 'mất socket thì polling 5 giây chạy lại: ' + (polls.length - fallback));
   await page.clock.runFor(60000);
   assert.equal(sockets.length - beforeDrop, 5, 'đã bỏ cuộc thì không thử nối nữa');
+  // Trình duyệt báo có mạng trở lại (sự kiện online): thử nối lại một lần.
+  refuse = false;
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect.poll(openSockets).toBe(1);
 
   // Công tắc tắt (realtime: false): không mở socket, chat chạy bằng polling.
   realtime = false; refuse = false;
@@ -498,6 +520,14 @@ async function checkRealtime(browser) {
   await tick(16000);
   assert.equal(sockets.length, beforeOff, 'realtime tắt thì không mở socket');
   assert.ok(polls.length >= offPolls + 3, 'realtime tắt thì vẫn polling');
+
+  // Đăng xuất ở cửa sổ khác (token bị xóa, trình duyệt báo sự kiện storage): đóng socket và chuyển tới đăng nhập.
+  realtime = true;
+  await page.goto(base + '/messages?c=c1');
+  await expect.poll(openSockets).toBe(1);
+  await page.evaluate(() => { localStorage.removeItem('rf_token'); window.dispatchEvent(new StorageEvent('storage', { key: 'rf_token' })); });
+  await expect.poll(openSockets).toBe(0);
+  await expect(page).toHaveURL(/\/login/);
 
   assert.deepEqual(errors, [], 'không có lỗi JavaScript trên trang realtime');
   console.log('checkChatUI realtime: đạt', { sockets: sockets.length, polls: polls.length, lists });

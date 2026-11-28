@@ -24,13 +24,18 @@ const person = (displayName, locked) => ({ displayName, avatarTheme: 'forest', .
       r3: { id: 'r3', reason: 'SPAM', note: '', status: 'OPEN', createdAt: at(10), message: { seq: 1, text: 'Mua giày giảm giá', sentAt: at(5) }, reporter: person('Nguyễn Test'), reported: person('Shop Giày', false) },
     };
     let role = 'SUPER_ADMIN', forbidden = false, r3Conflict = true;
+    // Công tắc realtime (P14) nằm trên cùng trang: trạng thái giả và các lần PUT.
+    let realtimeEnabled = true, forcedOff = false;
+    const realtimePuts = [];
     const lists = [], actions = [];
     const gates = {};
     const closeGate = name => { let release; gates[name] = { promise: new Promise(resolve => { release = resolve; }), release }; };
     const openGate = name => { gates[name]?.release(); delete gates[name]; };
     const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
-    // Chỉ tìm trong trang: Next có vùng thông báo chuyển trang cũng mang role="alert".
-    const alert = page.locator('.chat-shell [role="alert"]'), notice = page.locator('.chat-shell .notice[role="status"]');
+    // Chỉ tìm trong trang: Next có vùng thông báo chuyển trang cũng mang role="alert". Thông báo của hàng chờ nằm trong
+    // khung hàng chờ (hoặc ngay dưới tiêu đề trang khi bị từ chối quyền), không lẫn với công tắc realtime ở trên.
+    const alert = page.locator('.chat-shell > [role="alert"], .chat-admin:not(.chat-realtime) [role="alert"]');
+    const notice = page.locator('.chat-admin:not(.chat-realtime) .notice[role="status"]');
 
     await page.route('**/api/**', async route => {
       const request = route.request(), url = new URL(request.url()), path = url.pathname.replace(/^\/api/, ''), method = request.method();
@@ -38,6 +43,15 @@ const person = (displayName, locked) => ({ displayName, avatarTheme: 'forest', .
       if (method === 'OPTIONS') return reply({});
       if (path === '/auth/me') return reply({ user: { _id: 'admin', fullName: 'Quản Trị', email: 'admin@test.local', systemRole: role } });
       if (path === '/notifications') return reply({ notifications: [] });
+      if (path === '/chat/admin/realtime') {
+        if (method === 'PUT') {
+          realtimePuts.push(request.postDataJSON());
+          if (gates['realtime-put']) await gates['realtime-put'].promise;
+          realtimeEnabled = realtimePuts.at(-1).realtimeEnabled;
+        }
+        const history = realtimePuts.map(put => ({ realtimeEnabled: put.realtimeEnabled, changedBy: { fullName: 'Quản Trị' }, changedAt: at(45) })).reverse();
+        return reply({ setting: { realtimeEnabled, forcedOff, history } });
+      }
       if (path === '/chat/admin/reports' && method === 'GET') {
         const status = url.searchParams.get('status');
         lists.push(status);
@@ -96,6 +110,40 @@ const person = (displayName, locked) => ({ displayName, avatarTheme: 'forest', .
     assert.doesNotMatch(await panel.innerText(), /@/, 'hàng chờ không hiện email');
     // Giờ theo Việt Nam: tin gửi 03:30 UTC hiện 10:30.
     await expect(item('Kẻ Quấy Rối')).toContainText('Tin gửi lúc 10:30');
+
+    // Công tắc realtime: tên là tiêu đề mục, bấm Space thì vẫn giữ focus trong lúc lưu, bấm lần hai lúc đang lưu không
+    // gửi thêm; khi tắt thì viền công tắc đủ tương phản (WCAG 1.4.11, ít nhất 3:1 với nền khung).
+    const realtimeSwitch = page.getByRole('switch', { name: 'Tin nhắn tức thì' });
+    const realtimeState = page.locator('.chat-realtime-state');
+    await expect(realtimeSwitch).toHaveAttribute('aria-checked', 'true');
+    await expect(realtimeState).toHaveText('Đang bật');
+    await realtimeSwitch.focus();
+    closeGate('realtime-put');
+    await page.keyboard.press('Space');
+    await expect(realtimeState).toHaveText('Đang lưu…');
+    await expect(realtimeSwitch).toBeFocused();
+    await page.keyboard.press('Space');
+    openGate('realtime-put');
+    await expect(realtimeState).toHaveText('Đang tắt');
+    assert.deepEqual(realtimePuts, [{ realtimeEnabled: false }], 'bấm lúc đang lưu không gửi thêm');
+    await expect(realtimeSwitch).toBeFocused();
+    await expect(page.locator('.chat-realtime-history li')).toHaveCount(1);
+    const contrast = await page.evaluate(() => {
+      const rgb = value => value.match(/\d+(\.\d+)?/g).slice(0, 3).map(Number);
+      const lum = ([r, g, b]) => [r, g, b].map(c => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }).reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i], 0);
+      const border = lum(rgb(getComputedStyle(document.querySelector('.chat-switch')).borderTopColor));
+      const panel = lum(rgb(getComputedStyle(document.querySelector('.chat-realtime')).backgroundColor));
+      return (Math.max(border, panel) + 0.05) / (Math.min(border, panel) + 0.05);
+    });
+    assert.ok(contrast >= 3, 'viền công tắc lúc tắt chỉ đạt ' + contrast.toFixed(2) + ':1');
+    // Máy chủ chặn bằng CHAT_REALTIME=off: chữ trạng thái nói rõ lý do, không để công tắc "bật" mà chữ ghi "Đang tắt".
+    realtimeEnabled = true; forcedOff = true;
+    await page.reload();
+    await expect(realtimeState).toHaveText('Đang tắt vì máy chủ chặn');
+    await expect(page.locator('.chat-realtime')).toContainText('CHAT_REALTIME=off');
+    forcedOff = false;
+    await page.reload();
+    await expect(item('Kẻ Quấy Rối')).toBeVisible();
 
     // Ảnh chụp để người làm tự nhìn giao diện (chỉ khi đặt CHAT_UI_SHOTS=<thư mục>): hàng chờ đủ ba báo cáo, một báo cáo
     // đang mở bước xác nhận khóa. "Không khóa" để trả trang về như cũ, không gửi request nào.

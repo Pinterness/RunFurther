@@ -26,7 +26,8 @@ export default function MessagesPage() {
   const [me, setMe] = useState(null);
   // Công tắc realtime theo server (GET /chat/me và mỗi lần tải danh sách), và số lần cần lấy bù của khung đang mở.
   const [realtime, setRealtime] = useState(false);
-  const [syncKey, setSyncKey] = useState(0);
+  // key tăng mỗi lần khung đang mở cần lấy bù; seq là số thứ tự tín hiệu báo (null khi vừa nối, chưa biết lỡ tới đâu).
+  const [sync, setSync] = useState({ key: 0, seq: null });
   const alive = useRef(true);
   const selectedRef = useRef(null);
   selectedRef.current = selected;
@@ -60,17 +61,33 @@ export default function MessagesPage() {
     }
   }
   const refresh = () => { load('chats'); load('invites'); };
+  // Gom các tín hiệu tới dồn thành một lần tải danh sách mỗi 1,5 giây, để mỗi tin không tốn thêm hai request (giới hạn
+  // 120 request/phút của chat tính chung mọi tab). Chỉ tín hiệu seq 1 (lời mời mới) mới cần tải hộp Lời mời.
+  const refreshTimer = useRef(null), refreshInvites = useRef(false);
+  function refreshSoon(withInvites) {
+    refreshInvites.current ||= withInvites;
+    if (refreshTimer.current) return;
+    refreshTimer.current = setTimeout(() => {
+      refreshTimer.current = null;
+      if (!alive.current) return;
+      load('chats');
+      if (refreshInvites.current) load('invites');
+      refreshInvites.current = false;
+    }, 1500);
+  }
+  useEffect(() => () => clearTimeout(refreshTimer.current), []);
   const live = chat.useChatSocket({
     enabled: realtime,
-    onConnect: () => { refresh(); setSyncKey(key => key + 1); },
+    onConnect: () => { refresh(); setSync(current => ({ key: current.key + 1, seq: null })); },
     // Server chủ động ngắt: coi như realtime tắt tới lần tải danh sách kế tiếp (30 giây), lúc đó server cho biết công
     // tắc đang bật hay tắt.
     onServerClose: () => setRealtime(false),
-    onSignal: ({ conversationId }) => {
-      refresh();
+    onSignal: ({ conversationId, seq }) => {
+      refreshSoon(seq === 1);
       chat.notifyChatChanged();
-      if (selectedRef.current?.id === conversationId) setSyncKey(key => key + 1);
+      if (selectedRef.current?.id === conversationId) setSync(current => ({ key: current.key + 1, seq }));
     },
+    onLoggedOut: expired,
   });
   const liveRef = useRef(false);
   liveRef.current = live;
@@ -133,7 +150,7 @@ export default function MessagesPage() {
       <ConversationList box={box} onBox={setBox} lists={lists} selectedId={selected?.id} onOpen={open}
         onMore={(which, reset) => load(which, Boolean(reset))} />
       {selected
-        ? <ChatThread key={selected.id} conversation={selected} live={live} syncKey={syncKey} onChanged={changed} onBack={() => back()} onExpired={expired} focusOnOpen={openedByUser} />
+        ? <ChatThread key={selected.id} conversation={selected} live={live} syncKey={sync.key} syncSeq={sync.seq} onChanged={changed} onBack={() => back()} onExpired={expired} focusOnOpen={openedByUser} />
         : <section className="chat-panel chat-thread" aria-label="Khung trò chuyện"><div className="chat-empty-thread"><p>Chọn một cuộc trò chuyện để xem tin nhắn.</p></div></section>}
     </div>
   </div>;
