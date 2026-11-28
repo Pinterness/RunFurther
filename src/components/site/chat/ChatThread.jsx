@@ -13,7 +13,7 @@ const visible = () => typeof document === 'undefined' || document.visibilityStat
 // Chữ chỉ dành cho trình đọc màn hình.
 const SR_ONLY = { position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' };
 
-export default function ChatThread({ conversation, onChanged, onBack, onExpired, focusOnOpen, live = false, syncKey = 0 }) {
+export default function ChatThread({ conversation, onChanged, onBack, onExpired, focusOnOpen, live = false, syncKey = 0, syncSeq = null }) {
   const id = conversation.id;
   const [messages, setMessages] = useState([]);
   const [hasOlder, setHasOlder] = useState(false);
@@ -109,7 +109,12 @@ export default function ChatThread({ conversation, onChanged, onBack, onExpired,
     } finally { catchingRef.current = false; }
     if (retry && alive.current) retryRef.current = setTimeout(catchUp, POLL_MS);
   }
-  useEffect(() => { if (loaded && syncKey) catchUp(); }, [syncKey, loaded]);
+  // Tín hiệu cho tin đã có (thường là tin mình vừa gửi, server báo cả người gửi) thì không lấy lại.
+  useEffect(() => {
+    if (!loaded || !syncKey) return;
+    if (Number.isInteger(syncSeq) && syncSeq <= chat.lastSeq(messagesRef.current)) return;
+    catchUp();
+  }, [syncKey, loaded]);
 
   // Đánh dấu đã đọc tới seq lớn nhất đang hiện, khi khung đang mở và tab đang hiện; tin tới lúc tab ẩn thì đánh dấu khi
   // người dùng quay lại tab.
