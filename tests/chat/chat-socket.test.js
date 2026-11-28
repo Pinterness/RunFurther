@@ -110,6 +110,18 @@ test('tín hiệu tới khi tin đã lưu: lấy afterSeq ngay là có tin; gử
   assert.equal(got.length, 1);
 });
 
+test('người được mời nhận tín hiệu seq 1 ngay khi lời mời tới, và lúc đó lời mời đã lưu', async () => {
+  const a = await member(), b = await member();
+  const sockB = await connect(b.token);
+  const signal = once(sockB, 'chat:message');
+  const invited = await request('/chat/invites', { method: 'POST', as: a, body: { handle: b.handle, text: 'chào bạn', clientMessageId: uuid() } });
+  assert.equal(invited.status, 201);
+  const payload = await signal;
+  assert.deepEqual(payload, { conversationId: invited.body.conversation.id, seq: 1 });
+  const inbox = await request('/chat/conversations?box=invites', { as: b });
+  assert.ok(inbox.body.conversations.some(c => c.id === payload.conversationId));
+});
+
 test('người mời nhận tín hiệu khi lời mời được chấp nhận; bị từ chối hay bị chặn thì không biết', async () => {
   // Socket đang nối thì trang tắt polling, nên tín hiệu là cách duy nhất để người mời thấy cuộc đã mở mà không tải lại.
   const invite = async (a, b) => (await request('/chat/invites', { method: 'POST', as: a, body: { handle: b.handle, text: 'chào', clientMessageId: uuid() } })).body.conversation.id;
@@ -168,10 +180,12 @@ test('Origin lạ bị từ chối; Origin trong CLIENT_ORIGIN và không có Or
 });
 
 test('JWT hết hạn khi đang nối thì bị ngắt', async () => {
+  // Hạn 2 giây chứ không phải 1: exp tính theo giây chẵn, ký sát cuối một giây thì hạn 1 giây chỉ còn vài ms và bắt
+  // tay có thể bị từ chối trước khi kịp nối.
   const user = await member();
-  const token = jwt.sign({ sub: user.id, exp: Math.floor(Date.now() / 1000) + 1 }, process.env.JWT_SECRET);
+  const token = jwt.sign({ sub: user.id, exp: Math.floor(Date.now() / 1000) + 2 }, process.env.JWT_SECRET);
   const socket = await connect(token);
-  assert.equal(await once(socket, 'disconnect', 3000), 'io server disconnect');
+  assert.equal(await once(socket, 'disconnect', 4000), 'io server disconnect');
 });
 
 test('tắt công tắc thì socket đang nối bị ngắt và bắt tay mới bị từ chối; bật lại thì nối được', async () => {

@@ -16,6 +16,11 @@ const { isRealtimeOn, onRealtimeChange } = require('../services/chatRealtimeSett
 const chatNotifier = require('../services/chatNotifier');
 
 const EVENT = 'chat:message';
+// Mỗi người tối đa 5 kết nối (vài tab, vài thiết bị), đủ cho người thật mà chặn được kiểu mở hàng nghìn socket.
+const MAX_SOCKETS_PER_USER = 5;
+// Client không gửi sự kiện nào, gói lớn nhất là gói bắt tay chứa JWT (vài trăm byte), nên 8 KB là dư.
+const MAX_PACKET_BYTES = 8 * 1024;
+const HANDSHAKE_TIMEOUT_MS = 10_000;
 // setTimeout chỉ nhận tối đa 2^31 − 1 ms (khoảng 24,8 ngày); lớn hơn thì Node chạy ngay lập tức.
 const MAX_TIMER_MS = 2 ** 31 - 1;
 const room = userId => 'user:' + userId;
@@ -40,9 +45,11 @@ async function authenticate(token, { env, now }) {
   let eligible;
   try {
     eligible = await senderEligible(userId, { now: new Date(now()) });
-  } catch {
-    // sub không phải ObjectId hợp lệ thì Mongoose ném lỗi ép kiểu: coi như token sai.
-    throw rejection('AUTH_INVALID', 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn.');
+  } catch (error) {
+    // sub không phải ObjectId hợp lệ thì Mongoose ném lỗi ép kiểu: coi như token sai. Lỗi khác là DB đang trục trặc.
+    if (error?.name === 'CastError') throw rejection('AUTH_INVALID', 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn.');
+    console.error('Realtime handshake failed:', error?.message ?? error);
+    throw rejection('REALTIME_UNAVAILABLE', 'Máy chủ đang bận, tin nhắn sẽ tới chậm hơn một chút.');
   }
   if (!eligible.ok) throw rejection('CHAT_UNAVAILABLE', 'Tài khoản này chưa nhắn tin được.');
   return { userId, exp: payload.exp };
@@ -61,6 +68,8 @@ function attachRealtime(httpServer, { env = process.env, now = () => Date.now() 
     // instance khác và lỗi (ADR 3.5).
     transports: ['websocket'],
     serveClient: false,
+    maxHttpBufferSize: MAX_PACKET_BYTES,
+    connectTimeout: HANDSHAKE_TIMEOUT_MS,
     allowRequest(req, callback) {
       const origin = req.headers.origin;
       // Không có Origin (công cụ dòng lệnh) thì cho qua như REST; JWT ở bước sau mới là cổng thật.
@@ -72,15 +81,34 @@ function attachRealtime(httpServer, { env = process.env, now = () => Date.now() 
     },
   });
 
+  const roomSize = userId => io.of('/').adapter.rooms.get(room(userId))?.size ?? 0;
+
+  // Một kết nối WebSocket chỉ được bắt tay một lần. Socket.IO cho gửi lại gói CONNECT trên cùng kết nối, nên không chặn
+  // thì một kết nối bắn hàng trăm gói, mỗi gói 3 lượt đọc DB, và REST rate limit không đứng ra chặn được.
   io.use((socket, next) => {
-    authenticate(socket.handshake.auth?.token, { env, now }).then(
-      identity => { socket.data.userId = identity.userId; socket.data.exp = identity.exp; next(); },
-      next,
-    );
+    const conn = socket.conn;
+    if (conn.rfHandshake) { conn.close(); return; }
+    conn.rfHandshake = true;
+    const refuse = error => { next(error); setImmediate(() => conn.close()); };
+    authenticate(socket.handshake.auth?.token, { env, now }).then(identity => {
+      if (roomSize(identity.userId) >= MAX_SOCKETS_PER_USER) {
+        return refuse(rejection('TOO_MANY_CONNECTIONS', 'Bạn đang mở quá nhiều trang tin nhắn cùng lúc.'));
+      }
+      socket.data.userId = identity.userId;
+      socket.data.exp = identity.exp;
+      return next();
+    }, refuse);
   });
 
   io.on('connection', socket => {
-    socket.join(room(socket.data.userId));
+    const { userId } = socket.data;
+    socket.join(room(userId));
+    // Kiểm lại sau khi đã vào phòng: nếu admin tắt công tắc, hay người dùng rút đồng ý, bị khóa, đúng lúc server đang
+    // kiểm quyền ở bước bắt tay, lệnh ngắt lúc đó trượt vì socket chưa ở phòng nào. Từ đây mọi lệnh ngắt đều trúng.
+    Promise.all([isRealtimeOn({ env, now: now() }), senderEligible(userId, { now: new Date(now()) })]).then(
+      ([on, eligible]) => { if (!on || !eligible.ok || roomSize(userId) > MAX_SOCKETS_PER_USER) socket.disconnect(true); },
+      () => socket.disconnect(true),
+    );
     // Ngắt đúng lúc JWT hết hạn, để token cũ không nghe tín hiệu mãi. Client nối lại bằng token mới hoặc về polling.
     if (Number.isFinite(socket.data.exp)) {
       const timer = setTimeout(() => socket.disconnect(true), Math.min(Math.max(socket.data.exp * 1000 - now(), 0), MAX_TIMER_MS));
