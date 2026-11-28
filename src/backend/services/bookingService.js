@@ -9,8 +9,10 @@ const { processPayment } = require('./walletService');
 const transaction = require('./transaction');
 const { assert } = require('../lib/errors');
 
-async function expireBookings() {
-  const expired = await Booking.find({ status: 'HOLD', expiresAt: { $lte: new Date() } }).select('_id').limit(500).lean();
+async function expireBookings({ userId, eventId, bookingId } = {}) {
+  // Request handlers release only relevant holds; the background job still sweeps globally.
+  const scope = { ...(userId ? { userId } : {}), ...(eventId ? { eventId } : {}), ...(bookingId ? { _id: bookingId } : {}) };
+  const expired = await Booking.find({ ...scope, status: 'HOLD', expiresAt: { $lte: new Date() } }).select('_id').limit(500).lean();
   for (const item of expired) {
     await transaction(async (session) => {
       const booking = await Booking.findOneAndUpdate({ _id: item._id, status: 'HOLD', expiresAt: { $lte: new Date() } }, { $set: { status: 'EXPIRED' } }, { session, new: true });

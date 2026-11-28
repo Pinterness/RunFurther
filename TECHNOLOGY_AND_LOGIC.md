@@ -665,3 +665,42 @@ Bộ lọc cự ly dùng khoảng nửa kín [min,max), nên 21,1 và 42,195 km 
 Tìm kiếm regex không dấu chạy trực tiếp trên dữ liệu hiện có, không yêu cầu migration. Đây vẫn là phép quét tập giải công khai phù hợp bộ lọc; nếu dữ liệu tăng lớn cần đo latency và chuyển sang chỉ mục tìm kiếm chuyên dụng. Không coi sắp xếp là thay thế debounce hay chỉ mục.
 
 Kiểm chứng: 112 test backend, 220 test trợ lý và 13 test cảnh chạy đạt; production build thành công. `scripts/checkEventSearchUI.js` đạt ở 1440/768/390/360px: gõ không điều hướng, gửi giữ URL/bộ lọc, radio cự ly, xóa bộ lọc và không tràn ngang. Dùng API fixture/MongoDB tạm, không thay dữ liệu thật.
+
+## Rà soát thanh toán, nghiệp vụ và hiệu năng — 28/11/2026
+
+Phạm vi: main `4144702` (gồm cộng đồng/chat realtime), nhánh `fix/payment-business-audit`. Kiểm tra mã và chạy test bằng MongoDB tạm/API fixture; không gọi webhook thật, không chuyển tiền, không truy vấn database production. Kết quả không chứng nhận ngân hàng/SePay/Render production đã cấu hình và vận hành đúng.
+
+### Kết luận nghiệp vụ
+
+- Nạp ví: snapshot tài khoản nhận, mã lệnh, HMAC raw body, đúng luồng/tài khoản/số tiền/thời điểm; ledger và idempotency trong transaction. Duyệt tay nạp ví yêu cầu số thực nhận, không tự duyệt lệnh mình.
+- Tiền vé: chủ giải đúng event mới duyệt; Super Admin không duyệt vé. SePay đối soát tự động, duplicate/đua với ví không cấp vé hai lần. Webhook đến chậm chỉ lấy lại suất còn trống nếu thời điểm trả tiền hợp lệ; các trường hợp khác vào REVIEW.
+- Marketplace: debit/credit/đổi chủ và QR trong transaction; không bán vượt 110%, không chuyển vé đã check-in/nhận kit. Không có cơ chế escrow/hoàn trả hàng cho GEAR; thao tác mua hiện chuyển tiền ngay.
+- Chưa thể coi toàn bộ nghiệp vụ tiền đã hoàn thiện. Các điểm cần xử lý trước khi mở rộng vận hành thật:
+  1. Duyệt vé thủ công (`approveBookingPayment`, `PaymentReview`) chỉ có mã giao dịch, chưa bắt buộc số tiền thực nhận như nạp ví. Bổ sung nhập số thực nhận không điền sẵn, kiểm tra khớp và lưu chứng từ.
+  2. Mua vé bằng ví ghi DEBIT của người mua và vé; chưa thấy sổ phải trả/quyết toán hoặc payout cho chủ giải. Cần chốt cách trả chủ giải và phí trước khi triển khai, không tự credit thêm ví chủ giải vì có thể tạo sai dòng tiền.
+  3. Chưa có hoàn tiền/rút tiền tự động; đơn quá hạn, sai tiền, trả hai lần phải đối soát/hoàn thủ công. Cần trạng thái xử lý và chứng từ hoàn tiền để tránh bỏ sót.
+  4. `buyListing` kiểm hồ sơ người nhận nhưng chưa truyền `category.rules.minAge` và ngày chạy như mua vé mới; cần thống nhất áp dụng điều kiện cự ly khi chuyển BIB.
+  5. Gói ảnh/Pasta Party và giá vẫn cố định, chưa cấu hình theo giải (U06).
+  6. RunPoints được kiểm/trừ lúc hoàn tất, không giữ trước lúc tạo đơn. Nhiều đơn dùng cùng điểm có thể khiến giao dịch ngân hàng hợp lệ phải REVIEW. Cần chốt giữ điểm hoặc bỏ sử dụng điểm cho chuyển khoản trước khi đổi quy tắc.
+
+### Đã vá và tối ưu trong nhánh
+
+- Giải CANCELLED/COMPLETED: ẩn QR của đơn HOLD, báo paymentBlocked và chặn tạo yêu cầu xác nhận chuyển khoản. Trước đó cấp vé đã chặn nhưng hướng dẫn trả tiền vẫn có thể hiện.
+- Dọn HOLD hết hạn ở request chỉ quét đúng giải (tạo đơn), đúng user (danh sách), đúng đơn + user (xem/xác nhận); job nền giữ quét toàn cục. Không cache số dư/quota hoặc bỏ transaction để tăng tốc.
+- Danh sách giải: chọn đúng 5 trường category cần dùng, bỏ truy vấn category khi không có giải; nhóm bằng Map một lần thay vì filter toàn bộ category cho từng giải. Bước ghép giảm từ O(E×C) xuống O(E+C).
+- Chuyển BIB: dùng document đã khóa từ `lockOperationalEvent` để kiểm trạng thái/ngày, bỏ 1 lần đọc Event trong mỗi lượt tạo/mua tin BIB. Vẫn giữ khóa transaction chống đổi trạng thái giải đồng thời.
+
+### Việc tối ưu tiếp cần đo
+
+- Tìm kiếm regex không dấu vẫn quét dữ liệu; sort trong facet chưa tận dụng chỉ mục cho nhánh không tìm kiếm. Đo explain/latency với dữ liệu đại diện rồi tách truy vấn thường và xây chỉ mục phù hợp.
+- Danh sách đối soát vé lấy toàn bộ bookingIds của giải và giới hạn 100 payment; khi nhiều đơn cần cursor/pagination và lọc ở DB, không bỏ đơn cũ khỏi màn vận hành.
+- Ảnh local `event-trail.png` khoảng 1,79 MiB, `runner-avatar.png` 1,32 MiB; kiểm kê chỗ thực sự dùng trước khi xóa hoặc chuyển định dạng. Không coi file chưa thấy import là vô dụng: còn đường dẫn lưu trong dữ liệu.
+- Thông báo poll 60s có bỏ qua tab ẩn; checkout poll 5s. Cần đo số request và thời gian API p50/p95, Web Vitals trên production. Chưa có số đo trước/sau thực địa, nên không khẳng định web nhanh hơn một tỷ lệ cụ thể.
+- Bài trợ lý seed còn mô tả thanh toán chỉ duyệt thủ công và đơn hết hạn không cấp vé; cần sửa nội dung đã xuất bản qua luồng tri thức để phản ánh SePay và webhook đến chậm. Không ghi đè bài người quản trị đã chỉnh trong DB.
+
+### Kết quả kiểm chứng
+
+- Đạt 114 test backend, 220 test trợ lý, 167 test chat/cộng đồng và 13 test cảnh chạy. Production build thành công. `npm audit --omit=dev --audit-level=high` báo 0 lỗ hổng tại thời điểm kiểm tra.
+- Playwright đạt `checkWalletTopupUI`, `checkRunnerFlows`, `checkEventMediaUI`, `checkVolunteerUI`: nạp ví/SePay giả lập, hồ sơ/đăng ký/mua vé/marketplace, bật/tắt/xóa tài khoản nhận, QR lỗi/thử lại/hết hạn, duyệt/từ chối tình nguyện viên và theo dõi kết quả. Các script có kiểm viewport mobile/desktop; không có lỗi runtime trong phạm vi kiểm thử.
+- Sửa selector `checkEventMediaUI` còn trỏ nhãn checkout cũ. Test tình nguyện viên chạy cùng preload `scripts/uiPolishSsr.cjs` để cả lượt đọc API phía Node dùng fixture; không phụ thuộc API local/production. Checkout build cô lập được loại file route `[username]` cũ đã bị xóa trên main để tránh xung đột với `[handle]`.
+- Các kết quả này kiểm chứng mã/fixture, chưa thay cho một giao dịch ngân hàng thật có kiểm soát và đối chiếu ledger/vé trên môi trường triển khai.

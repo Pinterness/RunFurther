@@ -33,7 +33,7 @@ async function createBookingHold(req, res, next) {
     assert(eventId && categoryId && runnerInfo, 400, 'Event, category and runner information are required.');
     assert(['fullName', 'email', 'phone'].every(k => typeof runnerInfo[k] === 'string' && runnerInfo[k].trim()), 400, 'Name, email and phone are required.');
     assert(['VIETQR', 'WALLET'].includes(paymentMethod), 400, 'Unsupported payment method.');
-    await expireBookings();
+    await expireBookings({ eventId });
     const result = await transaction(async session => {
       const now = new Date();
       const event = await lockOperationalEvent(eventId, session);
@@ -68,7 +68,7 @@ async function createBookingHold(req, res, next) {
 
 async function confirmBooking(req, res, next) {
   try {
-    await expireBookings();
+    await expireBookings({ userId: req.userId, bookingId: req.params.bookingId });
     const { paymentMethod = 'VIETQR' } = req.body;
     assert(['VIETQR', 'WALLET'].includes(paymentMethod), 400, 'Unsupported payment method.');
     const result = await transaction(async session => {
@@ -79,6 +79,7 @@ async function confirmBooking(req, res, next) {
       }
       assert(booking.status === 'HOLD' && booking.expiresAt > new Date(), 409, 'Booking has expired.');
       const event = await lockOperationalEvent(booking.eventId, session);
+      assert(!['CANCELLED', 'COMPLETED'].includes(event.status), 409, 'Giải đã hủy hoặc kết thúc.', 'EVENT_NOT_PAYABLE');
       assert(!bookingTransfer(booking, event).transferBlocked, 409, 'Chuyển khoản đã tắt hoặc tài khoản nhận đã thay đổi. Không chuyển theo mã cũ; dùng ví hoặc liên hệ chủ giải nếu đã chuyển tiền.');
       assert(paymentInstructions(booking.bankSnapshot, booking.finalAmount, booking.orderCode).vietQrUrl, 409, 'Đơn chưa có thông tin chuyển khoản hợp lệ. Thanh toán bằng ví hoặc tạo đơn mới sau khi chủ giải cấu hình ngân hàng.');
       const paymentRequest = await PaymentRequest.findOneAndUpdate({ requestKey: 'BOOKING-' + booking._id }, {
@@ -93,18 +94,18 @@ async function confirmBooking(req, res, next) {
 }
 async function listMyBookings(req, res, next) {
   try {
-    await expireBookings();
+    await expireBookings({ userId: req.userId });
     const bookings = await Booking.find({ userId: req.userId }).populate('eventId', 'name slug dateInfo location').populate('categoryId', 'name code distance price').sort({ createdAt: -1 }).limit(100).lean();
     res.json({ bookings: bookings.map(publicBooking) });
   } catch (error) { next(error); }
 }
 async function getBookingById(req, res, next) {
   try {
-    await expireBookings();
-    const booking = await Booking.findOne({ _id: req.params.bookingId, userId: req.userId }).populate('eventId', 'name slug dateInfo location moderation bankAccountInfo bankTransferEnabled').populate('categoryId', 'name code distance price').lean();
+    await expireBookings({ userId: req.userId, bookingId: req.params.bookingId });
+    const booking = await Booking.findOne({ _id: req.params.bookingId, userId: req.userId }).populate('eventId', 'name slug status dateInfo location moderation bankAccountInfo bankTransferEnabled').populate('categoryId', 'name code distance price').lean();
     assert(booking, 404, 'Booking not found.');
     const registration = booking.status === 'PAID' ? await Registration.findOne({ 'payment.bookingId': booking._id, userId: req.userId }).lean() : null;
-    const paymentBlocked = !booking.eventId || ['HIDDEN', 'SUSPENDED'].includes(booking.eventId.moderation?.state);
+    const paymentBlocked = !booking.eventId || ['CANCELLED', 'COMPLETED'].includes(booking.eventId.status) || ['HIDDEN', 'SUSPENDED'].includes(booking.eventId.moderation?.state);
     const instructions = bookingTransfer(booking, booking.eventId);
     if (paymentBlocked || booking.status !== 'HOLD' || new Date(booking.expiresAt) <= new Date()) instructions.vietQrUrl = null;
     res.json({ booking: publicBooking(booking), registration, ...instructions, paymentBlocked, holdSecondsRemaining: Math.max(0, Math.floor((new Date(booking.expiresAt) - Date.now()) / 1000)) });

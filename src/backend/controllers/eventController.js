@@ -64,9 +64,16 @@ async function listEvents(req, res, next) {
     ]);
     const events=result.events, total=result.count[0]?.total || 0;
 
-    const categories = await EventCategory.find({ eventId: { $in: events.map(event => event._id) } }).lean();
+    const categories = events.length ? await EventCategory.find({ eventId: { $in: events.map(event => event._id) } })
+      .select('eventId code price quotaSold quotaTotal').lean() : [];
+    const byEvent = new Map();
+    for (const category of categories) {
+      const key = String(category.eventId);
+      if (!byEvent.has(key)) byEvent.set(key, []);
+      byEvent.get(key).push(category);
+    }
     for (const event of events) {
-      const items = categories.filter(category => String(category.eventId) === String(event._id));
+      const items = byEvent.get(String(event._id)) || [];
       event.categories = items.map(category => category.code);
       event.price = items.length ? Math.min(...items.map(category => category.price)) : null;
       event.quota = items.reduce((sum, category) => sum + category.quotaSold, 0);

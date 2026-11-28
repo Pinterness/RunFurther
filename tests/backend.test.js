@@ -830,3 +830,31 @@ test('event search folds Vietnamese, ranks before pagination and supports distan
     const escaped=await query({search:'.*'}); assert.equal(escaped.pagination.total,0);
   } finally {await Category.deleteMany({eventId:{$in:ids}});await Event.deleteMany({_id:{$in:ids}});}
 });
+
+test('cancelled or completed event hides pending QR and rejects transfer confirmation', async () => {
+  for (const status of ['CANCELLED','COMPLETED']) {
+    const f=await fixture();
+    const held=await api('/bookings/hold','POST',holdBody(f),f.u);
+    assert.equal(held.status,201); assert.ok(held.vietQrUrl);
+    await Event.updateOne({_id:f.event._id},{$set:{status}});
+    const view=await api('/bookings/'+held.booking._id,'GET',null,f.u);
+    assert.equal(view.status,200); assert.equal(view.paymentBlocked,true); assert.equal(view.vietQrUrl,null);
+    const confirm=await api('/bookings/'+held.booking._id+'/confirm','POST',{paymentMethod:'VIETQR'},f.u);
+    assert.equal(confirm.status,409);
+    assert.equal(await Payment.countDocuments({bookingId:held.booking._id}),0);
+    assert.equal(await Registration.countDocuments({'payment.bookingId':held.booking._id}),0);
+  }
+});
+
+test('checkout releases expired holds only for its event; background sweep handles the rest', async () => {
+  const a=await fixture(1),b=await fixture(1);
+  const heldA=await api('/bookings/hold','POST',holdBody(a),a.u);
+  const heldB=await api('/bookings/hold','POST',holdBody(b),b.u);
+  await Booking.updateMany({_id:{$in:[heldA.booking._id,heldB.booking._id]}},{$set:{expiresAt:new Date(Date.now()-1000)}});
+  assert.equal((await api('/bookings/hold','POST',holdBody(a),a.u)).status,201);
+  assert.equal((await Booking.findById(heldA.booking._id)).status,'EXPIRED');
+  assert.equal((await Booking.findById(heldB.booking._id)).status,'HOLD');
+  await expireBookings();
+  assert.equal((await Booking.findById(heldB.booking._id)).status,'EXPIRED');
+  assert.equal((await Category.findById(b.category._id)).quotaHold,0);
+});
