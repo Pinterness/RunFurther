@@ -25,9 +25,9 @@ async function listListings(req, res, next) {
   } catch (error) { next(error); }
 }
 async function transferableEvent(eventId, session) {
-  await lockOperationalEvent(eventId, session);
-  const event = await Event.findOne({ _id: eventId, status: { $in: ['PUBLISHED', 'REGISTRATION_OPEN', 'REGISTRATION_CLOSED'] }, 'dateInfo.raceDate': { $gt: new Date() } }).session(session);
-  assert(event, 409, 'Transfers are closed for this event.');
+  const event = await lockOperationalEvent(eventId, session);
+  assert(['PUBLISHED', 'REGISTRATION_OPEN', 'REGISTRATION_CLOSED'].includes(event.status) &&
+    event.dateInfo.raceDate > new Date(), 409, 'Transfers are closed for this event.');
 }
 async function createListing(req, res, next) {
   try {
